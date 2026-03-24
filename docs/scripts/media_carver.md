@@ -134,6 +134,8 @@ is used.
 - `--report` (alias `--report-only`): print recovered-file summary without scanning
 - default dedup mode: extract first, then deduplicate by full-file SHA-256
 - `--fast-dedup`: use sampled-hash dedup instead of full SHA-256
+- default behavior: after first recovered video, skip JPEGs (reduce frame noise)
+- `--keep-jpeg-after-video`: keep extracting JPEGs after video recovery
 - `-v`, `--verbose`: verbose logging
 - `--version`: print version
 
