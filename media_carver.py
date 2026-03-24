@@ -455,14 +455,53 @@ def _find_riff_size(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
  
  
 def _find_bmp_size(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
-    """BMP file size is in the header at offset 2 (LE uint32)."""
-    f.seek(start + 2)
-    raw = f.read(4)
-    if len(raw) < 4:
+    """BMP size detection with basic header sanity checks."""
+    f.seek(start)
+    hdr = f.read(54)
+    if len(hdr) < 30 or hdr[:2] != b"BM":
         return None
-    size = struct.unpack("<I", raw)[0]
+
+    size = struct.unpack("<I", hdr[2:6])[0]
+    pixel_offset = struct.unpack("<I", hdr[10:14])[0]
+    dib_size = struct.unpack("<I", hdr[14:18])[0]
+
     if size < 100 or size > max_size:
         return None
+    if pixel_offset < 14 or pixel_offset >= size:
+        return None
+    if dib_size not in (12, 40, 52, 56, 108, 124):
+        return None
+
+    # DIB header v3+ fields (most common modern BMP variants).
+    if dib_size >= 40 and len(hdr) >= 38:
+        width = struct.unpack("<i", hdr[18:22])[0]
+        height = struct.unpack("<i", hdr[22:26])[0]
+        planes = struct.unpack("<H", hdr[26:28])[0]
+        bpp = struct.unpack("<H", hdr[28:30])[0]
+
+        if width == 0 or height == 0 or planes != 1:
+            return None
+        if bpp not in (1, 4, 8, 16, 24, 32):
+            return None
+
+        # For uncompressed RGB bitmaps, estimate expected payload size.
+        if len(hdr) >= 38:
+            compression = struct.unpack("<I", hdr[30:34])[0]
+            image_size = struct.unpack("<I", hdr[34:38])[0]
+            if compression == 0:  # BI_RGB
+                w = abs(width)
+                h = abs(height)
+                row_bytes = ((w * bpp + 31) // 32) * 4
+                estimated_payload = row_bytes * h
+                estimated_total = pixel_offset + estimated_payload
+                # Accept reasonable variance; reject obviously inflated size fields.
+                if estimated_total > 0 and size > max(estimated_total * 3, estimated_total + 2 * 1024 * 1024):
+                    return None
+            elif compression not in (3, 6):  # allow BI_BITFIELDS / BI_ALPHABITFIELDS
+                return None
+            if image_size > 0 and image_size > max_size:
+                return None
+
     return start + size
  
  
@@ -1017,8 +1056,10 @@ class MediaCarver:
         self.image_size = detect_input_size(image_path)
         self.photo_dir = Path(output_dir) / "photos"
         self.video_dir = Path(output_dir) / "videos"
+        self.video_frame_dir = Path(output_dir) / "frames"
         self.photo_dir.mkdir(parents=True, exist_ok=True)
         self.video_dir.mkdir(parents=True, exist_ok=True)
+        self.video_frame_dir.mkdir(parents=True, exist_ok=True)
  
         self.state = state
         self.min_photo_size = min_photo_size
@@ -1058,10 +1099,12 @@ class MediaCarver:
         stats = ScanStats()
         skip_until = start_byte
  
+        hash_label = "known sha256" if self.strict_dedup else "known hashes"
+        hash_value = self.state.sha256_count if self.strict_dedup else self.state.hash_count
         self.state.log(
             f"=== Scan {start_byte/1e6:.0f}–{end_byte/1e6:.0f} MB "
             f"({self.image_size/1e6:.0f} MB total, "
-            f"{self.state.hash_count} known hashes) ==="
+            f"{hash_value} {hash_label}) ==="
         )
  
         with open(self.image_path, "rb") as f:
@@ -1255,9 +1298,18 @@ class MediaCarver:
  
         # Generate output path
         file_id = self.state.next_id(media_type)
+        frame_mode = (
+            fmt_name == "JPEG"
+            and media_type == MediaType.PHOTO
+            and self.video_found
+            and not self.skip_jpeg_after_video
+        )
         out_dir = self.photo_dir if media_type == MediaType.PHOTO else self.video_dir
+        if frame_mode:
+            out_dir = self.video_frame_dir
         size_label = f"_{actual_size // 1024}KB" if actual_size < 10 * 1024 * 1024 else f"_{actual_size // (1024*1024)}MB"
-        filename = f"{media_type.value}_{file_id:05d}_{fmt_name}{dim_str}{size_label}.{ext}"
+        file_prefix = "video_frame" if frame_mode else media_type.value
+        filename = f"{file_prefix}_{file_id:05d}_{fmt_name}{dim_str}{size_label}.{ext}"
         out_path = out_dir / filename
  
         # Extract
@@ -1369,7 +1421,13 @@ class MediaCarver:
 # ---------------------------------------------------------------------------
 # Report generator
 # ---------------------------------------------------------------------------
-def generate_report(output_dir: str, state: ScanState):
+def generate_report(
+    output_dir: str,
+    state: ScanState,
+    started_at: Optional[float] = None,
+    finished_at: Optional[float] = None,
+    strict_dedup: bool = True,
+):
     """Print a summary of all recovered files."""
     photo_dir = Path(output_dir) / "photos"
     video_dir = Path(output_dir) / "videos"
@@ -1396,7 +1454,17 @@ def generate_report(output_dir: str, state: ScanState):
         for ext, count in sorted(by_ext.items(), key=lambda x: -x[1]):
             print(f"    .{ext}: {count}")
  
-    print(f"\n  Unique hashes: {state.hash_count}")
+    if strict_dedup:
+        print(f"\n  Unique SHA-256: {state.sha256_count}")
+    else:
+        print(f"\n  Unique hashes: {state.hash_count}")
+    if started_at is not None and finished_at is not None:
+        elapsed = max(0.0, finished_at - started_at)
+        start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started_at))
+        end_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(finished_at))
+        print(f"  Started at: {start_str}")
+        print(f"  Finished at: {end_str}")
+        print(f"  Elapsed: {elapsed:.2f}s")
     print("=" * 64)
  
  
@@ -1404,6 +1472,7 @@ def generate_report(output_dir: str, state: ScanState):
 # CLI
 # ---------------------------------------------------------------------------
 def main():
+    run_started_at = time.time()
     parser = argparse.ArgumentParser(
         prog="media_carver",
         description="Recover photos and videos from raw disk images or devices.",
@@ -1474,7 +1543,13 @@ def main():
         logging.info("Scan state reset.")
  
     if args.report_only:
-        generate_report(args.output, state)
+        generate_report(
+            args.output,
+            state,
+            run_started_at,
+            time.time(),
+            strict_dedup=args.strict_dedup,
+        )
         return
  
     # Skip resolutions
@@ -1510,7 +1585,13 @@ def main():
         stats = carver.scan_full(chunk_mb=args.chunk_mb)
  
     # Report
-    generate_report(args.output, state)
+    generate_report(
+        args.output,
+        state,
+        run_started_at,
+        time.time(),
+        strict_dedup=args.strict_dedup,
+    )
  
     # Exit code
     if stats.errors > 0:

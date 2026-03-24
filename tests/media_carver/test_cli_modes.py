@@ -33,6 +33,24 @@ def write_fixture_image(path: Path):
         f.write(b"\x22" * 4096)
 
 
+def write_fixture_video_then_jpeg(path: Path):
+    jpg_b64_path = FIXTURES_DIR / "pixel_1x1.jpg.b64"
+    jpg = base64.b64decode(jpg_b64_path.read_text().strip())
+
+    # Minimal fake AVI container with valid RIFF size and AVI marker.
+    # Size field is payload size excluding first 8 bytes.
+    total_size = 60 * 1024
+    riff_size = total_size - 8
+    avi = b"RIFF" + riff_size.to_bytes(4, "little") + b"AVI " + (b"\x00" * (total_size - 12))
+
+    with path.open("wb") as f:
+        f.write(b"\x33" * 2048)
+        f.write(avi)
+        f.write(b"\x44" * 2048)
+        f.write(jpg)
+        f.write(b"\x55" * 1024)
+
+
 class MediaCarverCliModesTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -58,6 +76,9 @@ class MediaCarverCliModesTests(unittest.TestCase):
         result = run_cmd([str(missing), "-o", str(self.out), "--report"], self.tmp_path)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("RECOVERY REPORT", result.stdout)
+        self.assertIn("Started at:", result.stdout)
+        self.assertIn("Finished at:", result.stdout)
+        self.assertIn("Elapsed:", result.stdout)
 
     def test_invalid_chunk_mb_is_rejected(self):
         result = run_cmd(
@@ -151,6 +172,50 @@ class MediaCarverCliModesTests(unittest.TestCase):
         counters = json.loads(counters_path.read_text())
         self.assertGreaterEqual(counters.get("photo", 0), 1)
         self.assertTrue((self.out / "photos" / "photo_00001_PNG_0KB.png").exists())
+
+    def test_default_skips_jpeg_after_first_video(self):
+        fixture2 = self.tmp_path / "fixture_video_then_jpg.img"
+        out2 = self.tmp_path / "out_video_default_skip"
+        write_fixture_video_then_jpeg(fixture2)
+
+        result = run_cmd(
+            [str(fixture2), "-o", str(out2), "--min-size", "16", "--min-dim", "1"],
+            self.tmp_path,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        videos = list((out2 / "videos").glob("*.avi"))
+        frames = list((out2 / "frames").glob("*"))
+        photos = list((out2 / "photos").glob("*.jpg"))
+
+        self.assertGreaterEqual(len(videos), 1)
+        self.assertEqual(len(frames), 0)
+        self.assertEqual(len(photos), 0)
+
+    def test_keep_jpeg_after_video_routes_to_frames(self):
+        fixture2 = self.tmp_path / "fixture_video_then_jpg_keep.img"
+        out2 = self.tmp_path / "out_video_keep_jpeg"
+        write_fixture_video_then_jpeg(fixture2)
+
+        result = run_cmd(
+            [
+                str(fixture2),
+                "-o",
+                str(out2),
+                "--keep-jpeg-after-video",
+                "--min-size",
+                "16",
+                "--min-dim",
+                "1",
+            ],
+            self.tmp_path,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        frames = list((out2 / "frames").glob("video_frame_*_JPEG*.jpg"))
+        photos = list((out2 / "photos").glob("*.jpg"))
+        self.assertGreaterEqual(len(frames), 1)
+        self.assertEqual(len(photos), 0)
 
 
 if __name__ == "__main__":
