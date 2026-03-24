@@ -33,6 +33,8 @@ Install one script:
 scripts/install-to-bin.sh media_carver.py
 ```
 
+Same pattern for [`media_classifier.py`](../media_classifier.py) (companion to `media_carver.py`).
+
 Install all top-level executable scripts:
 
 ```bash

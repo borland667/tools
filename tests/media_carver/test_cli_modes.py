@@ -9,6 +9,7 @@ import io
 from pathlib import Path
 import base64
 
+import media_carver as mc
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "media_carver.py"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -94,6 +95,16 @@ class MediaCarverCliModesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("media_carver", result.stdout)
 
+    def test_default_skip_video_frame_resolutions(self):
+        found: set[tuple[int, int]] = set()
+        for token in mc.DEFAULT_SKIP_VIDEO_FRAME_RES.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            w, h = token.lower().split("x")
+            found.add((int(w), int(h)))
+        self.assertEqual(found, {(1280, 720), (1920, 1080)})
+
     def test_report_mode_without_existing_image(self):
         missing = self.tmp_path / "missing.img"
         result = run_cmd([str(missing), "-o", str(self.out), "--report"], self.tmp_path)
@@ -132,6 +143,15 @@ class MediaCarverCliModesTests(unittest.TestCase):
         sha_file = self.out / ".scan_state" / "seen_sha256.txt"
         self.assertTrue(sha_file.exists())
         self.assertGreater(len(sha_file.read_text().strip()), 0)
+
+        man = self.out / ".scan_state" / "recovery_manifest.jsonl"
+        self.assertTrue(man.exists())
+        lines = [ln.strip() for ln in man.read_text().splitlines() if ln.strip()]
+        self.assertGreaterEqual(len(lines), 1)
+        row = json.loads(lines[-1])
+        self.assertEqual(row.get("v"), mc.RECOVERY_MANIFEST_VERSION)
+        self.assertIn("path", row)
+        self.assertIn("bucket", row)
 
     def test_range_scan_mode(self):
         result = run_cmd(
@@ -215,31 +235,6 @@ class MediaCarverCliModesTests(unittest.TestCase):
         self.assertGreaterEqual(len(frames), 1)
         self.assertEqual(len(photos), 0)
 
-    def test_keep_jpeg_after_video_routes_to_frames(self):
-        fixture2 = self.tmp_path / "fixture_video_then_jpg_keep.img"
-        out2 = self.tmp_path / "out_video_keep_jpeg"
-        write_fixture_video_then_jpeg(fixture2)
-
-        result = run_cmd(
-            [
-                str(fixture2),
-                "-o",
-                str(out2),
-                "--keep-jpeg-after-video",
-                "--min-size",
-                "16",
-                "--min-dim",
-                "1",
-            ],
-            self.tmp_path,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-        frames = list((out2 / "frames").glob("video_frame_*_JPEG*.jpg"))
-        photos = list((out2 / "photos").glob("*.jpg"))
-        self.assertGreaterEqual(len(frames), 1)
-        self.assertEqual(len(photos), 0)
-
     def test_skip_video_frame_res_supports_multi_value(self):
         fixture2 = self.tmp_path / "fixture_video_then_jpg_multi_res.img"
         out2 = self.tmp_path / "out_video_multi_res"
@@ -250,7 +245,6 @@ class MediaCarverCliModesTests(unittest.TestCase):
                 str(fixture2),
                 "-o",
                 str(out2),
-                "--keep-jpeg-after-video",
                 "--skip-video-frame-res",
                 "1280x720,1920x1080",
                 "--min-size",
@@ -276,6 +270,7 @@ class MediaCarverCliModesTests(unittest.TestCase):
                 str(fixture2),
                 "-o",
                 str(out2),
+                "--skip-jpeg-after-video",
                 "--skip-jpeg-after-video-window-mb",
                 "1",
                 "--min-size",

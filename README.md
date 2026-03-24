@@ -79,7 +79,15 @@ These rules apply to all current and future scripts, regardless of language.
 - [`media_carver.py`](./media_carver.py): carve media files from raw images and
   block devices. Full usage and internals are in
   [`docs/scripts/media_carver.md`](./docs/scripts/media_carver.md).
-  Includes `pyenv` setup instructions for Python installation/version pinning.
+  It classifies likely video-frame JPEGs using MJPEG AVI headers, default
+  **720p / 1080p** frame sizes, and optional burst clustering (see the script
+  doc). Defaults favor **aggressive recovery** (maximize extracted files).
+  Writes per-file metadata to `.scan_state/recovery_manifest.jsonl` by default
+  (`--no-recovery-manifest` to disable).
+- [`media_classifier.py`](./media_classifier.py): second-pass JPEG **still vs frame**
+  suggestions using that manifest; writes
+  `.scan_state/classification_report.json` by default (`--no-report-json` to skip).
+  See [`docs/scripts/media_classifier.md`](./docs/scripts/media_classifier.md).
 
 ## Optional Libraries (media_carver)
 
