@@ -253,7 +253,9 @@ Hash stats are mode-specific and mutually exclusive in output:
 2. Detects candidate starts from signature bytes and specialized patterns.
 3. Detects source size with file/device-aware fallbacks before scanning.
 4. Uses per-format end-finders (marker walk, size headers, container traversal).
-5. Applies min-size checks and JPEG validation (if Pillow is present).
+5. Applies min-size checks and JPEG validation (if Pillow is present), including
+   full JPEG decode to reject truncated/corrupt payloads and bounded retry with
+   later JPEG end markers when the first boundary looks invalid.
 6. Deduplicates by full-file SHA-256 by default (`seen_sha256.txt`).
    `--fast-dedup` switches to sampled-hash mode (`seen_hashes.txt`).
 7. Extracts recovered payloads into media-specific directories.
@@ -284,6 +286,7 @@ variants detected via ISOBMFF brands.
 - Some container/file end calculations are best-effort estimates.
 - In `--fast-dedup` mode, sampled-hash dedup can theoretically collide.
 - Without Pillow, JPEG validation is reduced.
+- Strict JPEG integrity checks can reject partially recoverable JPEGs.
 - Default frame-skipping after video recovery may hide legitimate nearby JPEG
   photos unless tuned (`--skip-jpeg-after-video-window-mb`) or disabled
   (`--keep-jpeg-after-video`).

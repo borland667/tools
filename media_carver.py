@@ -64,6 +64,8 @@ from typing import BinaryIO, Optional
 # ---------------------------------------------------------------------------
 try:
     from PIL import Image as PILImage
+    from PIL import ImageFile as PILImageFile
+    PILImageFile.LOAD_TRUNCATED_IMAGES = False
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -532,6 +534,27 @@ def _find_jpeg_eoi(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
     return None
  
  
+def _find_next_jpeg_eoi(f: BinaryIO, search_from: int, search_to: int) -> Optional[int]:
+    """Find next JPEG EOI marker between absolute offsets [search_from, search_to)."""
+    if search_to <= search_from:
+        return None
+    f.seek(search_from)
+    buf = b""
+    read = 0
+    span = search_to - search_from
+    while read < span:
+        chunk = f.read(min(256 * 1024, span - read))
+        if not chunk:
+            break
+        buf += chunk
+        read += len(chunk)
+        idx = buf.find(b"\xff\xd9", max(0, len(buf) - len(chunk) - 1))
+        if idx != -1:
+            return search_from + idx + 2
+        buf = buf[-1:]
+    return None
+
+
 def _find_png_iend(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
     """Walk PNG chunks with IHDR semantic checks and stop at IEND."""
     f.seek(start + 8)  # skip signature
@@ -1291,26 +1314,18 @@ def validate_jpeg(data: bytes, min_dim: int, skip_resolutions: set) -> Optional[
         return (0, 0)  # Can't validate without PIL, accept everything
  
     try:
-        img = PILImage.open(io.BytesIO(data))
-        w, h = img.size
-        if w < min_dim or h < min_dim:
-            return None
-        if (w, h) in skip_resolutions:
-            return None
-        img.verify()
-        return (w, h)
-    except Exception:
-        # Try a lenient check — just get dimensions
-        try:
+        with suppress_native_stderr():
             img = PILImage.open(io.BytesIO(data))
             w, h = img.size
             if w < min_dim or h < min_dim:
                 return None
             if (w, h) in skip_resolutions:
                 return None
+            # Force full decode so truncated/corrupt JPEGs are rejected.
+            img.load()
             return (w, h)
-        except Exception:
-            return None
+    except Exception:
+        return None
  
  
 def validate_extracted_media(path: Path, media_type: MediaType, ext: str) -> tuple[int, int]:
@@ -1751,6 +1766,32 @@ class MediaCarver:
             f.seek(start)
             jpeg_data = f.read(actual_size)
             dims = validate_jpeg(jpeg_data, self.min_dimension, self.skip_resolutions)
+            if dims is None and HAS_PIL:
+                # Try larger boundaries: false early EOI markers can truncate JPEGs.
+                max_jpeg_end = min(start + MAX_PHOTO_SIZE, self.image_size)
+                retry_from = actual_end
+                retries = 0
+                max_retries = 8
+                while retries < max_retries and retry_from < max_jpeg_end:
+                    next_end = _find_next_jpeg_eoi(f, retry_from, max_jpeg_end)
+                    if next_end is None:
+                        break
+                    new_size = next_end - start
+                    if new_size <= actual_size:
+                        retry_from = next_end
+                        retries += 1
+                        continue
+                    f.seek(start)
+                    candidate = f.read(new_size)
+                    candidate_dims = validate_jpeg(candidate, self.min_dimension, self.skip_resolutions)
+                    if candidate_dims is not None:
+                        jpeg_data = candidate
+                        dims = candidate_dims
+                        actual_end = next_end
+                        actual_size = new_size
+                        break
+                    retry_from = next_end
+                    retries += 1
             if dims is None:
                 stats.skipped_frames += 1
                 return True  # Skip but don't save
