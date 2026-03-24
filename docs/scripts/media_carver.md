@@ -136,6 +136,7 @@ is used.
 - `--fast-dedup`: use sampled-hash dedup instead of full SHA-256
 - default behavior: after first recovered video, skip JPEGs (reduce frame noise)
 - `--keep-jpeg-after-video`: keep extracting JPEGs after video recovery
+  (written to `frames/`)
 - `-v`, `--verbose`: verbose logging
 - `--version`: print version
 
@@ -153,6 +154,7 @@ For `-o /recovery`:
 /recovery/
   photos/
   videos/
+  frames/
   .scan_state/
     seen_hashes.txt
     seen_sha256.txt
@@ -170,6 +172,17 @@ Examples:
 
 - `photo_00001_JPEG_4032x3024_2611KB.jpg`
 - `video_00001_MP4_81MB.mp4`
+
+Final report also includes timing stats:
+
+- start timestamp,
+- finish timestamp,
+- elapsed runtime in seconds.
+
+Hash stats are mode-specific and mutually exclusive in output:
+
+- default strict mode shows only `Unique SHA-256`,
+- `--fast-dedup` mode shows only `Unique hashes`.
 
 ## Internal Behavior Summary
 
