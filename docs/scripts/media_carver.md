@@ -150,16 +150,29 @@ sudo python3 media_carver.py /dev/sdb -o /recovery
 ### Filter known embedded JPEG frames by resolution
 
 ```bash
-python3 media_carver.py image.img -o /recovery --skip-video-frame-res 1280x720
+# Defaults already include 720p + 1080p; override only if you need more/different:
+python3 media_carver.py image.img -o /recovery \
+  --skip-video-frame-res 1280x720,1920x1080
 ```
 
-Multiple values are supported:
+Multiple values are supported (repeat the flag or use commas):
 
 ```bash
 python3 media_carver.py image.img -o /recovery \
   --skip-video-frame-res 1280x720,1920x1080 \
   --skip-video-frame-res 3840x2160
 ```
+
+### Typical video vs still JPEG sizes
+
+- **Likely video frame sizes (defaults):** `1280x720`, `1920x1080`. Some devices
+  use other sizes (e.g. `2560x1440`); add them explicitly if you see unmatched
+  frame strips.
+- **Still photos** often land near common megapixel classes (~12 / 8 / 5 / 3 / 1 MP).
+  With **`--burst-frame-clustering`**, a small built-in list of typical still
+  dimensions prevents **near-video burst** hints from relabeling those as frames.
+  That does **not** override MJPEG-in-AVI detection or an explicit
+  `--skip-video-frame-res` match.
 
 ### Reset dedup/counter state and restart
 
@@ -188,19 +201,30 @@ is used.
 - `--start <MB>` / `--end <MB>`: manual range mode; both required together
 - `--chunk-mb <N>`: chunk size for full scan mode (default `768`)
 - `--min-size <bytes>`: minimum photo size and lower bound for video threshold
-- `--min-dim <px>`: minimum JPEG dimensions when Pillow is available
+- `--min-dim <px>`: minimum JPEG dimensions when Pillow is available (default `16`;
+  lower = more small recoveries, more noise)
 - `--skip-video-frame-res WxH`: treat JPEGs at exact resolution as likely video
-  frames (repeatable and comma-separated). Default active value is `1280x720`.
+  frames (repeatable and comma-separated). Default active pair is **`1280x720` and
+  `1920x1080`** (720p and 1080p).
 - `--reset`: clear `.scan_state` before scan
 - `--report` (alias `--report-only`): print recovered-file summary without scanning
 - default dedup mode: extract first, then deduplicate by full-file SHA-256
 - `--fast-dedup`: use sampled-hash dedup instead of full SHA-256
-- default behavior: after first recovered video, route likely frame JPEGs
-  (matching `--skip-video-frame-res`) to `frames/` within the configured window
-- `--keep-jpeg-after-video`: keep extracting JPEGs after video recovery
-  (likely frame resolutions are written to `frames/`)
-- `--skip-jpeg-after-video-window-mb <N>`: only skip post-video JPEGs within
-  `N` MB after the most recently recovered video (default `256`)
+- **Default recovery profile (aggressive):** maximize extracted files. JPEGs
+  that match `--skip-video-frame-res` (**720p / 1080p** by default) after a
+  recovered video still go to `frames/`; JPEGs **inside** a carved MJPEG AVI
+  span also go to `frames/`. Everything else stays in `photos/` unless you add
+  stricter flags.
+- `--skip-jpeg-after-video`: optional **stricter** mode — within
+  `--skip-jpeg-after-video-window-mb` after a video, also route unknown-dimension
+  JPEGs or configured frame sizes to `frames/` (similar to older defaults).
+- `--burst-frame-clustering`: optional extra frame hint from tight same-`WxH`
+  bursts near video / MJPEG (off by default).
+- `--skip-jpeg-after-video-window-mb <N>`: proximity window in MB for the two
+  options above (default `256`)
+- `--recovery-manifest` / `--no-recovery-manifest`: whether to append
+  `.scan_state/recovery_manifest.jsonl` (**default:** `--recovery-manifest`;
+  use `--no-recovery-manifest` to disable and skip [`media_classifier.py`](./media_classifier.md))
 - `-v`, `--verbose`: verbose logging
 - `--version`: print version
 
@@ -224,6 +248,7 @@ For `-o /recovery`:
     seen_sha256.txt
     counters.json
     scan_log.txt
+    recovery_manifest.jsonl
 ```
 
 Recovered files are named as:
@@ -236,6 +261,18 @@ Examples:
 
 - `photo_00001_JPEG_4032x3024_2611KB.jpg`
 - `video_00001_MP4_81MB.mp4`
+
+## Recovery manifest (for classification)
+
+Each successfully recovered file appends **one JSON line** to
+`.scan_state/recovery_manifest.jsonl` (default; disable with `--no-recovery-manifest`).
+Fields include relative `path`, output `bucket` (`photos` / `frames` /
+`videos`), source offsets, `format`, and for JPEGs a `jpeg` object with
+dimensions and carver hints (`inside_mjpeg_avi`, `matches_skip_frame_resolution`,
+video proximity, etc.).
+
+Use [`media_classifier.py`](./media_classifier.md) on the same
+`-o` directory for suggested **still vs frame** labels and optional EXIF checks.
 
 Final report also includes timing stats:
 
@@ -257,9 +294,14 @@ Hash stats are mode-specific and mutually exclusive in output:
 5. Applies min-size checks and JPEG validation (if Pillow is present), including
    full JPEG decode to reject truncated/corrupt payloads and bounded retry with
    later JPEG end markers when the first boundary looks invalid.
-6. Deduplicates by full-file SHA-256 by default (`seen_sha256.txt`).
+6. Detects MJPEG-in-AVI via `strh` stream headers when an AVI is carved and
+   routes other JPEGs whose offsets fall inside that AVI span to `frames/`.
+7. Optional `--burst-frame-clustering`: same-dimension JPEG runs (same gate as
+   before: MJPEG span, frame resolution list, or near-video window). Off by
+   default for aggressive recovery.
+8. Deduplicates by full-file SHA-256 by default (`seen_sha256.txt`).
    `--fast-dedup` switches to sampled-hash mode (`seen_hashes.txt`).
-7. Extracts recovered payloads into media-specific directories.
+9. Extracts recovered payloads into media-specific directories.
 
 ## Format Coverage
 
@@ -288,9 +330,10 @@ variants detected via ISOBMFF brands.
 - In `--fast-dedup` mode, sampled-hash dedup can theoretically collide.
 - Without Pillow, JPEG validation is reduced.
 - Strict JPEG integrity checks can reject partially recoverable JPEGs.
-- Default frame-skipping after video recovery may hide legitimate nearby JPEG
-  photos unless tuned (`--skip-jpeg-after-video-window-mb`) or disabled
-  (`--keep-jpeg-after-video`).
+- With `--skip-jpeg-after-video`, stricter post-video routing may send some real
+  stills to `frames/` if dimensions are unknown or match the frame list; tune
+  `--skip-jpeg-after-video-window-mb` and use [`media_classifier.py`](./media_classifier.md)
+  for a second pass.
 
 ## Parser Hardening Notes
 

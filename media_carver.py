@@ -6,6 +6,10 @@ Recovers photos and videos from raw disk images, SD cards, USB drives, or any
 block device by scanning for known file signatures (file carving). Handles
 fragmented scans with persistent deduplication state so large images can be
 processed in chunks without duplicating output.
+
+Default profile prefers **aggressive recovery** (maximize extracted candidates):
+post-video frame routing and burst clustering are off unless you opt in; 720p /
+1080p JPEGs after a recovered video still go to frames/ when dimensions match.
  
 Supported image formats:
   JPEG (.jpg)       PNG (.png)        TIFF (.tif)       BMP (.bmp)
@@ -29,14 +33,17 @@ Usage:
   # Scan a raw device:
   sudo python3 media_carver.py /dev/sdb -o /recovery
  
-  # Skip video frames embedded in AVI containers:
-  python3 media_carver.py image.img -o /out --skip-video-frame-res 1280x720
+  # Tune likely video-frame JPEG resolutions (defaults: 720p + 1080p):
+  python3 media_carver.py image.img -o /out --skip-video-frame-res 1280x720,1920x1080
  
   # Custom min file size:
   python3 media_carver.py image.img -o /out --min-size 50000
  
   # Reset state (re-scan from scratch):
   python3 media_carver.py image.img -o /out --reset
+
+  # Stricter photo vs frame separation (optional):
+  python3 media_carver.py image.img -o /out --skip-jpeg-after-video --burst-frame-clustering
 """
  
 from __future__ import annotations
@@ -45,6 +52,7 @@ import argparse
 import contextlib
 import hashlib
 import io
+from collections import deque
 import json
 import logging
 import os
@@ -198,6 +206,7 @@ def suppress_native_stderr():
 # Constants
 # ---------------------------------------------------------------------------
 VERSION = "1.0.0"
+RECOVERY_MANIFEST_VERSION = 1
  
 SCAN_BUFFER       = 32 * 1024 * 1024   # 32 MB read buffer per pass
 EXTRACT_BUFFER    = 4 * 1024 * 1024    # 4 MB streaming write buffer
@@ -209,11 +218,59 @@ DEFAULT_CHUNK_MB  = 768                 # Default chunk size for auto mode
 VALID_JPEG_MARKS  = {0xe0, 0xe1, 0xe2, 0xe3, 0xdb, 0xc0, 0xc2, 0xc4, 0xee, 0xed, 0xfe}
  
 MAX_PHOTO_SIZE    = 80 * 1024 * 1024   # 80 MB ceiling per photo
+
+# MJPEG-in-AVI header scan limit (avoid walking multi-GB movi payloads)
+AVI_MJPEG_HEADER_SCAN_BYTES = 262144
+
+# Burst JPEG clustering: many same-resolution JPEGs packed tightly often indicate frames.
+JPEG_BURST_WINDOW_BYTES = 3 * 1024 * 1024
+JPEG_BURST_MIN_FRAMES = 3
+JPEG_BURST_MAX_STEP_GAP_BYTES = 1024 * 1024
+
+# Known MJPEG / motion-JPEG fourCCs in AVI strh.fccHandler (case-insensitive)
+AVI_MJPEG_HANDLERS = frozenset({
+    b"mjpg", b"jpeg", b"ijpg", b"avi1", b"dmb1", b"jfif", b"acdv", b"qpeg", b"slmj",
+})
 MAX_VIDEO_SIZE    = 8 * 1024 * 1024 * 1024  # 8 GB ceiling per video
 MIN_PHOTO_SIZE    = 4 * 1024           # 4 KB floor for photos
 MIN_VIDEO_SIZE    = 50 * 1024          # 50 KB floor for videos
-MIN_DIMENSION     = 32                 # Minimum pixel dimension
-DEFAULT_SKIP_VIDEO_FRAME_RES = "1280x720"
+MIN_DIMENSION     = 16                 # Default minimum JPEG dimension (aggressive recovery)
+# Default: HD / FHD video frame sizes (not still-camera megapixel sizes).
+DEFAULT_SKIP_VIDEO_FRAME_RES = "1280x720,1920x1080"
+
+# Typical compact-camera / phone still JPEG dimensions by megapixel class (~12–1 MP).
+# Used only to suppress burst clustering near video (reduces false "frame" labels);
+# does not override MJPEG-in-AVI span detection or an explicit WxH in
+# --skip-video-frame-res.
+COMMON_STILL_PHOTO_RESOLUTIONS: frozenset[tuple[int, int]] = frozenset({
+    # ~12 MP
+    (4032, 3024),
+    (3024, 4032),
+    (4032, 2880),
+    (2880, 4032),
+    (4000, 3000),
+    (3000, 4000),
+    (4608, 3456),
+    (3456, 4608),
+    # ~8 MP
+    (3264, 2448),
+    (2448, 3264),
+    (3456, 2304),
+    (2304, 3456),
+    # ~5 MP
+    (2592, 1944),
+    (1944, 2592),
+    (2560, 1920),
+    (1920, 2560),
+    # ~3 MP
+    (2048, 1536),
+    (1536, 2048),
+    # ~1 MP (exclude 1280x720 — that is default video frame size)
+    (1280, 960),
+    (960, 1280),
+    (1024, 768),
+    (768, 1024),
+})
  
  
 class MediaType(Enum):
@@ -440,6 +497,7 @@ class ScanState:
         self._sha256_path = state_dir / "seen_sha256.txt"
         self._counter_path = state_dir / "counters.json"
         self._log_path = state_dir / "scan_log.txt"
+        self._manifest_path = state_dir / "recovery_manifest.jsonl"
  
         self._seen: set[str] = set()
         self._seen_sha256: set[str] = set()
@@ -466,8 +524,19 @@ class ScanState:
         self._seen.clear()
         self._seen_sha256.clear()
         self._counters = {"photo": 0, "video": 0}
-        for p in (self._hash_path, self._sha256_path, self._counter_path, self._log_path):
+        for p in (
+            self._hash_path,
+            self._sha256_path,
+            self._counter_path,
+            self._log_path,
+            self._manifest_path,
+        ):
             p.unlink(missing_ok=True)
+
+    def append_manifest_record(self, record: dict):
+        """Append one JSON object line for downstream media_classifier.py."""
+        with open(self._manifest_path, "a", encoding="utf-8") as mf:
+            mf.write(json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n")
  
     # ── dedup ─────────────────────────────────────────────────────────
     @staticmethod
@@ -704,6 +773,68 @@ def _find_riff_size(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
     if size < 100 or size > max_size:
         return None
     return start + size
+
+
+def _avi_chunks_scan_for_mjpeg_handler(
+    f: BinaryIO, pos: int, scan_limit: int, file_end: int,
+) -> bool:
+    """
+    Walk AVI LIST/chunk structure between absolute offsets [pos, scan_limit)
+    looking for strh with vids + MJPEG-style handler. Does not descend into
+    LIST 'movi' (payload skipped).
+    """
+    scan_limit = min(scan_limit, file_end)
+    while pos + 8 <= scan_limit:
+        f.seek(pos)
+        tag = f.read(4)
+        sz_b = f.read(4)
+        if len(tag) < 4 or len(sz_b) < 4:
+            return False
+        chunk_sz = struct.unpack("<I", sz_b)[0]
+        if chunk_sz > scan_limit - pos - 8 or chunk_sz > file_end - pos - 8:
+            return False
+        chunk_abs_end = pos + 8 + chunk_sz
+        pad = chunk_sz % 2
+        next_pos = chunk_abs_end + pad
+        if next_pos > file_end or chunk_abs_end > file_end:
+            return False
+        if tag == b"LIST":
+            if pos + 12 > chunk_abs_end:
+                return False
+            list_type = f.read(4)
+            inner_start = pos + 12
+            inner_end = min(chunk_abs_end, file_end)
+            child_limit = min(inner_end, scan_limit)
+            if list_type == b"movi":
+                pass
+            elif inner_start < child_limit:
+                if _avi_chunks_scan_for_mjpeg_handler(f, inner_start, child_limit, file_end):
+                    return True
+        elif tag == b"strh" and chunk_sz >= 8:
+            body = f.read(min(chunk_sz, 64))
+            if len(body) >= 8:
+                fcc_type = body[0:4]
+                fcc_handler = body[4:8]
+                if fcc_type == b"vids" and fcc_handler.lower() in AVI_MJPEG_HANDLERS:
+                    return True
+        pos = next_pos
+    return False
+
+
+def avi_file_contains_mjpeg_video_stream(f: BinaryIO, avi_start: int, avi_abs_end: int) -> bool:
+    """
+    Return True if an AVI (RIFF ... AVI ) declares an MJPEG-compressed video stream
+    in the header (hdrl/strl/strh). Used to classify loose JPEGs inside the file
+    span as likely video frames.
+    """
+    if avi_abs_end - avi_start < 32:
+        return False
+    f.seek(avi_start)
+    hdr = f.read(12)
+    if len(hdr) < 12 or hdr[0:4] != b"RIFF" or hdr[8:12] != b"AVI ":
+        return False
+    header_lim = min(avi_start + AVI_MJPEG_HEADER_SCAN_BYTES, avi_abs_end)
+    return _avi_chunks_scan_for_mjpeg_handler(f, avi_start + 12, header_lim, avi_abs_end)
  
  
 def _find_bmp_size(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
@@ -1521,11 +1652,15 @@ class MediaCarver:
         min_dimension: int = MIN_DIMENSION,
         skip_resolutions: Optional[set[tuple[int, int]]] = None,
         strict_dedup: bool = True,
-        skip_jpeg_after_video: bool = True,
+        skip_jpeg_after_video: bool = False,
         skip_jpeg_after_video_window_mb: int = 256,
+        burst_frame_clustering: bool = False,
+        write_recovery_manifest: bool = True,
     ):
         self.image_path = image_path
         self.image_size = detect_input_size(image_path)
+        self.output_root = Path(output_dir).resolve()
+        self.write_recovery_manifest = write_recovery_manifest
         self.photo_dir = Path(output_dir) / "photos"
         self.video_dir = Path(output_dir) / "videos"
         self.video_frame_dir = Path(output_dir) / "frames"
@@ -1541,8 +1676,13 @@ class MediaCarver:
         self.strict_dedup = strict_dedup
         self.skip_jpeg_after_video = skip_jpeg_after_video
         self.skip_jpeg_after_video_window_bytes = skip_jpeg_after_video_window_mb * 1024 * 1024
+        self.burst_frame_clustering = burst_frame_clustering
         self.video_found = False
         self.video_found_offset: Optional[int] = None
+        # Byte spans of recovered AVI files that declare MJPEG video (strh handler).
+        self._mjpeg_avi_spans: list[tuple[int, int]] = []
+        # Recent JPEGs (offset, width, height) for burst / cluster heuristics.
+        self._jpeg_burst_recent: deque[tuple[int, int, int]] = deque(maxlen=64)
  
         # Build quick-lookup: first byte -> list of signatures
         self._sig_by_first_byte: dict[int, list[FormatSignature]] = {}
@@ -1566,6 +1706,39 @@ class MediaCarver:
                     break
                 out.write(chunk)
                 remaining -= len(chunk)
+
+    def _jpeg_inside_declared_mjpeg_avi(self, offset: int) -> bool:
+        for a, b in self._mjpeg_avi_spans:
+            if a <= offset < b:
+                return True
+        return False
+
+    def _jpeg_burst_cluster_gated(self, start: int, w: int, h: int) -> bool:
+        """
+        True when several same-dimension JPEGs appear close on disk (typical of
+        frame strips). Caller must combine with context (MJPEG AVI span, near
+        video, or configured frame resolution) to reduce still-photo burst FPs.
+        """
+        while (
+            self._jpeg_burst_recent
+            and start - self._jpeg_burst_recent[0][0] > JPEG_BURST_WINDOW_BYTES
+        ):
+            self._jpeg_burst_recent.popleft()
+        peers = [e for e in self._jpeg_burst_recent if e[1] == w and e[2] == h]
+        group = peers + [(start, w, h)]
+        if len(group) < JPEG_BURST_MIN_FRAMES:
+            self._jpeg_burst_recent.append((start, w, h))
+            return False
+        group.sort(key=lambda t: t[0])
+        if group[-1][0] - group[0][0] > JPEG_BURST_WINDOW_BYTES:
+            self._jpeg_burst_recent.append((start, w, h))
+            return False
+        for i in range(1, len(group)):
+            if group[i][0] - group[i - 1][0] > JPEG_BURST_MAX_STEP_GAP_BYTES:
+                self._jpeg_burst_recent.append((start, w, h))
+                return False
+        self._jpeg_burst_recent.append((start, w, h))
+        return True
  
     # ── main scan ─────────────────────────────────────────────────────
     def scan_range(self, start_byte: int, end_byte: int) -> ScanStats:
@@ -1733,10 +1906,17 @@ class MediaCarver:
         file_size = end - start
         if file_size <= 0:
             return False
+
+        jpeg_carver_meta: Optional[dict] = None
  
         # Clamp to image boundary
         actual_end = min(end, self.image_size)
         actual_size = actual_end - start
+
+        if fmt_name == "AVI" and actual_size >= self.min_video_size:
+            avi_abs_end = start + actual_size
+            if avi_file_contains_mjpeg_video_stream(f, start, avi_abs_end):
+                self._mjpeg_avi_spans.append((start, avi_abs_end))
  
         # Fast sample fingerprint dedup (non-strict mode only)
         f.seek(start)
@@ -1793,6 +1973,9 @@ class MediaCarver:
                 dims = None
             w, h = dims if dims else (0, 0)
             is_frame_resolution = w > 0 and h > 0 and (w, h) in self.skip_resolutions
+            inside_mjpeg_avi = self._jpeg_inside_declared_mjpeg_avi(start)
+            if inside_mjpeg_avi:
+                force_frame_mode = True
             if self.skip_jpeg_after_video and self.video_found and self.video_found_offset is not None:
                 # Skip likely embedded video-frame JPEGs near recently recovered videos.
                 if start >= self.video_found_offset:
@@ -1802,6 +1985,35 @@ class MediaCarver:
                         # If dimensions are unknown (e.g., no Pillow), keep conservative behavior.
                         if (dims is None) or is_frame_resolution:
                             force_frame_mode = True
+            if (
+                self.burst_frame_clustering
+                and HAS_PIL
+                and w > 0
+                and h > 0
+                and self._jpeg_burst_cluster_gated(start, w, h)
+            ):
+                near_video = (
+                    self.video_found
+                    and self.video_found_offset is not None
+                    and start >= self.video_found_offset
+                    and (start - self.video_found_offset)
+                    <= self.skip_jpeg_after_video_window_bytes
+                )
+                if inside_mjpeg_avi or is_frame_resolution:
+                    force_frame_mode = True
+                elif near_video and (w, h) not in COMMON_STILL_PHOTO_RESOLUTIONS:
+                    force_frame_mode = True
+            near_video_dist = None
+            if self.video_found and self.video_found_offset is not None and start >= self.video_found_offset:
+                near_video_dist = start - self.video_found_offset
+            jpeg_carver_meta = {
+                "width": w if w > 0 else None,
+                "height": h if h > 0 else None,
+                "inside_mjpeg_avi": inside_mjpeg_avi,
+                "matches_skip_frame_resolution": is_frame_resolution,
+                "near_video_offset_bytes": near_video_dist,
+                "video_proximity_window_bytes": self.skip_jpeg_after_video_window_bytes,
+            }
             dim_str = f"_{w}x{h}" if w > 0 else ""
         else:
             dim_str = ""
@@ -1822,6 +2034,11 @@ class MediaCarver:
         out_dir = self.photo_dir if media_type == MediaType.PHOTO else self.video_dir
         if frame_mode:
             out_dir = self.video_frame_dir
+        bucket = (
+            "videos"
+            if media_type == MediaType.VIDEO
+            else ("frames" if frame_mode else "photos")
+        )
         size_label = f"_{actual_size // 1024}KB" if actual_size < 10 * 1024 * 1024 else f"_{actual_size // (1024*1024)}MB"
         file_prefix = "video_frame" if frame_mode else media_type.value
         filename = f"{file_prefix}_{file_id:05d}_{fmt_name}{dim_str}{size_label}.{ext}"
@@ -1847,6 +2064,7 @@ class MediaCarver:
                 f"    WARN {fmt_name} @ {start/1e6:.1f}MB: optional validators failed ({attempted} tried)"
             )
  
+        saved_sha256: Optional[str] = None
         if self.strict_dedup:
             try:
                 full_digest = file_sha256(out_path)
@@ -1867,6 +2085,7 @@ class MediaCarver:
                 return True
 
             self.state.record_sha256(full_digest)
+            saved_sha256 = full_digest
         else:
             self.state.record(fp)
  
@@ -1881,6 +2100,23 @@ class MediaCarver:
             f"    {fmt_name} #{file_id}: {actual_size/1024:.0f}KB "
             f"@ {start/1e6:.1f}MB -> {filename}"
         )
+
+        if self.write_recovery_manifest:
+            rec: dict = {
+                "v": RECOVERY_MANIFEST_VERSION,
+                "path": f"{bucket}/{filename}",
+                "bucket": bucket,
+                "format": fmt_name,
+                "extension": ext,
+                "source_offset": start,
+                "source_end": start + actual_size,
+                "size_bytes": actual_size,
+            }
+            if jpeg_carver_meta is not None:
+                rec["jpeg"] = jpeg_carver_meta
+            if saved_sha256:
+                rec["sha256"] = saved_sha256
+            self.state.append_manifest_record(rec)
  
         return True
  
@@ -2032,10 +2268,39 @@ def main():
                         help="Print a report of existing recovered files without scanning")
     parser.add_argument("--fast-dedup", action="store_false", dest="strict_dedup",
                         help="Use sampled-hash dedup instead of full SHA-256")
-    parser.add_argument("--keep-jpeg-after-video", action="store_false", dest="skip_jpeg_after_video",
-                        help="Keep extracting JPEGs even after first recovered video")
+    parser.add_argument(
+        "--skip-jpeg-after-video",
+        action="store_true",
+        dest="skip_jpeg_after_video",
+        help=(
+            "Stricter separation: within --skip-jpeg-after-video-window-mb after a "
+            "recovered video, route unknown-size or configured frame-size JPEGs to frames/"
+        ),
+    )
+    parser.add_argument(
+        "--burst-frame-clustering",
+        action="store_true",
+        dest="burst_frame_clustering",
+        help=(
+            "Enable burst clustering (tight runs of same WxH) as an extra frame hint "
+            "near video / in MJPEG spans (off by default for maximum recovery)"
+        ),
+    )
     parser.add_argument("--skip-jpeg-after-video-window-mb", type=int, default=256,
-                        help="Skip post-video JPEGs only within this distance window in MB (default: 256)")
+                        help="Window for --skip-jpeg-after-video / burst proximity in MB (default: 256)")
+    parser.add_argument(
+        "--recovery-manifest",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Write .scan_state/recovery_manifest.jsonl for media_classifier "
+            "(default: --recovery-manifest)"
+        ),
+    )
+    parser.set_defaults(
+        skip_jpeg_after_video=False,
+        burst_frame_clustering=False,
+    )
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Verbose logging")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -2120,6 +2385,8 @@ def main():
         strict_dedup=args.strict_dedup,
         skip_jpeg_after_video=args.skip_jpeg_after_video,
         skip_jpeg_after_video_window_mb=args.skip_jpeg_after_video_window_mb,
+        burst_frame_clustering=args.burst_frame_clustering,
+        write_recovery_manifest=args.recovery_manifest,
     )
  
     # Run

@@ -1,10 +1,31 @@
 #!/usr/bin/env python3
 import os
+import struct
 import tempfile
 import unittest
-from pathlib import Path
 
 import media_carver as mc
+
+
+def _avi_chunk(fourcc: bytes, payload: bytes) -> bytes:
+    n = len(payload)
+    pad = n % 2
+    return fourcc + struct.pack("<I", n) + payload + (b"\x00" * pad)
+
+
+def _avi_list(list_type: bytes, inner: bytes) -> bytes:
+    body = list_type + inner
+    return b"LIST" + struct.pack("<I", len(body)) + body
+
+
+def _build_test_avi(video_handler: bytes) -> bytes:
+    avih = _avi_chunk(b"avih", b"\x00" * 56)
+    strh_body = b"vids" + video_handler + b"\x00" * 48
+    strh = _avi_chunk(b"strh", strh_body)
+    strl = _avi_list(b"strl", strh)
+    hdrl = _avi_list(b"hdrl", avih + strl)
+    riff_inner = b"AVI " + hdrl
+    return b"RIFF" + struct.pack("<I", len(riff_inner)) + riff_inner
 
 
 def _write_temp(data: bytes) -> str:
@@ -80,6 +101,24 @@ class FormatHeuristicsTests(unittest.TestCase):
             with open(path, "rb") as f:
                 end = mc._walk_ebml(f, 0, len(blob))
             self.assertEqual(end, len(blob))
+        finally:
+            os.unlink(path)
+
+    def test_avi_mjpeg_stream_detection_positive(self):
+        blob = _build_test_avi(b"MJPG")
+        path = _write_temp(blob)
+        try:
+            with open(path, "rb") as f:
+                self.assertTrue(mc.avi_file_contains_mjpeg_video_stream(f, 0, len(blob)))
+        finally:
+            os.unlink(path)
+
+    def test_avi_mjpeg_stream_detection_negative(self):
+        blob = _build_test_avi(b"XVID")
+        path = _write_temp(blob)
+        try:
+            with open(path, "rb") as f:
+                self.assertFalse(mc.avi_file_contains_mjpeg_video_stream(f, 0, len(blob)))
         finally:
             os.unlink(path)
 
