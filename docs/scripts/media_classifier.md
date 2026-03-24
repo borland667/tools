@@ -62,10 +62,22 @@ re-sorting, not as ground truth.
 
 ## Output
 
-- **Stdout**: short counts by suggested class.
-- **JSON report**: written by default to `.scan_state/classification_report.json`
-  (`--report-json PATH` to override; `--no-report-json` to skip).
-- **`--csv`**: optional tabular summary.
+- **Stdout**: short counts by suggested class; a second line summarizes manifest
+  lines that were not usable (non-JPEG rows, invalid JSON, blanks) when any occur.
+- **JSON report** (default: `.scan_state/classification_report.json`, or
+  `--report-json PATH`; `--no-report-json` to skip) includes:
+  - **`items`**: each JPEG scored, with `recovery_file_present`, classification
+    `reasons`, optional `exif`, and optional **`exif_skipped`** (`reason_code` +
+    `explanation`) when `--exif` was requested but EXIF was not applied (missing
+    file, Pillow missing, unreadable EXIF).
+  - **`skipped_entries`**: manifest rows not scored (MP4/PNG/etc. or missing
+    `format`), each with **`reason_code`** and a plain-language **`explanation`**.
+  - **`manifest_load_issues`**: lines that were not valid JSON (line number,
+    parser message, short **`snippet`**).
+  - **`manifest_input_stats`**: counts of parsed records, blank lines, invalid
+    JSON lines, and total physical lines.
+  - **`summary.skipped_entries_by_reason`**: counts grouped by `reason_code`.
+- **`--csv`**: optional tabular summary (classified JPEG rows only; use JSON for skips).
 
 ## Validation checklist
 

@@ -86,7 +86,8 @@ These rules apply to all current and future scripts, regardless of language.
   (`--no-recovery-manifest` to disable).
 - [`media_classifier.py`](./media_classifier.py): second-pass JPEG **still vs frame**
   suggestions using that manifest; writes
-  `.scan_state/classification_report.json` by default (`--no-report-json` to skip).
+  `.scan_state/classification_report.json` by default (`--no-report-json` to skip),
+  including why non-JPEG manifest rows and bad JSON lines were not scored.
   See [`docs/scripts/media_classifier.md`](./docs/scripts/media_classifier.md).
 
 ## Optional Libraries (media_carver)
