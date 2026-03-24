@@ -87,7 +87,8 @@ These rules apply to all current and future scripts, regardless of language.
 - [`media_classifier.py`](./media_classifier.py): second-pass JPEG **still vs frame**
   suggestions using that manifest; writes
   `.scan_state/classification_report.json` by default (`--no-report-json` to skip),
-  including why non-JPEG manifest rows and bad JSON lines were not scored.
+  including skip diagnostics; optional `--reorganize-buckets` (list planned moves)
+  and `--apply-bucket-moves` (execute renames) between `photos/` and `frames/`.
   See [`docs/scripts/media_classifier.md`](./docs/scripts/media_classifier.md).
 
 ## Optional Libraries (media_carver)

@@ -82,8 +82,122 @@ class MediaClassifierTests(unittest.TestCase):
             self.assertEqual(data.get("skipped_entries"), [])
             self.assertIn("manifest_load_issues", data)
             self.assertEqual(data.get("manifest_load_issues"), [])
+            self.assertEqual(data.get("bucket_moves"), [])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_reorganize_buckets_default_lists_only_no_rename(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            photos = tmp / "photos"
+            photos.mkdir(parents=True)
+            (photos / "x.jpg").write_bytes(b"fakejpeg")
+            state = tmp / ".scan_state"
+            state.mkdir(parents=True)
+            rec = {
+                "v": 1,
+                "path": "photos/x.jpg",
+                "bucket": "photos",
+                "format": "JPEG",
+                "extension": "jpg",
+                "source_offset": 0,
+                "source_end": 100,
+                "size_bytes": 100,
+                "jpeg": {
+                    "width": 100,
+                    "height": 100,
+                    "inside_mjpeg_avi": True,
+                    "matches_skip_frame_resolution": False,
+                },
+            }
+            (state / "recovery_manifest.jsonl").write_text(
+                json.dumps(rec) + "\n", encoding="utf-8"
+            )
+            r = subprocess.run(
+                [
+                    PYTHON,
+                    str(CLASSIFIER_SCRIPT),
+                    "-o",
+                    str(tmp),
+                    "--reorganize-buckets",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIn("planned only", r.stdout)
+            self.assertTrue((photos / "x.jpg").is_file())
+            self.assertFalse((tmp / "frames" / "x.jpg").exists())
+            data = json.loads((state / "classification_report.json").read_text(encoding="utf-8"))
+            self.assertFalse(data["summary"]["bucket_reorganization"]["apply_executed"])
+            self.assertTrue(any(m.get("status") == "planned" for m in data["bucket_moves"]))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_reorganize_buckets_moves_file(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            photos = tmp / "photos"
+            photos.mkdir(parents=True)
+            (photos / "x.jpg").write_bytes(b"fakejpeg")
+            state = tmp / ".scan_state"
+            state.mkdir(parents=True)
+            rec = {
+                "v": 1,
+                "path": "photos/x.jpg",
+                "bucket": "photos",
+                "format": "JPEG",
+                "extension": "jpg",
+                "source_offset": 0,
+                "source_end": 100,
+                "size_bytes": 100,
+                "jpeg": {
+                    "width": 100,
+                    "height": 100,
+                    "inside_mjpeg_avi": True,
+                    "matches_skip_frame_resolution": False,
+                },
+            }
+            (state / "recovery_manifest.jsonl").write_text(
+                json.dumps(rec) + "\n", encoding="utf-8"
+            )
+            r = subprocess.run(
+                [
+                    PYTHON,
+                    str(CLASSIFIER_SCRIPT),
+                    "-o",
+                    str(tmp),
+                    "--reorganize-buckets",
+                    "--apply-bucket-moves",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIn("applied", r.stdout)
+            self.assertFalse((photos / "x.jpg").exists())
+            self.assertTrue((tmp / "frames" / "x.jpg").is_file())
+            data = json.loads((state / "classification_report.json").read_text(encoding="utf-8"))
+            self.assertTrue(data["summary"]["bucket_reorganization"]["apply_executed"])
+            self.assertTrue(any(m.get("status") == "moved" for m in data["bucket_moves"]))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_apply_bucket_moves_requires_reorganize(self):
+        r = subprocess.run(
+            [PYTHON, str(CLASSIFIER_SCRIPT), "-o", "/tmp", "--apply-bucket-moves"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("apply-bucket-moves", r.stderr.lower())
+
+    def test_plan_bucket_move_skips_uncertain(self):
+        src, dest, new_rel, skip = mc.plan_bucket_move(
+            Path("/tmp"), "photos/x.jpg", "uncertain"
+        )
+        self.assertEqual(skip, "uncertain_or_neutral_suggestion")
+        self.assertIsNone(src)
 
     def test_load_manifest_tracks_invalid_json(self):
         tmp = Path(tempfile.mkdtemp())

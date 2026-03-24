@@ -13,7 +13,9 @@ use `--no-report-json` for stdout-only runs.
 
 Usage:
   python3 media_classifier.py -o /path/to/recovery
-  python3 media_classifier.py -o /path/to/recovery --exif --report-json report.json
+  python3 media_classifier.py -o /path/to/recovery --exif
+  python3 media_classifier.py -o /path/to/recovery --reorganize-buckets
+  python3 media_classifier.py -o /path/to/recovery --reorganize-buckets --apply-bucket-moves
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from typing import Any, Optional
 
 MANIFEST_NAME = "recovery_manifest.jsonl"
 DEFAULT_CLASSIFICATION_REPORT_NAME = "classification_report.json"
-CLASSIFIER_VERSION = 2
+CLASSIFIER_VERSION = 4
 
 
 def load_manifest(
@@ -128,6 +130,90 @@ def jpeg_exif_hints(path: Path) -> dict[str, Any]:
     return out
 
 
+def target_bucket_for_suggestion(suggested: str) -> Optional[str]:
+    """Folder name under recovery root, or None if classification does not imply a move."""
+    if suggested == "likely_frame":
+        return "frames"
+    if suggested == "likely_still":
+        return "photos"
+    return None
+
+
+def bucket_from_manifest_path(rel: str) -> Optional[str]:
+    """Top-level bucket (photos/frames) from manifest-relative path, or None."""
+    parts = Path(rel).parts
+    if not parts:
+        return None
+    top = parts[0]
+    if top in ("photos", "frames"):
+        return top
+    return None
+
+
+def path_under_recovery(path: Path, recovery_dir: Path) -> bool:
+    try:
+        path.resolve().relative_to(recovery_dir.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def uniquify_destination(dest: Path) -> Path:
+    """If dest exists, add _reclass, _reclass_2, ... before the suffix."""
+    if not dest.exists():
+        return dest
+    parent = dest.parent
+    stem = dest.stem
+    suffix = dest.suffix
+    n = 1
+    while True:
+        label = f"{stem}_reclass" if n == 1 else f"{stem}_reclass_{n}"
+        candidate = parent / f"{label}{suffix}"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
+def plan_bucket_move(
+    recovery_dir: Path,
+    rel: str,
+    suggested: str,
+) -> tuple[Optional[Path], Optional[Path], Optional[str], str]:
+    """
+    Returns (src, dest, new_rel, skip_reason).
+    skip_reason is empty when a move should be attempted; otherwise explains why not.
+    """
+    want_bucket = target_bucket_for_suggestion(suggested)
+    have_bucket = bucket_from_manifest_path(rel)
+    if want_bucket is None:
+        return None, None, None, "uncertain_or_neutral_suggestion"
+    if have_bucket is None:
+        return None, None, None, "not_under_photos_or_frames"
+    if have_bucket == want_bucket:
+        return None, None, None, "already_in_target_bucket"
+    rel_path = Path(rel)
+    if rel_path.is_absolute() or ".." in rel_path.parts:
+        return None, None, None, "unsafe_relative_path"
+    root = recovery_dir.resolve()
+    src = (root / rel_path).resolve()
+    if not path_under_recovery(src, recovery_dir):
+        return None, None, None, "source_outside_recovery_dir"
+    remainder = Path(*rel_path.parts[1:]) if len(rel_path.parts) > 1 else Path(rel_path.name)
+    dest = root / want_bucket / remainder
+    try:
+        dest.resolve().relative_to(root)
+    except ValueError:
+        return None, None, None, "destination_outside_recovery_dir"
+    dest_parent = dest.parent
+    try:
+        dest_parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    dest_final = uniquify_destination(dest)
+    new_rel = str(dest_final.resolve().relative_to(root))
+    return src, dest_final, new_rel, ""
+
+
 def score_jpeg(record: dict[str, Any], exif: Optional[dict[str, Any]]) -> dict[str, Any]:
     """
     Combine carver manifest hints with optional EXIF. Returns suggestion + scores.
@@ -188,6 +274,8 @@ def run_classify(
     use_exif: bool,
     report_json: Optional[Path],
     csv_path: Optional[Path],
+    reorganize_buckets: bool = False,
+    apply_bucket_moves: bool = False,
 ) -> int:
     manifest_path = recovery_dir / ".scan_state" / MANIFEST_NAME
     if not manifest_path.is_file():
@@ -262,6 +350,62 @@ def run_classify(
                 row["exif"] = {k: v for k, v in exif_data.items() if k not in ("pillow",)}
         out_rows.append(row)
 
+    bucket_moves: list[dict[str, Any]] = []
+    move_failures = 0
+    if reorganize_buckets:
+        for row in out_rows:
+            rel = row["path"]
+            suggested = row["suggested"]
+            entry: dict[str, Any] = {
+                "path_before": rel,
+                "suggested": suggested,
+                "apply_executed": apply_bucket_moves,
+            }
+            if not row.get("recovery_file_present"):
+                entry["status"] = "skipped"
+                entry["reason"] = "file_not_found"
+                bucket_moves.append(entry)
+                continue
+            src, dest, new_rel, skip = plan_bucket_move(recovery_dir, rel, suggested)
+            if skip:
+                entry["status"] = "skipped"
+                entry["reason"] = skip
+                bucket_moves.append(entry)
+                continue
+            assert src is not None and dest is not None and new_rel is not None
+            entry["path_after"] = new_rel
+            if not apply_bucket_moves:
+                entry["status"] = "planned"
+                bucket_moves.append(entry)
+                continue
+            try:
+                if not src.is_file():
+                    entry["status"] = "skipped"
+                    entry["reason"] = "file_not_found_at_rename"
+                    bucket_moves.append(entry)
+                    continue
+                src.rename(dest)
+                entry["status"] = "moved"
+                row["path"] = new_rel
+                row["bucket"] = bucket_from_manifest_path(new_rel)
+                bucket_moves.append(entry)
+            except OSError as e:
+                entry["status"] = "error"
+                entry["error"] = str(e)
+                move_failures += 1
+                bucket_moves.append(entry)
+
+        summary["bucket_reorganization"] = {
+            "requested": True,
+            "apply_executed": apply_bucket_moves,
+            "moved": sum(1 for m in bucket_moves if m.get("status") == "moved"),
+            "planned": sum(1 for m in bucket_moves if m.get("status") == "planned"),
+            "skipped": sum(1 for m in bucket_moves if m.get("status") == "skipped"),
+            "errors": move_failures,
+        }
+    else:
+        summary["bucket_reorganization"] = {"requested": False}
+
     skip_counts = dict(Counter(s["reason_code"] for s in skipped_entries))
     summary["skipped_entries_by_reason"] = skip_counts
     summary["manifest_blank_lines"] = blank_line_count
@@ -283,6 +427,7 @@ def run_classify(
         "classified_jpegs": len(out_rows),
         "summary": summary,
         "skipped_entries": skipped_entries,
+        "bucket_moves": bucket_moves,
         "items": out_rows,
     }
 
@@ -325,6 +470,27 @@ def run_classify(
         if blank_line_count:
             parts.append(f"blank manifest lines: {blank_line_count}")
         print("  Manifest / skips: " + "; ".join(parts) + " — see JSON report for details.", flush=True)
+    br = summary.get("bucket_reorganization") or {}
+    if br.get("requested"):
+        if br.get("apply_executed"):
+            print(
+                f"  Bucket reorganization (applied): moved {br.get('moved', 0)}, "
+                f"skipped {br.get('skipped', 0)}, errors {br.get('errors', 0)}.",
+                flush=True,
+            )
+        else:
+            planned_n = br.get("planned", 0)
+            print(
+                f"  Bucket reorganization (planned only): {planned_n} move(s) listed — "
+                "use --apply-bucket-moves to execute.",
+                flush=True,
+            )
+        print(
+            "  Note: recovery_manifest.jsonl still lists original paths until you re-carve or edit it.",
+            flush=True,
+        )
+    if reorganize_buckets and apply_bucket_moves and move_failures > 0:
+        return 1
     return 0
 
 
@@ -365,7 +531,26 @@ def main() -> None:
         default=None,
         help="Write CSV summary to this path",
     )
+    parser.add_argument(
+        "--reorganize-buckets",
+        action="store_true",
+        help=(
+            "List planned JPEG moves between photos/ and frames/ when classification "
+            "disagrees with the current folder (written to the JSON report; no renames "
+            "unless you also pass --apply-bucket-moves)."
+        ),
+    )
+    parser.add_argument(
+        "--apply-bucket-moves",
+        action="store_true",
+        help=(
+            "With --reorganize-buckets, actually rename files (likely_still in frames/ "
+            "-> photos/; likely_frame in photos/ -> frames/). Default is list-only."
+        ),
+    )
     args = parser.parse_args()
+    if args.apply_bucket_moves and not args.reorganize_buckets:
+        parser.error("--apply-bucket-moves requires --reorganize-buckets")
     recovery = Path(args.output).expanduser().resolve()
     if args.no_report_json:
         report_path: Optional[Path] = None
@@ -379,6 +564,8 @@ def main() -> None:
             use_exif=args.exif,
             report_json=report_path,
             csv_path=args.csv,
+            reorganize_buckets=args.reorganize_buckets,
+            apply_bucket_moves=args.apply_bucket_moves,
         )
     )
 
