@@ -66,6 +66,105 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
+
+# Optional Pillow HEIF/HEIC plugin (registers decoders with Pillow if present)
+try:
+    import pillow_heif  # type: ignore  # noqa: F401
+    HAS_PILLOW_HEIF = True
+except ImportError:
+    HAS_PILLOW_HEIF = False
+
+try:
+    import cv2  # type: ignore
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
+try:
+    import av  # type: ignore
+    HAS_PYAV = True
+except ImportError:
+    HAS_PYAV = False
+
+try:
+    from pymediainfo import MediaInfo  # type: ignore
+    HAS_MEDIAINFO = True
+except ImportError:
+    HAS_MEDIAINFO = False
+
+try:
+    import imagecodecs  # type: ignore
+    HAS_IMAGECODECS = True
+except ImportError:
+    HAS_IMAGECODECS = False
+
+try:
+    import rawpy  # type: ignore
+    HAS_RAWPY = True
+except ImportError:
+    HAS_RAWPY = False
+
+
+def log_optional_library_status():
+    """Log optional-library availability and actionable install hints."""
+    optional_libs = [
+        (
+            "pillow",
+            HAS_PIL,
+            "Better JPEG and common image validation",
+            "python -m pip install pillow",
+        ),
+        (
+            "pillow-heif",
+            HAS_PILLOW_HEIF,
+            "HEIF/HEIC support via Pillow plugin",
+            "python -m pip install pillow-heif",
+        ),
+        (
+            "opencv-python",
+            HAS_CV2,
+            "Additional image decode validation (PNG/JPEG/WebP/TIFF/BMP)",
+            "python -m pip install opencv-python",
+        ),
+        (
+            "av (PyAV)",
+            HAS_PYAV,
+            "Video stream/container probing",
+            "python -m pip install av",
+        ),
+        (
+            "pymediainfo",
+            HAS_MEDIAINFO,
+            "Media metadata/track probing",
+            "python -m pip install pymediainfo",
+        ),
+        (
+            "imagecodecs",
+            HAS_IMAGECODECS,
+            "Extra codec validation for image formats",
+            "python -m pip install imagecodecs",
+        ),
+        (
+            "rawpy",
+            HAS_RAWPY,
+            "RAW photo validation (CR2/NEF/ARW/DNG/etc.)",
+            "python -m pip install rawpy",
+        ),
+    ]
+
+    available = [name for (name, ok, _, _) in optional_libs if ok]
+    logging.info(
+        "Optional validator libraries available: %s",
+        ", ".join(available) if available else "none",
+    )
+    for name, ok, benefit, install_cmd in optional_libs:
+        if not ok:
+            logging.warning(
+                "Optional library '%s' not found. Benefit: %s. Install: %s",
+                name,
+                benefit,
+                install_cmd,
+            )
  
 # ---------------------------------------------------------------------------
 # Constants
@@ -1188,6 +1287,75 @@ def validate_jpeg(data: bytes, min_dim: int, skip_resolutions: set) -> Optional[
             return None
  
  
+def validate_extracted_media(path: Path, media_type: MediaType, ext: str) -> tuple[int, int]:
+    """
+    Optional post-extraction validation using available third-party libraries.
+
+    Returns (attempted, succeeded) counts for optional validators.
+    """
+    attempted = 0
+    succeeded = 0
+    ext_l = ext.lower()
+
+    def _attempt(fn) -> bool:
+        nonlocal attempted, succeeded
+        attempted += 1
+        try:
+            ok = fn()
+            if ok:
+                succeeded += 1
+            return ok
+        except Exception:
+            return False
+
+    if media_type == MediaType.PHOTO:
+        # Pillow decode/verify for common raster + HEIF via pillow-heif plugin.
+        if HAS_PIL and ext_l in {"jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "webp", "heif", "heic", "avif"}:
+            def _pil_ok() -> bool:
+                img = PILImage.open(path)
+                img.verify()
+                return True
+            _attempt(_pil_ok)
+
+        # OpenCV image decode check.
+        if HAS_CV2 and ext_l in {"jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "webp"}:
+            def _cv2_ok() -> bool:
+                img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+                return img is not None and getattr(img, "size", 0) > 0
+            _attempt(_cv2_ok)
+
+        # imagecodecs decode check.
+        if HAS_IMAGECODECS and ext_l in {"jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "webp", "avif"}:
+            def _imagecodecs_ok() -> bool:
+                arr = imagecodecs.imread(str(path))
+                return arr is not None
+            _attempt(_imagecodecs_ok)
+
+        # RAW decode probe.
+        if HAS_RAWPY and ext_l in {"cr2", "nef", "arw", "dng", "orf", "raf", "rw2", "srw", "pef", "cr3"}:
+            def _raw_ok() -> bool:
+                with rawpy.imread(str(path)):
+                    return True
+            _attempt(_raw_ok)
+
+    else:  # VIDEO
+        # PyAV stream probe.
+        if HAS_PYAV and ext_l in {"avi", "mp4", "mov", "mkv", "webm", "mts", "mpg", "mpeg", "flv", "wmv", "asf", "3gp", "3g2", "m4v"}:
+            def _pyav_ok() -> bool:
+                with av.open(str(path)) as container:
+                    return len(container.streams) > 0
+            _attempt(_pyav_ok)
+
+        # MediaInfo metadata probe.
+        if HAS_MEDIAINFO and ext_l in {"avi", "mp4", "mov", "mkv", "webm", "mts", "mpg", "mpeg", "flv", "wmv", "asf", "3gp", "3g2", "m4v"}:
+            def _mediainfo_ok() -> bool:
+                mi = MediaInfo.parse(str(path))
+                return bool(getattr(mi, "tracks", []))
+            _attempt(_mediainfo_ok)
+
+    return attempted, succeeded
+
+
 # ---------------------------------------------------------------------------
 # MPEG-TS detector (special — pattern-based, not magic-based)
 # ---------------------------------------------------------------------------
@@ -1595,6 +1763,13 @@ class MediaCarver:
             stats.errors += 1
             self.state.log(f"    ERROR extracting {fmt_name} @ {start/1e6:.1f}MB: {e}")
             return False
+
+        # Optional validator stack: use-if-available, non-blocking.
+        attempted, succeeded = validate_extracted_media(out_path, media_type, ext)
+        if attempted > 0 and succeeded == 0:
+            self.state.log(
+                f"    WARN {fmt_name} @ {start/1e6:.1f}MB: optional validators failed ({attempted} tried)"
+            )
  
         if self.strict_dedup:
             try:
@@ -1798,6 +1973,7 @@ def main():
         format="[%(asctime)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+    log_optional_library_status()
  
     # Validate scalar args early
     if args.chunk_mb <= 0:
