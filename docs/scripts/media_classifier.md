@@ -60,6 +60,43 @@ Scores are **heuristic** and conservative:
 Outputs `likely_still`, `likely_frame`, or `uncertain`. Use this for review /
 re-sorting, not as ground truth.
 
+## Reorganizing `photos/` vs `frames/` (optional)
+
+When the suggestion disagrees with the folder a JPEG is in today, a move may be
+appropriate:
+
+- **`likely_still`** but file is under **`frames/`** → would move to **`photos/`**
+- **`likely_frame`** but file is under **`photos/`** → would move to **`frames/`**
+
+**`--reorganize-buckets`** (default behavior): records each planned move in the
+JSON report (`bucket_moves` entries with `status: "planned"`). **No files are
+renamed.**
+
+**`--apply-bucket-moves`** (with **`--reorganize-buckets`**): performs those
+renames. Use list-only first, review the report, then add **`--apply-bucket-moves`**.
+
+**Not moved:** `uncertain`, paths not under `photos/` or `frames/` (e.g.
+`videos/`), missing files, or unsafe relative paths. If the destination name
+already exists, a suffix like `_reclass` is used before the extension.
+
+```bash
+# List planned moves in the report only (default for --reorganize-buckets)
+python3 media_classifier.py -o /path/to/recovery --reorganize-buckets
+
+# Execute renames after reviewing the report
+python3 media_classifier.py -o /path/to/recovery --reorganize-buckets --apply-bucket-moves
+```
+
+**`recovery_manifest.jsonl` is not rewritten** — it still lists original paths
+from the carver. After moving, either treat the report’s `items[].path` and
+`bucket_moves` as truth for locations, or re-run a carve if you need the manifest
+to match disk exactly.
+
+The JSON report includes **`bucket_moves`** (per file: `status` — `planned`,
+`moved`, `skipped`, `error` — `path_before`, `path_after`, `apply_executed`,
+`reason` when skipped) and **`summary.bucket_reorganization`** (`apply_executed`,
+counts). Exit code **1** if **`--apply-bucket-moves`** was used and any rename fails.
+
 ## Output
 
 - **Stdout**: short counts by suggested class; a second line summarizes manifest
@@ -77,6 +114,9 @@ re-sorting, not as ground truth.
   - **`manifest_input_stats`**: counts of parsed records, blank lines, invalid
     JSON lines, and total physical lines.
   - **`summary.skipped_entries_by_reason`**: counts grouped by `reason_code`.
+  - **`bucket_moves`**: when `--reorganize-buckets` is used, each JPEG row’s
+    planned or completed move (or skip reason).
+  - **`classifier_version`**: report schema version (currently **4**).
 - **`--csv`**: optional tabular summary (classified JPEG rows only; use JSON for skips).
 
 ## Validation checklist
