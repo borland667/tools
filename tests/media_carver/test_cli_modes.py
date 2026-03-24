@@ -4,6 +4,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import importlib.util
+import io
 from pathlib import Path
 import base64
 
@@ -11,6 +13,7 @@ import base64
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "media_carver.py"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 PYTHON_BIN = shutil.which("python3") or "python3"
+HAS_PIL = importlib.util.find_spec("PIL") is not None
 
 
 def run_cmd(args, cwd):
@@ -33,9 +36,20 @@ def write_fixture_image(path: Path):
         f.write(b"\x22" * 4096)
 
 
-def write_fixture_video_then_jpeg(path: Path, gap_bytes: int = 2048):
+def load_jpeg_fixture_bytes() -> bytes:
+    if HAS_PIL:
+        from PIL import Image  # type: ignore
+
+        buf = io.BytesIO()
+        Image.new("RGB", (2, 2), (255, 0, 0)).save(buf, format="JPEG")
+        return buf.getvalue()
+
     jpg_b64_path = FIXTURES_DIR / "pixel_1x1.jpg.b64"
-    jpg = base64.b64decode(jpg_b64_path.read_text().strip())
+    return base64.b64decode(jpg_b64_path.read_text().strip())
+
+
+def write_fixture_video_then_jpeg(path: Path, gap_bytes: int = 2048):
+    jpg = load_jpeg_fixture_bytes()
 
     # Minimal fake AVI container with valid RIFF size and AVI marker.
     # Size field is payload size excluding first 8 bytes.
@@ -49,6 +63,15 @@ def write_fixture_video_then_jpeg(path: Path, gap_bytes: int = 2048):
         f.write(b"\x44" * gap_bytes)
         f.write(jpg)
         f.write(b"\x55" * 1024)
+
+
+def write_fixture_truncated_jpeg(path: Path):
+    jpg = load_jpeg_fixture_bytes()
+    truncated = jpg[:-2] if len(jpg) > 4 else jpg
+    with path.open("wb") as f:
+        f.write(b"\x66" * 2048)
+        f.write(truncated)
+        f.write(b"\x77" * 1024)
 
 
 class MediaCarverCliModesTests(unittest.TestCase):
@@ -265,6 +288,21 @@ class MediaCarverCliModesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         photos = list((out2 / "photos").glob("photo_*_JPEG*.jpg"))
         self.assertGreaterEqual(len(photos), 1)
+
+    @unittest.skipUnless(HAS_PIL, "requires Pillow for strict JPEG integrity checks")
+    def test_truncated_jpeg_is_rejected(self):
+        fixture2 = self.tmp_path / "fixture_truncated_jpg.img"
+        out2 = self.tmp_path / "out_truncated_jpg"
+        write_fixture_truncated_jpeg(fixture2)
+
+        result = run_cmd(
+            [str(fixture2), "-o", str(out2), "--min-size", "16", "--min-dim", "1"],
+            self.tmp_path,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        photos = list((out2 / "photos").glob("photo_*_JPEG*.jpg"))
+        self.assertEqual(len(photos), 0)
 
 
 if __name__ == "__main__":
