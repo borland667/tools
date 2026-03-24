@@ -42,6 +42,7 @@ Usage:
 from __future__ import annotations
  
 import argparse
+import contextlib
 import hashlib
 import io
 import json
@@ -165,6 +166,31 @@ def log_optional_library_status():
                 benefit,
                 install_cmd,
             )
+
+
+@contextlib.contextmanager
+def suppress_native_stderr():
+    """
+    Suppress noisy native-library stderr output during best-effort validation.
+
+    Some decoders (libjpeg/OpenCV bindings) print directly to process stderr
+    for malformed files. This keeps console output focused on scan progress.
+    """
+    try:
+        stderr_fd = sys.stderr.fileno()
+    except Exception:
+        # Fallback: no-op if stderr fd is unavailable.
+        yield
+        return
+
+    saved_fd = os.dup(stderr_fd)
+    try:
+        with open(os.devnull, "w") as devnull:
+            os.dup2(devnull.fileno(), stderr_fd)
+            yield
+    finally:
+        os.dup2(saved_fd, stderr_fd)
+        os.close(saved_fd)
  
 # ---------------------------------------------------------------------------
 # Constants
@@ -1301,7 +1327,8 @@ def validate_extracted_media(path: Path, media_type: MediaType, ext: str) -> tup
         nonlocal attempted, succeeded
         attempted += 1
         try:
-            ok = fn()
+            with suppress_native_stderr():
+                ok = fn()
             if ok:
                 succeeded += 1
             return ok
@@ -1973,6 +2000,8 @@ def main():
         format="[%(asctime)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Keep third-party library chatter from polluting scan logs in verbose mode.
+    logging.getLogger("PIL").setLevel(logging.WARNING)
     log_optional_library_status()
  
     # Validate scalar args early
