@@ -36,20 +36,20 @@ def write_fixture_image(path: Path):
         f.write(b"\x22" * 4096)
 
 
-def load_jpeg_fixture_bytes() -> bytes:
+def load_jpeg_fixture_bytes(size=(1280, 720)) -> bytes:
     if HAS_PIL:
         from PIL import Image  # type: ignore
 
         buf = io.BytesIO()
-        Image.new("RGB", (2, 2), (255, 0, 0)).save(buf, format="JPEG")
+        Image.new("RGB", size, (255, 0, 0)).save(buf, format="JPEG")
         return buf.getvalue()
 
     jpg_b64_path = FIXTURES_DIR / "pixel_1x1.jpg.b64"
     return base64.b64decode(jpg_b64_path.read_text().strip())
 
 
-def write_fixture_video_then_jpeg(path: Path, gap_bytes: int = 2048):
-    jpg = load_jpeg_fixture_bytes()
+def write_fixture_video_then_jpeg(path: Path, gap_bytes: int = 2048, jpeg_size=(1280, 720)):
+    jpg = load_jpeg_fixture_bytes(size=jpeg_size)
 
     # Minimal fake AVI container with valid RIFF size and AVI marker.
     # Size field is payload size excluding first 8 bytes.
@@ -196,7 +196,7 @@ class MediaCarverCliModesTests(unittest.TestCase):
         self.assertGreaterEqual(counters.get("photo", 0), 1)
         self.assertTrue((self.out / "photos" / "photo_00001_PNG_0KB.png").exists())
 
-    def test_default_skips_jpeg_after_first_video(self):
+    def test_default_routes_likely_frames_after_first_video(self):
         fixture2 = self.tmp_path / "fixture_video_then_jpg.img"
         out2 = self.tmp_path / "out_video_default_skip"
         write_fixture_video_then_jpeg(fixture2)
@@ -208,11 +208,11 @@ class MediaCarverCliModesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
         videos = list((out2 / "videos").glob("*.avi"))
-        frames = list((out2 / "frames").glob("*"))
+        frames = list((out2 / "frames").glob("video_frame_*_JPEG*.jpg"))
         photos = list((out2 / "photos").glob("*.jpg"))
 
         self.assertGreaterEqual(len(videos), 1)
-        self.assertEqual(len(frames), 0)
+        self.assertGreaterEqual(len(frames), 1)
         self.assertEqual(len(photos), 0)
 
     def test_keep_jpeg_after_video_routes_to_frames(self):
@@ -283,6 +283,20 @@ class MediaCarverCliModesTests(unittest.TestCase):
                 "--min-dim",
                 "1",
             ],
+            self.tmp_path,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        photos = list((out2 / "photos").glob("photo_*_JPEG*.jpg"))
+        self.assertGreaterEqual(len(photos), 1)
+
+    @unittest.skipUnless(HAS_PIL, "requires Pillow for resolution-aware frame filtering")
+    def test_default_keeps_non_frame_resolution_near_video(self):
+        fixture2 = self.tmp_path / "fixture_video_then_photo_near.img"
+        out2 = self.tmp_path / "out_video_near_photo"
+        write_fixture_video_then_jpeg(fixture2, gap_bytes=2048, jpeg_size=(4032, 2880))
+
+        result = run_cmd(
+            [str(fixture2), "-o", str(out2), "--min-size", "16", "--min-dim", "1"],
             self.tmp_path,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
