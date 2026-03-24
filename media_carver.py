@@ -1011,6 +1011,7 @@ class MediaCarver:
         min_dimension: int = MIN_DIMENSION,
         skip_resolutions: Optional[set[tuple[int, int]]] = None,
         strict_dedup: bool = True,
+        skip_jpeg_after_video: bool = True,
     ):
         self.image_path = image_path
         self.image_size = detect_input_size(image_path)
@@ -1025,6 +1026,8 @@ class MediaCarver:
         self.min_dimension = min_dimension
         self.skip_resolutions = skip_resolutions or set()
         self.strict_dedup = strict_dedup
+        self.skip_jpeg_after_video = skip_jpeg_after_video
+        self.video_found = False
  
         # Build quick-lookup: first byte -> list of signatures
         self._sig_by_first_byte: dict[int, list[FormatSignature]] = {}
@@ -1228,10 +1231,14 @@ class MediaCarver:
                 stats.dup_photos += 1
             else:
                 stats.dup_videos += 1
+                self.video_found = True
             return True  # Still "handled" — skip past it
  
         # JPEG-specific validation
         if fmt_name == "JPEG":
+            if self.skip_jpeg_after_video and self.video_found:
+                stats.skipped_frames += 1
+                return True
             f.seek(start)
             jpeg_data = f.read(actual_size)
             dims = validate_jpeg(jpeg_data, self.min_dimension, self.skip_resolutions)
@@ -1281,11 +1288,10 @@ class MediaCarver:
                     stats.dup_photos += 1
                 else:
                     stats.dup_videos += 1
+                    self.video_found = True
                 return True
 
             self.state.record_sha256(full_digest)
-            # Keep sample hash populated as helpful metadata for mixed-mode runs.
-            self.state.record(fp)
         else:
             self.state.record(fp)
  
@@ -1293,6 +1299,7 @@ class MediaCarver:
             stats.new_photos += 1
         else:
             stats.new_videos += 1
+            self.video_found = True
  
         self.state.log(
             f"    {fmt_name} #{file_id}: {actual_size/1024:.0f}KB "
@@ -1424,6 +1431,8 @@ def main():
                         help="Print a report of existing recovered files without scanning")
     parser.add_argument("--fast-dedup", action="store_false", dest="strict_dedup",
                         help="Use sampled-hash dedup instead of full SHA-256")
+    parser.add_argument("--keep-jpeg-after-video", action="store_false", dest="skip_jpeg_after_video",
+                        help="Keep extracting JPEGs even after first recovered video")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Verbose logging")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -1487,6 +1496,7 @@ def main():
         min_dimension=args.min_dim,
         skip_resolutions=skip_res,
         strict_dedup=args.strict_dedup,
+        skip_jpeg_after_video=args.skip_jpeg_after_video,
     )
  
     # Run
