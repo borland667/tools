@@ -110,7 +110,7 @@ python3 media_carver.py image.img -o /recovery --reset
 ### Report existing output only
 
 ```bash
-python3 media_carver.py image.img -o /recovery --report-only
+python3 media_carver.py image.img -o /recovery --report
 ```
 
 In report mode, the source image does not need to exist; only the output folder
@@ -131,7 +131,7 @@ is used.
 - `--min-dim <px>`: minimum JPEG dimensions when Pillow is available
 - `--skip-video-frame-res WxH`: skip JPEGs at exact resolution
 - `--reset`: clear `.scan_state` before scan
-- `--report-only`: print recovered-file summary without scanning
+- `--report` (alias `--report-only`): print recovered-file summary without scanning
 - default dedup mode: extract first, then deduplicate by full-file SHA-256
 - `--fast-dedup`: use sampled-hash dedup instead of full SHA-256
 - `-v`, `--verbose`: verbose logging
@@ -210,9 +210,10 @@ variants detected via ISOBMFF brands.
 ## Validation Checklist
 
 - `python3 media_carver.py --help` succeeds.
-- `--report-only` works on a populated output directory.
+- `--report` works on a populated output directory.
 - Small range scan produces expected logs/state files.
 - `--reset` clears state and restarts counters.
+- `python3 -m unittest discover -s tests/media_carver -p "test_*.py"` passes.
 
 ## Maintenance Notes
 

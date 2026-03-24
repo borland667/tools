@@ -1082,7 +1082,8 @@ class MediaCarver:
  
                 # Scan for all signatures in this buffer
                 idx = 0
-                while idx < len(data) - OVERLAP_BYTES:
+                scan_limit = len(data) if len(data) <= OVERLAP_BYTES else len(data) - OVERLAP_BYTES
+                while idx < scan_limit:
                     abs_off = scan_pos + idx
                     if abs_off < skip_until:
                         idx += 1
@@ -1184,7 +1185,11 @@ class MediaCarver:
                     if not found:
                         idx += 1
  
-                scan_pos += len(data) - OVERLAP_BYTES
+                advance = len(data) - OVERLAP_BYTES
+                if advance <= 0:
+                    # Tail chunk shorter than overlap: processed once, then stop.
+                    break
+                scan_pos += advance
  
         self.state.log(
             f"=== Chunk done: +{stats.new_photos}p +{stats.new_videos}v "
@@ -1415,8 +1420,8 @@ def main():
                         help="Skip JPEG frames at this resolution (e.g., 1280x720)")
     parser.add_argument("--reset", action="store_true",
                         help="Reset scan state and start fresh")
-    parser.add_argument("--report-only", action="store_true",
-                        help="Only print a report of existing recovered files")
+    parser.add_argument("--report", "--report-only", dest="report_only", action="store_true",
+                        help="Print a report of existing recovered files without scanning")
     parser.add_argument("--fast-dedup", action="store_false", dest="strict_dedup",
                         help="Use sampled-hash dedup instead of full SHA-256")
     parser.add_argument("-v", "--verbose", action="store_true",

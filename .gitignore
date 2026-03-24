@@ -1,2 +1,96 @@
+# -------------------------------
+# OS / Filesystem metadata
+# -------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# -------------------------------
+# Editor / IDE
+# -------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# -------------------------------
+# Environment / local overrides
+# -------------------------------
+.env
+.env.*
+!.env.example
+*.local
+
+# -------------------------------
+# Python
+# -------------------------------
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# -------------------------------
+# JavaScript / Node
+# -------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+coverage/
+
+# -------------------------------
+# Logs / runtime
+# -------------------------------
+*.log
+*.pid
+*.seed
+*.out
+*.err
+
+# -------------------------------
+# Archives / binaries
+# -------------------------------
+*.7z
+*.gz
+*.zip
+*.tar
+*.tgz
+*.bz2
+*.rar
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# -------------------------------
+# Test and local scratch outputs
+# -------------------------------
+tmp/
+tmp_test/
+.tmp/
+.cache/
