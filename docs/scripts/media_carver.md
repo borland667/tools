@@ -101,6 +101,14 @@ sudo python3 media_carver.py /dev/sdb -o /recovery
 python3 media_carver.py image.img -o /recovery --skip-video-frame-res 1280x720
 ```
 
+Multiple values are supported:
+
+```bash
+python3 media_carver.py image.img -o /recovery \
+  --skip-video-frame-res 1280x720,1920x1080 \
+  --skip-video-frame-res 3840x2160
+```
+
 ### Reset dedup/counter state and restart
 
 ```bash
@@ -129,7 +137,8 @@ is used.
 - `--chunk-mb <N>`: chunk size for full scan mode (default `768`)
 - `--min-size <bytes>`: minimum photo size and lower bound for video threshold
 - `--min-dim <px>`: minimum JPEG dimensions when Pillow is available
-- `--skip-video-frame-res WxH`: skip JPEGs at exact resolution
+- `--skip-video-frame-res WxH`: skip JPEGs at exact resolution (repeatable and
+  comma-separated). Default active value is `1280x720`.
 - `--reset`: clear `.scan_state` before scan
 - `--report` (alias `--report-only`): print recovered-file summary without scanning
 - default dedup mode: extract first, then deduplicate by full-file SHA-256
@@ -137,6 +146,8 @@ is used.
 - default behavior: after first recovered video, skip JPEGs (reduce frame noise)
 - `--keep-jpeg-after-video`: keep extracting JPEGs after video recovery
   (written to `frames/`)
+- `--skip-jpeg-after-video-window-mb <N>`: only skip post-video JPEGs within
+  `N` MB after the most recently recovered video (default `256`)
 - `-v`, `--verbose`: verbose logging
 - `--version`: print version
 
@@ -219,8 +230,22 @@ variants detected via ISOBMFF brands.
 - File carving is heuristic and can produce false positives.
 - Fragmented media may be partially recovered or missed.
 - Some container/file end calculations are best-effort estimates.
-- Dedup uses sampled fingerprints; collisions are unlikely but possible.
+- In `--fast-dedup` mode, sampled-hash dedup can theoretically collide.
 - Without Pillow, JPEG validation is reduced.
+- Default frame-skipping after video recovery may hide legitimate nearby JPEG
+  photos unless tuned (`--skip-jpeg-after-video-window-mb`) or disabled
+  (`--keep-jpeg-after-video`).
+
+## Parser Hardening Notes
+
+Recent parser hardening aligns closer to PhotoRec-style structural validation:
+
+- MKV/WebM: EBML walk can locate Segment after pre-segment elements.
+- MP4/MOV family: stricter box-type and structure validation.
+- MPEG-PS: packet-structure based boundary detection.
+- GIF: block-structure parsing instead of trailer-byte scan only.
+- PNG: IHDR semantic checks and stricter chunk-sequence validation.
+- ASF/WMV: GUID/object-size parsing for header and data objects.
 
 ## Validation Checklist
 
