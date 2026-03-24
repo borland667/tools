@@ -2,6 +2,9 @@
 
 This folder contains CLI-mode coverage for `media_carver.py`.
 
+It also includes format-heuristic unit tests for parser hardening paths
+(PNG/GIF/MPEG-PS/ISOBMFF/EBML).
+
 ## Covered modes
 
 - help/version

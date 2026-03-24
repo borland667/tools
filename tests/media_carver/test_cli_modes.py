@@ -33,7 +33,7 @@ def write_fixture_image(path: Path):
         f.write(b"\x22" * 4096)
 
 
-def write_fixture_video_then_jpeg(path: Path):
+def write_fixture_video_then_jpeg(path: Path, gap_bytes: int = 2048):
     jpg_b64_path = FIXTURES_DIR / "pixel_1x1.jpg.b64"
     jpg = base64.b64decode(jpg_b64_path.read_text().strip())
 
@@ -46,7 +46,7 @@ def write_fixture_video_then_jpeg(path: Path):
     with path.open("wb") as f:
         f.write(b"\x33" * 2048)
         f.write(avi)
-        f.write(b"\x44" * 2048)
+        f.write(b"\x44" * gap_bytes)
         f.write(jpg)
         f.write(b"\x55" * 1024)
 
@@ -216,6 +216,55 @@ class MediaCarverCliModesTests(unittest.TestCase):
         photos = list((out2 / "photos").glob("*.jpg"))
         self.assertGreaterEqual(len(frames), 1)
         self.assertEqual(len(photos), 0)
+
+    def test_skip_video_frame_res_supports_multi_value(self):
+        fixture2 = self.tmp_path / "fixture_video_then_jpg_multi_res.img"
+        out2 = self.tmp_path / "out_video_multi_res"
+        write_fixture_video_then_jpeg(fixture2)
+
+        result = run_cmd(
+            [
+                str(fixture2),
+                "-o",
+                str(out2),
+                "--keep-jpeg-after-video",
+                "--skip-video-frame-res",
+                "1280x720,1920x1080",
+                "--min-size",
+                "16",
+                "--min-dim",
+                "1",
+            ],
+            self.tmp_path,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Parsing supports multi values; exact filtering depends on actual dims.
+        frames = list((out2 / "frames").glob("video_frame_*_JPEG*.jpg"))
+        self.assertGreaterEqual(len(frames), 1)
+
+    def test_skip_window_allows_distant_jpeg(self):
+        fixture2 = self.tmp_path / "fixture_video_then_jpg_far.img"
+        out2 = self.tmp_path / "out_video_far_window"
+        # Place JPEG ~2MB after video so a 1MB skip window should not suppress it.
+        write_fixture_video_then_jpeg(fixture2, gap_bytes=2 * 1024 * 1024)
+
+        result = run_cmd(
+            [
+                str(fixture2),
+                "-o",
+                str(out2),
+                "--skip-jpeg-after-video-window-mb",
+                "1",
+                "--min-size",
+                "16",
+                "--min-dim",
+                "1",
+            ],
+            self.tmp_path,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        photos = list((out2 / "photos").glob("photo_*_JPEG*.jpg"))
+        self.assertGreaterEqual(len(photos), 1)
 
 
 if __name__ == "__main__":

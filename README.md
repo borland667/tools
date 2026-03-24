@@ -69,7 +69,7 @@ These rules apply to all current and future scripts, regardless of language.
 - `docs/scripts/_template.md` — template for documenting new scripts.
 - `scripts/install-to-bin.sh` — install scripts into `~/bin`.
 - `scripts/README.md` — documentation for helper scripts.
-- `tests/media_carver/` — CLI mode tests for `media_carver.py`.
+- `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
 - `.github/pull_request_template.md` — default PR checklist/template.
 - `AGENTS.md` — guidance for coding agents working in this repository.
 - `LICENSE` — repository license.

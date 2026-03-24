@@ -86,6 +86,7 @@ MAX_VIDEO_SIZE    = 8 * 1024 * 1024 * 1024  # 8 GB ceiling per video
 MIN_PHOTO_SIZE    = 4 * 1024           # 4 KB floor for photos
 MIN_VIDEO_SIZE    = 50 * 1024          # 50 KB floor for videos
 MIN_DIMENSION     = 32                 # Minimum pixel dimension
+DEFAULT_SKIP_VIDEO_FRAME_RES = "1280x720"
  
  
 class MediaType(Enum):
@@ -407,38 +408,141 @@ def _find_jpeg_eoi(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
  
  
 def _find_png_iend(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
-    """Walk PNG chunks to find IEND."""
+    """Walk PNG chunks with IHDR semantic checks and stop at IEND."""
     f.seek(start + 8)  # skip signature
     pos = 8
+    saw_ihdr = False
+    saw_idat = False
+
+    def _valid_ihdr(ihdr: bytes) -> bool:
+        if len(ihdr) != 13:
+            return False
+        width = struct.unpack(">I", ihdr[0:4])[0]
+        height = struct.unpack(">I", ihdr[4:8])[0]
+        bit_depth = ihdr[8]
+        color_type = ihdr[9]
+        compression = ihdr[10]
+        filter_method = ihdr[11]
+        interlace = ihdr[12]
+
+        if width == 0 or height == 0:
+            return False
+        if color_type == 0 and bit_depth not in (1, 2, 4, 8, 16):
+            return False
+        if color_type == 3 and bit_depth not in (1, 2, 4, 8):
+            return False
+        if color_type in (2, 4, 6) and bit_depth not in (8, 16):
+            return False
+        if color_type not in (0, 2, 3, 4, 6):
+            return False
+        if compression != 0 or filter_method != 0:
+            return False
+        if interlace not in (0, 1):
+            return False
+        return True
+
     while pos < max_size:
         hdr = f.read(8)
         if len(hdr) < 8:
             return None
         length = struct.unpack(">I", hdr[:4])[0]
         chunk_type = hdr[4:8]
-        # Skip data + CRC (4 bytes)
-        f.seek(length + 4, os.SEEK_CUR)
+
+        if any(not (65 <= b <= 90 or 97 <= b <= 122) for b in chunk_type):
+            return None
+
+        if length > max_size - pos - 12:
+            return None
+        data = f.read(length)
+        crc = f.read(4)
+        if len(data) != length or len(crc) != 4:
+            return None
         pos += 12 + length
-        if chunk_type == b"IEND":
+
+        if chunk_type == b"IHDR":
+            if saw_ihdr or pos != 8 + 12 + length:
+                return None
+            if length != 13 or not _valid_ihdr(data):
+                return None
+            saw_ihdr = True
+        elif chunk_type == b"IDAT":
+            if not saw_ihdr:
+                return None
+            saw_idat = True
+        elif chunk_type == b"IEND":
+            if not saw_ihdr:
+                return None
             return start + pos
+        elif not saw_ihdr and chunk_type != b"IHDR":
+            return None
+
     return None
  
  
 def _find_gif_trailer(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
-    """Scan for GIF trailer byte (0x3B)."""
+    """Walk GIF structure and stop at trailer (0x3B)."""
     f.seek(start)
-    data = f.read(min(max_size, 20 * 1024 * 1024))
-    # GIF trailer is 0x3B after all blocks
-    idx = len(data) - 1
-    # Search backward for trailer
-    while idx > 13:
-        if data[idx] == 0x3B:
-            return start + idx + 1
-        idx -= 1
-    # Forward search fallback
-    for i in range(13, len(data)):
-        if data[i] == 0x3B:
-            return start + i + 1
+    data = f.read(min(max_size, 32 * 1024 * 1024))
+    if len(data) < 13:
+        return None
+    if data[:6] not in (b"GIF87a", b"GIF89a"):
+        return None
+
+    pos = 6  # header
+    # Logical Screen Descriptor
+    packed = data[pos + 4]
+    pos += 7
+    # Global Color Table
+    if packed & 0x80:
+        gct_size = 3 * (2 ** ((packed & 0x07) + 1))
+        pos += gct_size
+    if pos >= len(data):
+        return None
+
+    while pos < len(data):
+        b = data[pos]
+        if b == 0x3B:  # Trailer
+            return start + pos + 1
+        elif b == 0x21:  # Extension
+            pos += 1
+            if pos >= len(data):
+                return None
+            _label = data[pos]
+            pos += 1
+            # Data sub-block chain
+            while pos < len(data):
+                block_len = data[pos]
+                pos += 1
+                if block_len == 0:
+                    break
+                pos += block_len
+            else:
+                return None
+        elif b == 0x2C:  # Image Descriptor
+            if pos + 10 > len(data):
+                return None
+            packed_img = data[pos + 9]
+            pos += 10
+            # Local Color Table
+            if packed_img & 0x80:
+                lct_size = 3 * (2 ** ((packed_img & 0x07) + 1))
+                pos += lct_size
+            if pos >= len(data):
+                return None
+            # LZW minimum code size
+            pos += 1
+            # Image data sub-block chain
+            while pos < len(data):
+                block_len = data[pos]
+                pos += 1
+                if block_len == 0:
+                    break
+                pos += block_len
+            else:
+                return None
+        else:
+            return None
+
     return None
  
  
@@ -507,14 +611,28 @@ def _find_bmp_size(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
  
 def _walk_isobmff(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
     """Walk ISO Base Media File Format boxes (MP4, MOV, HEIF, AVIF, CR3, 3GP)."""
+    known_boxes = {
+        b"ftyp", b"moov", b"mdat", b"free", b"skip", b"wide", b"uuid", b"meta",
+        b"trak", b"mdia", b"minf", b"stbl", b"mvhd", b"tkhd", b"mdhd", b"hdlr",
+        b"stsd", b"stts", b"stsc", b"stsz", b"stco", b"co64", b"udta", b"edts",
+        b"dinf", b"vmhd", b"smhd", b"nmhd", b"elst", b"cmov", b"cmvd", b"dcom",
+        b"jp2h", b"pnot", b"pict",
+    }
     f.seek(start)
     pos = 0
+    n_boxes = 0
+    saw_ftyp = False
+    saw_media_or_structure = False
+
     while pos < max_size:
         hdr = f.read(8)
         if len(hdr) < 8:
             break
         size = struct.unpack(">I", hdr[:4])[0]
         box_type = hdr[4:8]
+
+        if box_type == b"ftyp":
+            saw_ftyp = True
  
         if size == 1:
             # 64-bit extended size
@@ -522,21 +640,41 @@ def _walk_isobmff(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
             if len(ext) < 8:
                 break
             size = struct.unpack(">Q", ext)[0]
+            header_size = 16
         elif size == 0:
             # Box extends to end of file — use remaining max_size
             return start + max_size
+        else:
+            header_size = 8
  
-        if size < 8:
+        if size < header_size:
+            break
+        if size > max_size - pos:
+            break
+        # Treat mostly-nonprintable box names as invalid.
+        if any(b < 0x20 or b > 0x7E for b in box_type):
             break
  
+        if box_type in known_boxes or box_type.startswith(b"\xa9"):
+            saw_media_or_structure = True
+        elif n_boxes > 0:
+            # Unknown box after start is tolerated once we already have structure;
+            # otherwise reject early to avoid many false positives.
+            if not saw_media_or_structure:
+                break
+ 
         pos += size
+        n_boxes += 1
         f.seek(start + pos)
+
+        # Require container structure: ftyp plus at least one more meaningful box.
+        if saw_ftyp and saw_media_or_structure and n_boxes >= 2:
+            if box_type == b"mdat":
+                return start + pos
  
-        # If we've seen at least ftyp + one more box, this is valid
-        if box_type == b"mdat" or pos > max_size:
-            return start + pos
- 
-    return start + pos if pos > 100 else None
+    if saw_ftyp and saw_media_or_structure and pos > 100:
+        return start + pos
+    return None
  
  
 def _walk_ebml(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
@@ -576,12 +714,42 @@ def _walk_ebml(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
     ebml_size, ebml_vint_len = ebml_vint
  
     # Skip EBML header content using true VINT length
-    f.seek(start + 4 + ebml_vint_len + ebml_size)
- 
-    # Next should be Segment (0x18538067)
-    seg_id = f.read(4)
-    if seg_id != b"\x18\x53\x80\x67":
-        # Try a generous estimate
+    pos = 4 + ebml_vint_len + ebml_size
+
+    # Search for Segment element (0x18538067). It may not be immediately after
+    # the EBML header (e.g., Void elements can appear before it).
+    search_limit = min(max_size, 8 * 1024 * 1024)  # keep search bounded
+    seg_found = False
+    while pos + 8 <= search_limit:
+        f.seek(start + pos)
+        head = f.read(4)
+        if len(head) < 4:
+            break
+        if head == b"\x18\x53\x80\x67":
+            seg_found = True
+            break
+
+        # Skip current EBML element (ID + size + payload)
+        f.seek(start + pos)
+        id_vint = _read_vint(f)
+        if not id_vint:
+            break
+        _id_val, id_len = id_vint
+        size_vint = _read_vint(f)
+        if not size_vint:
+            break
+        elem_size, elem_vint_len = size_vint
+        unknown_elem_marker = (1 << (7 * elem_vint_len)) - 1
+        if elem_size == unknown_elem_marker:
+            # Unknown-size element before Segment prevents safe skipping.
+            break
+
+        advance = id_len + elem_vint_len + elem_size
+        if advance <= 0:
+            break
+        pos += advance
+
+    if not seg_found:
         return None
  
     seg_vint = _read_vint(f)
@@ -639,46 +807,141 @@ def _find_flv_end(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
  
  
 def _find_asf_end(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
-    """Read ASF/WMV header for file size."""
-    f.seek(start + 16)  # skip ASF header GUID
-    raw = f.read(8)
-    if len(raw) < 8:
+    """Parse ASF object headers using GUID + object-size validation."""
+    # ASF Header Object GUID
+    asf_header_guid = (
+        b"\x30\x26\xb2\x75\x8e\x66\xcf\x11"
+        b"\xa6\xd9\x00\xaa\x00\x62\xce\x6c"
+    )
+    # ASF Data Object GUID
+    asf_data_guid = (
+        b"\x36\x26\xb2\x75\x8e\x66\xcf\x11"
+        b"\xa6\xd9\x00\xaa\x00\x62\xce\x6c"
+    )
+
+    f.seek(start)
+    header_guid = f.read(16)
+    if header_guid != asf_header_guid:
         return None
-    # Object size is 64-bit LE at offset 16
-    size = struct.unpack("<Q", raw)[0]
-    if size < 100 or size > max_size:
+
+    header_size_raw = f.read(8)
+    if len(header_size_raw) < 8:
         return None
-    # This is just the header object size; real file could be bigger
-    # Try reading Data Object size next
-    f.seek(start + size)  # end of header object
-    guid = f.read(16)
+    header_size = struct.unpack("<Q", header_size_raw)[0]
+    if header_size < 30 or header_size > max_size:
+        return None
+
+    # Header Object includes:
+    # - Number of Header Objects (4 bytes)
+    # - Reserved1 (1 byte, should be 1)
+    # - Reserved2 (1 byte, should be 2)
+    hdr_meta = f.read(6)
+    if len(hdr_meta) < 6:
+        return None
+    n_header_objects = struct.unpack("<I", hdr_meta[:4])[0]
+    reserved1 = hdr_meta[4]
+    reserved2 = hdr_meta[5]
+    if n_header_objects < 1 or reserved1 != 1 or reserved2 != 2:
+        return None
+
+    # Validate object walk within header bounds.
+    pos = 30  # bytes consumed from ASF start
+    obj_count = 0
+    while pos + 24 <= header_size and obj_count < n_header_objects:
+        f.seek(start + pos)
+        obj_guid = f.read(16)
+        obj_size_raw = f.read(8)
+        if len(obj_guid) < 16 or len(obj_size_raw) < 8:
+            return None
+        obj_size = struct.unpack("<Q", obj_size_raw)[0]
+        if obj_size < 24 or obj_size > max_size:
+            return None
+        pos += obj_size
+        obj_count += 1
+        if pos > header_size:
+            return None
+
+    if pos != header_size:
+        return None
+
+    # Data Object should follow header object.
+    f.seek(start + header_size)
+    data_guid = f.read(16)
+    if data_guid != asf_data_guid:
+        return None
     data_size_raw = f.read(8)
-    if len(data_size_raw) >= 8:
-        data_size = struct.unpack("<Q", data_size_raw)[0]
-        total = size + data_size
-        if total > 1000:
-            return start + total
-    return None
+    if len(data_size_raw) < 8:
+        return None
+    data_size = struct.unpack("<Q", data_size_raw)[0]
+    if data_size < 50:
+        return None
+
+    total = header_size + data_size
+    if total <= 1000 or total > max_size:
+        return None
+    return start + total
  
  
 def _find_mpeg_ps_end(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
-    """Scan forward for MPEG Program Stream end code (0x000001B9)."""
+    """Walk MPEG Program Stream packets to estimate valid stream boundary."""
     f.seek(start)
-    end_code = b"\x00\x00\x01\xb9"
-    read = 0
-    buf = b""
-    while read < min(max_size, 500 * 1024 * 1024):  # cap at 500MB search
-        chunk = f.read(1024 * 1024)
-        if not chunk:
+    data = f.read(min(max_size, 500 * 1024 * 1024))  # keep bounded for speed
+    if len(data) < 16:
+        return None
+
+    def _packet_size(buf: bytes, i: int) -> int:
+        if i + 14 > len(buf):
+            return 0
+        if not (buf[i] == 0x00 and buf[i + 1] == 0x00 and buf[i + 2] == 0x01):
+            return 0
+        code = buf[i + 3]
+
+        # Pack header
+        if code == 0xBA:
+            b4, b6, b8, b9 = buf[i + 4], buf[i + 6], buf[i + 8], buf[i + 9]
+            # MPEG-2
+            if (b4 & 0xC4) == 0x44 and (b6 & 0x04) == 0x04 and (b8 & 0x04) == 0x04 and (b9 & 0x01) == 0x01 and (buf[i + 12] & 0x03) == 0x03:
+                return (buf[i + 13] & 0x07) + 14
+            # MPEG-1
+            if (b4 & 0xF1) == 0x21 and (b6 & 0x01) == 0x01 and (b8 & 0x01) == 0x01 and (b9 & 0x80) == 0x80 and (buf[i + 11] & 0x01) == 0x01:
+                return 12
+            return 0
+
+        # End code
+        if code == 0xB9:
+            return 4
+
+        # Sequence, extension, GOP
+        if code == 0xB3:
+            return 12 if (buf[i + 10] & 0x20) == 0x20 else 0
+        if code == 0xB5:
+            return 10
+        if code == 0xB8:
+            return 8 if (buf[i + 5] & 0x40) == 0x40 else 0
+
+        # PES and system/padding/private streams
+        if code in (0xBB, 0xBE, 0xBF) or 0xBD <= code <= 0xEF:
+            if i + 6 > len(buf):
+                return 0
+            return (buf[i + 4] << 8) + buf[i + 5] + 6
+
+        return 0
+
+    pos = 0
+    last_valid_end = 0
+    while pos + 14 <= len(data):
+        sz = _packet_size(data, pos)
+        if sz <= 0:
             break
-        buf += chunk
-        read += len(chunk)
-        idx = buf.find(end_code, max(0, len(buf) - len(chunk) - 3))
-        if idx != -1:
-            return start + idx + 4
-        buf = buf[-3:]
-    # If no end code, estimate from last pack header
-    return start + read if read > MIN_VIDEO_SIZE else None
+        if pos + sz > len(data):
+            break
+        pos += sz
+        last_valid_end = pos
+        # Explicit end code
+        if sz == 4 and data[pos - 1] == 0xB9:
+            return start + pos
+
+    return start + last_valid_end if last_valid_end > MIN_VIDEO_SIZE else None
  
  
 def _find_tiff_end(f: BinaryIO, start: int, max_size: int) -> Optional[int]:
@@ -1051,6 +1314,7 @@ class MediaCarver:
         skip_resolutions: Optional[set[tuple[int, int]]] = None,
         strict_dedup: bool = True,
         skip_jpeg_after_video: bool = True,
+        skip_jpeg_after_video_window_mb: int = 256,
     ):
         self.image_path = image_path
         self.image_size = detect_input_size(image_path)
@@ -1068,7 +1332,9 @@ class MediaCarver:
         self.skip_resolutions = skip_resolutions or set()
         self.strict_dedup = strict_dedup
         self.skip_jpeg_after_video = skip_jpeg_after_video
+        self.skip_jpeg_after_video_window_bytes = skip_jpeg_after_video_window_mb * 1024 * 1024
         self.video_found = False
+        self.video_found_offset: Optional[int] = None
  
         # Build quick-lookup: first byte -> list of signatures
         self._sig_by_first_byte: dict[int, list[FormatSignature]] = {}
@@ -1275,13 +1541,18 @@ class MediaCarver:
             else:
                 stats.dup_videos += 1
                 self.video_found = True
+                self.video_found_offset = start
             return True  # Still "handled" — skip past it
  
         # JPEG-specific validation
         if fmt_name == "JPEG":
-            if self.skip_jpeg_after_video and self.video_found:
-                stats.skipped_frames += 1
-                return True
+            if self.skip_jpeg_after_video and self.video_found and self.video_found_offset is not None:
+                # Skip likely embedded video-frame JPEGs near recently recovered videos.
+                if start >= self.video_found_offset:
+                    dist = start - self.video_found_offset
+                    if dist <= self.skip_jpeg_after_video_window_bytes:
+                        stats.skipped_frames += 1
+                        return True
             f.seek(start)
             jpeg_data = f.read(actual_size)
             dims = validate_jpeg(jpeg_data, self.min_dimension, self.skip_resolutions)
@@ -1341,6 +1612,7 @@ class MediaCarver:
                 else:
                     stats.dup_videos += 1
                     self.video_found = True
+                    self.video_found_offset = start
                 return True
 
             self.state.record_sha256(full_digest)
@@ -1352,6 +1624,7 @@ class MediaCarver:
         else:
             stats.new_videos += 1
             self.video_found = True
+            self.video_found_offset = start
  
         self.state.log(
             f"    {fmt_name} #{file_id}: {actual_size/1024:.0f}KB "
@@ -1492,8 +1765,16 @@ def main():
                         help=f"Minimum file size in bytes (default: {MIN_PHOTO_SIZE})")
     parser.add_argument("--min-dim", type=int, default=MIN_DIMENSION,
                         help=f"Minimum image dimension in pixels (default: {MIN_DIMENSION})")
-    parser.add_argument("--skip-video-frame-res", type=str, default=None,
-                        help="Skip JPEG frames at this resolution (e.g., 1280x720)")
+    parser.add_argument(
+        "--skip-video-frame-res",
+        type=str,
+        action="append",
+        default=None,
+        help=(
+            "Skip JPEG frames at one or more resolutions (repeat flag or comma-separated, "
+            f"default: {DEFAULT_SKIP_VIDEO_FRAME_RES})"
+        ),
+    )
     parser.add_argument("--reset", action="store_true",
                         help="Reset scan state and start fresh")
     parser.add_argument("--report", "--report-only", dest="report_only", action="store_true",
@@ -1502,6 +1783,8 @@ def main():
                         help="Use sampled-hash dedup instead of full SHA-256")
     parser.add_argument("--keep-jpeg-after-video", action="store_false", dest="skip_jpeg_after_video",
                         help="Keep extracting JPEGs even after first recovered video")
+    parser.add_argument("--skip-jpeg-after-video-window-mb", type=int, default=256,
+                        help="Skip post-video JPEGs only within this distance window in MB (default: 256)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Verbose logging")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -1527,6 +1810,8 @@ def main():
         parser.error("--start must be >= 0")
     if args.end is not None and args.end <= 0:
         parser.error("--end must be > 0")
+    if args.skip_jpeg_after_video_window_mb < 0:
+        parser.error("--skip-jpeg-after-video-window-mb must be >= 0")
     if args.start is not None and args.end is not None and args.end <= args.start:
         parser.error("--end must be greater than --start")
 
@@ -1554,12 +1839,20 @@ def main():
  
     # Skip resolutions
     skip_res: set[tuple[int, int]] = set()
-    if args.skip_video_frame_res:
-        try:
-            w, h = args.skip_video_frame_res.split("x")
-            skip_res.add((int(w), int(h)))
-        except ValueError:
-            parser.error("--skip-video-frame-res must be WxH (e.g., 1280x720)")
+    res_inputs = args.skip_video_frame_res if args.skip_video_frame_res else [DEFAULT_SKIP_VIDEO_FRAME_RES]
+    for item in res_inputs:
+        for token in item.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                w, h = token.lower().split("x")
+                skip_res.add((int(w), int(h)))
+            except ValueError:
+                parser.error(
+                    "--skip-video-frame-res must be WxH values, "
+                    "repeatable or comma-separated (e.g., 1280x720,1920x1080)"
+                )
  
     # Create carver
     carver = MediaCarver(
@@ -1572,6 +1865,7 @@ def main():
         skip_resolutions=skip_res,
         strict_dedup=args.strict_dedup,
         skip_jpeg_after_video=args.skip_jpeg_after_video,
+        skip_jpeg_after_video_window_mb=args.skip_jpeg_after_video_window_mb,
     )
  
     # Run
