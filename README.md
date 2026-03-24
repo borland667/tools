@@ -1,0 +1,116 @@
+# Tools Repository
+
+Personal scripts and utilities for recovery, automation, and one-off workflows.
+
+## Repository Conventions
+
+These rules apply to all current and future scripts, regardless of language.
+
+### Design Principles
+
+- Keep each script focused on one clear job.
+- Prefer the simplest working approach over over-engineered abstractions.
+- Preserve intended behavior when refactoring.
+- Make small, isolated changes instead of broad rewrites.
+
+### File and Naming Conventions
+
+- Use lowercase snake_case for script filenames (`my_script.py`, `sync_logs.sh`).
+- Keep root-level scripts intentional; avoid dumping temporary files in root.
+- Use explicit output directories rather than hidden side effects.
+- Do not commit generated artifacts unless explicitly required.
+
+### CLI and UX Conventions
+
+- Every script should support `--help` and provide practical examples.
+- Use clear, descriptive flags (`--output`, `--dry-run`, `--verbose`).
+- Prefer safe defaults; require explicit opt-in for destructive actions.
+- Exit with non-zero status on real errors.
+- Keep logs actionable and concise.
+
+### Runtime and Dependencies
+
+- Pin runtime expectations in script docs (language version, system tools).
+- Keep dependencies minimal and justified.
+- Prefer standard-library solutions first.
+- Document optional dependencies and degraded behavior when absent.
+
+### Safety and Data Handling
+
+- Never mutate source data unless the script is explicitly for mutation.
+- Prefer read-only workflows for recovery/forensics scripts.
+- Keep outputs separate from source inputs.
+- Avoid writing secrets or tokens into logs.
+
+### Documentation Conventions
+
+- Root `README.md` remains conventions-first and indexes available scripts.
+- Each script must have a dedicated doc under `docs/scripts/`.
+- Script docs should include:
+  - purpose,
+  - requirements,
+  - usage examples,
+  - arguments/options,
+  - output behavior,
+  - safety notes,
+  - known limitations.
+- Update docs in the same change whenever behavior or flags change.
+
+### Quality and Validation
+
+- Add a quick validation checklist in each script doc.
+- Run lightweight sanity checks after substantive changes.
+- Prefer deterministic outputs when practical.
+
+## Repository Layout
+
+- `media_carver.py` — media recovery script for raw images/devices.
+- `docs/scripts/media_carver.md` — script-specific documentation.
+- `docs/scripts/_template.md` — template for documenting new scripts.
+- `scripts/install-to-bin.sh` — install scripts into `~/bin`.
+- `scripts/README.md` — documentation for helper scripts.
+- `.github/pull_request_template.md` — default PR checklist/template.
+- `AGENTS.md` — guidance for coding agents working in this repository.
+- `LICENSE` — repository license.
+
+## Script Index
+
+- [`media_carver.py`](./media_carver.py): carve media files from raw images and
+  block devices. Full usage and internals are in
+  [`docs/scripts/media_carver.md`](./docs/scripts/media_carver.md).
+  Includes `pyenv` setup instructions for Python installation/version pinning.
+
+## Adding a New Script
+
+1. Add the script with clear `--help` output.
+2. Create a script doc from `docs/scripts/_template.md`.
+3. Add the script to the repository layout and script index above.
+4. Include at least one realistic usage example.
+
+## Running Scripts via PATH (`~/bin`)
+
+Use the helper installer to expose scripts via `~/bin`:
+
+```bash
+scripts/install-to-bin.sh media_carver.py
+```
+
+Install all top-level executable scripts:
+
+```bash
+scripts/install-to-bin.sh --all
+```
+
+Preview actions without changes:
+
+```bash
+scripts/install-to-bin.sh --all --dry-run
+```
+
+If `~/bin` is not in PATH, add:
+
+```bash
+export PATH="$HOME/bin:$PATH"
+```
+
+See `scripts/README.md` for full installer options.
