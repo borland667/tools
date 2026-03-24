@@ -81,6 +81,20 @@ These rules apply to all current and future scripts, regardless of language.
   [`docs/scripts/media_carver.md`](./docs/scripts/media_carver.md).
   Includes `pyenv` setup instructions for Python installation/version pinning.
 
+## Optional Libraries (media_carver)
+
+`media_carver.py` works with standard-library Python. Optional libraries improve
+validation quality when installed.
+
+Install all optional validators:
+
+```bash
+python -m pip install pillow pillow-heif opencv-python av pymediainfo imagecodecs rawpy
+```
+
+For full details (benefits, startup warnings, and install guidance), see
+`docs/scripts/media_carver.md`.
+
 ## Adding a New Script
 
 1. Add the script with clear `--help` output.

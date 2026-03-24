@@ -16,9 +16,61 @@ It is designed for large-source recovery with:
 ## Requirements
 
 - Python 3.10+
-- Optional: Pillow (`pip install pillow`) for stronger JPEG validation
+- No required third-party Python packages (standard library only)
+- Optional validator libraries are listed in `Install Libraries`
 - Read permission for source image/device
 - Enough free disk space in output path
+
+## Install Libraries
+
+`media_carver.py` runs with standard-library Python only. Optional libraries can
+improve validation quality.
+
+### Minimal install (required runtime only)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+### Recommended optional install (JPEG validation)
+
+```bash
+python -m pip install pillow
+```
+
+### Extended optional validators (use if available)
+
+```bash
+python -m pip install pillow-heif opencv-python av pymediainfo imagecodecs rawpy
+```
+
+When installed, the script automatically uses available validators after
+extraction:
+
+- photos: Pillow / OpenCV / imagecodecs / rawpy
+- videos: PyAV / pymediainfo
+
+Optional validators are non-blocking: validation failures are logged as
+warnings, but recovered files are still kept.
+
+At startup, the script logs which optional libraries are available and warns
+for missing ones, including the benefit and install command for each.
+
+### Verify environment
+
+```bash
+python - <<'PY'
+import sys
+print("Python:", sys.version.split()[0])
+try:
+    import PIL
+    print("Pillow: installed")
+except Exception:
+    print("Pillow: not installed (fallback mode)")
+PY
+```
 
 ## Python Setup with pyenv (Recommended)
 
@@ -60,13 +112,13 @@ python --version
 This creates a local `.python-version` for the repo so `python`/`python3` use
 that version when you are in this directory.
 
-### 3) (Optional) Virtual environment + Pillow
+### 3) (Optional) Virtual environment + libraries
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install pillow
+# Then install optional libraries from "Install Libraries"
 ```
 
 ## Quick Start
