@@ -189,15 +189,16 @@ is used.
 - `--chunk-mb <N>`: chunk size for full scan mode (default `768`)
 - `--min-size <bytes>`: minimum photo size and lower bound for video threshold
 - `--min-dim <px>`: minimum JPEG dimensions when Pillow is available
-- `--skip-video-frame-res WxH`: skip JPEGs at exact resolution (repeatable and
-  comma-separated). Default active value is `1280x720`.
+- `--skip-video-frame-res WxH`: treat JPEGs at exact resolution as likely video
+  frames (repeatable and comma-separated). Default active value is `1280x720`.
 - `--reset`: clear `.scan_state` before scan
 - `--report` (alias `--report-only`): print recovered-file summary without scanning
 - default dedup mode: extract first, then deduplicate by full-file SHA-256
 - `--fast-dedup`: use sampled-hash dedup instead of full SHA-256
-- default behavior: after first recovered video, skip JPEGs (reduce frame noise)
+- default behavior: after first recovered video, route likely frame JPEGs
+  (matching `--skip-video-frame-res`) to `frames/` within the configured window
 - `--keep-jpeg-after-video`: keep extracting JPEGs after video recovery
-  (written to `frames/`)
+  (likely frame resolutions are written to `frames/`)
 - `--skip-jpeg-after-video-window-mb <N>`: only skip post-video JPEGs within
   `N` MB after the most recently recovered video (default `256`)
 - `-v`, `--verbose`: verbose logging

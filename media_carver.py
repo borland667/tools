@@ -1308,7 +1308,7 @@ def detect_ftyp_brand(f: BinaryIO, start: int) -> tuple[str, str, MediaType]:
 # ---------------------------------------------------------------------------
 # JPEG validation helper
 # ---------------------------------------------------------------------------
-def validate_jpeg(data: bytes, min_dim: int, skip_resolutions: set) -> Optional[tuple[int, int]]:
+def validate_jpeg(data: bytes, min_dim: int) -> Optional[tuple[int, int]]:
     """Validate JPEG data, returning (width, height) or None."""
     if not HAS_PIL:
         return (0, 0)  # Can't validate without PIL, accept everything
@@ -1318,8 +1318,6 @@ def validate_jpeg(data: bytes, min_dim: int, skip_resolutions: set) -> Optional[
             img = PILImage.open(io.BytesIO(data))
             w, h = img.size
             if w < min_dim or h < min_dim:
-                return None
-            if (w, h) in skip_resolutions:
                 return None
             # Force full decode so truncated/corrupt JPEGs are rejected.
             img.load()
@@ -1754,18 +1752,13 @@ class MediaCarver:
                 self.video_found_offset = start
             return True  # Still "handled" — skip past it
  
+        w, h = 0, 0
+        force_frame_mode = False
         # JPEG-specific validation
         if fmt_name == "JPEG":
-            if self.skip_jpeg_after_video and self.video_found and self.video_found_offset is not None:
-                # Skip likely embedded video-frame JPEGs near recently recovered videos.
-                if start >= self.video_found_offset:
-                    dist = start - self.video_found_offset
-                    if dist <= self.skip_jpeg_after_video_window_bytes:
-                        stats.skipped_frames += 1
-                        return True
             f.seek(start)
             jpeg_data = f.read(actual_size)
-            dims = validate_jpeg(jpeg_data, self.min_dimension, self.skip_resolutions)
+            dims = validate_jpeg(jpeg_data, self.min_dimension)
             if dims is None and HAS_PIL:
                 # Try larger boundaries: false early EOI markers can truncate JPEGs.
                 max_jpeg_end = min(start + MAX_PHOTO_SIZE, self.image_size)
@@ -1783,7 +1776,7 @@ class MediaCarver:
                         continue
                     f.seek(start)
                     candidate = f.read(new_size)
-                    candidate_dims = validate_jpeg(candidate, self.min_dimension, self.skip_resolutions)
+                    candidate_dims = validate_jpeg(candidate, self.min_dimension)
                     if candidate_dims is not None:
                         jpeg_data = candidate
                         dims = candidate_dims
@@ -1799,6 +1792,16 @@ class MediaCarver:
                 # PIL not available, accept anyway
                 dims = None
             w, h = dims if dims else (0, 0)
+            is_frame_resolution = w > 0 and h > 0 and (w, h) in self.skip_resolutions
+            if self.skip_jpeg_after_video and self.video_found and self.video_found_offset is not None:
+                # Skip likely embedded video-frame JPEGs near recently recovered videos.
+                if start >= self.video_found_offset:
+                    dist = start - self.video_found_offset
+                    if dist <= self.skip_jpeg_after_video_window_bytes:
+                        # If dimensions are known, route configured frame resolutions to frames/.
+                        # If dimensions are unknown (e.g., no Pillow), keep conservative behavior.
+                        if (dims is None) or is_frame_resolution:
+                            force_frame_mode = True
             dim_str = f"_{w}x{h}" if w > 0 else ""
         else:
             dim_str = ""
@@ -1806,10 +1809,15 @@ class MediaCarver:
         # Generate output path
         file_id = self.state.next_id(media_type)
         frame_mode = (
-            fmt_name == "JPEG"
-            and media_type == MediaType.PHOTO
-            and self.video_found
-            and not self.skip_jpeg_after_video
+            (fmt_name == "JPEG" and media_type == MediaType.PHOTO and force_frame_mode)
+            or (
+                fmt_name == "JPEG"
+                and media_type == MediaType.PHOTO
+                and self.video_found
+                and not self.skip_jpeg_after_video
+                and w > 0 and h > 0
+                and (w, h) in self.skip_resolutions
+            )
         )
         out_dir = self.photo_dir if media_type == MediaType.PHOTO else self.video_dir
         if frame_mode:
