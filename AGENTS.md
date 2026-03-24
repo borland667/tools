@@ -20,7 +20,7 @@ This repository is a personal collection of scripts/tools. It currently includes
 - Preserve existing behavior unless fixing a verified bug.
 - Prefer the simplest implementation that satisfies requirements.
 - Never perform destructive operations against source media in recovery flows.
-- Do not commit directly to `main`/`master`.
+- Committing directly to `main` is allowed in this repository.
 
 ## Documentation Requirements
 
