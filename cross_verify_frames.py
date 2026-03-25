@@ -4,7 +4,12 @@ Cross-verify carved JPEG frames against carved AVI videos.
 
 For each AVI video, walks the RIFF movi LIST and extracts every MJPEG
 frame (00dc/01dc chunks). Hashes each frame with SHA-256 and compares
-against the SHA-256 of every file in the frames/ directory.
+against the SHA-256 of carved JPEGs.
+
+Important: if you reorganize buckets (move JPEGs between photos/ and frames/),
+the frames/ directory may contain non-frame photos. By default this tool uses
+the carver recovery manifest to decide which JPEGs are true frame candidates
+and then locates them on disk (even if moved).
 
 Produces a report showing:
   - Which frames match which video (and which frame index within the video)
@@ -18,8 +23,9 @@ import json
 import os
 import struct
 import sys
-from collections import defaultdict
+import argparse
 from pathlib import Path
+from typing import Any, Optional
 
 
 def sha256_file(path: str) -> str:
@@ -147,32 +153,134 @@ def extract_avi_mjpeg_frames(avi_path: str) -> list[dict]:
     return frames
 
 
+def _load_manifest(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not path.is_file():
+        return [], []
+    rows: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line_no, line in enumerate(f, start=1):
+            s = line.strip()
+            if not s:
+                continue
+            try:
+                rows.append(json.loads(s))
+            except json.JSONDecodeError as e:
+                issues.append({"line": line_no, "reason": "invalid_json", "detail": str(e)})
+    return rows, issues
+
+
+def _manifest_frame_candidates(records: list[dict[str, Any]]) -> list[str]:
+    """
+    Return a list of candidate JPEG filenames that should be treated as
+    "frames" for cross-verification purposes.
+
+    Uses carve-time metadata so the result stays stable even after files are
+    reorganized on disk.
+    """
+    out: list[str] = []
+    for r in records:
+        if r.get("format") != "JPEG":
+            continue
+        bucket = r.get("bucket")
+        jpeg = r.get("jpeg") or {}
+        inside = bool(jpeg.get("inside_mjpeg_avi"))
+        if bucket == "frames" or inside:
+            p = str(r.get("path") or "")
+            if not p:
+                continue
+            out.append(Path(p).name)
+    # stable order
+    return sorted(set(out))
+
+
+def _locate_by_filename(recovery_dir: Path, filename: str) -> Optional[Path]:
+    """
+    Find a carved JPEG by filename. Supports post-processing moves between
+    photos/ and frames/.
+    """
+    for d in ("frames", "photos"):
+        p = recovery_dir / d / filename
+        if p.is_file():
+            return p
+    return None
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 cross_verify_frames.py <recovery_dir>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        prog="cross_verify_frames",
+        description="Cross-verify carved JPEG frames against MJPEG AVI chunks",
+    )
+    parser.add_argument("recovery_dir", help="media_carver output directory")
+    parser.add_argument(
+        "--scan-frames-dir",
+        action="store_true",
+        help=(
+            "Hash every *.jpg currently in frames/ (legacy behavior). "
+            "Not robust after bucket reorganization."
+        ),
+    )
+    args = parser.parse_args()
 
-    recovery_dir = Path(sys.argv[1])
+    recovery_dir = Path(args.recovery_dir).expanduser().resolve()
     frames_dir = recovery_dir / "frames"
+    photos_dir = recovery_dir / "photos"
     videos_dir = recovery_dir / "videos"
+    state_dir = recovery_dir / ".scan_state"
+    manifest_path = state_dir / "recovery_manifest.jsonl"
 
-    if not frames_dir.is_dir():
-        print(f"No frames/ directory at {frames_dir}")
-        sys.exit(1)
     if not videos_dir.is_dir():
         print(f"No videos/ directory at {videos_dir}")
         sys.exit(1)
 
-    # Step 1: Hash all carved frames
+    # Step 1: Hash carved frame candidates
     print("Hashing carved frames...")
-    frame_files = sorted(f for f in os.listdir(frames_dir) if f.endswith(".jpg"))
-    carved_frame_hashes = {}  # sha256 -> filename
-    for i, fname in enumerate(frame_files):
-        h = sha256_file(str(frames_dir / fname))
-        carved_frame_hashes[h] = fname
-        if (i + 1) % 500 == 0:
-            print(f"  Hashed {i+1}/{len(frame_files)} frames...")
-    print(f"  Total carved frames: {len(frame_files)}")
+    carved_frame_hashes: dict[str, str] = {}  # sha256 -> filename
+    missing = 0
+    frame_files: list[str] = []
+
+    if args.scan_frames_dir:
+        if not frames_dir.is_dir():
+            print(f"No frames/ directory at {frames_dir}")
+            sys.exit(1)
+        frame_files = sorted(f for f in os.listdir(frames_dir) if f.endswith(".jpg"))
+        for i, fname in enumerate(frame_files):
+            h = sha256_file(str(frames_dir / fname))
+            carved_frame_hashes[h] = fname
+            if (i + 1) % 500 == 0:
+                print(f"  Hashed {i+1}/{len(frame_files)} frames...")
+        print(f"  Total carved frames: {len(frame_files)}")
+        selection_meta = {"mode": "frames_dir", "manifest_used": False}
+    else:
+        records, issues = _load_manifest(manifest_path)
+        if not records:
+            print(
+                f"No manifest at {manifest_path}; rerun with --scan-frames-dir or "
+                "run media_carver with recovery manifest enabled.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        candidates = _manifest_frame_candidates(records)
+        frame_files = candidates
+        for i, fname in enumerate(candidates):
+            p = _locate_by_filename(recovery_dir, fname)
+            if p is None:
+                missing += 1
+                continue
+            h = sha256_file(str(p))
+            carved_frame_hashes[h] = fname
+            if (i + 1) % 500 == 0:
+                print(f"  Hashed {i+1}/{len(candidates)} frames...")
+        print(f"  Total carved frames: {len(candidates)}")
+        if missing:
+            print(f"  Missing on disk (moved/deleted): {missing}")
+        selection_meta = {
+            "mode": "manifest",
+            "manifest_used": True,
+            "manifest_path": str(manifest_path),
+            "manifest_invalid_json_lines": len(issues),
+            "missing_on_disk": missing,
+        }
 
     # Step 2: Extract and hash frames from each AVI
     print("\nExtracting frames from AVI videos...")
@@ -235,7 +343,8 @@ def main():
     print(f"  Orphaned frames (no video):   {total_orphaned}")
     print(f"  AVI frames not recovered:     {total_unrecovered}")
     print(f"")
-    print(f"  Match rate (carved):          {total_matched/len(frame_files)*100:.1f}%")
+    match_rate = (total_matched / len(frame_files) * 100.0) if frame_files else 0.0
+    print(f"  Match rate (carved):          {match_rate:.1f}%")
     if total_avi_frames > 0:
         print(f"  Recovery rate (AVI frames):   {total_matched/total_avi_frames*100:.1f}%")
 
@@ -271,6 +380,7 @@ def main():
             "match_rate_carved": round(total_matched / len(frame_files) * 100, 2) if frame_files else 0,
             "recovery_rate_avi": round(total_matched / total_avi_frames * 100, 2) if total_avi_frames else 0,
         },
+        "frame_selection": selection_meta,
         "per_video": video_stats,
         "frame_to_video_map": {k: {"video": v[0], "frame_index": v[1]} for k, v in frame_to_video.items()},
         "orphaned_frames": orphaned,
