@@ -16,6 +16,25 @@ PYTHON = sys.executable
 
 
 class MediaClassifierTests(unittest.TestCase):
+    def test_score_jpeg_low_bpp_and_mjpeg_suggests_frame(self):
+        rec = {
+            "bucket": "photos",
+            "format": "JPEG",
+            "jpeg": {"bits_per_pixel": 0.1, "inside_mjpeg_avi": True},
+        }
+        out = mc.score_jpeg(rec, None)
+        self.assertEqual(out["suggested"], "likely_frame")
+
+    def test_score_jpeg_common_still_and_exif_overrides_frames_bucket(self):
+        rec = {
+            "bucket": "frames",
+            "format": "JPEG",
+            "jpeg": {"matches_common_still_resolution": True, "bits_per_pixel": 1.2},
+        }
+        exif = {"has_camera_identity": True, "exif_readable": True}
+        out = mc.score_jpeg(rec, exif)
+        self.assertEqual(out["suggested"], "likely_still")
+
     def test_score_jpeg_mjpeg_span_suggests_frame(self):
         rec = {
             "bucket": "photos",

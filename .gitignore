@@ -94,3 +94,4 @@ tmp/
 tmp_test/
 .tmp/
 .cache/
+recovery_test*
