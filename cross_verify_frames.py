@@ -37,6 +37,20 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def trim_jpeg_to_first_eoi(frame_data: bytes) -> bytes:
+    """
+    Trim JPEG-like bytes to the first 0xFFD9 EOI marker.
+
+    This mirrors the repo's carver behavior more closely than trimming to
+    the last EOI marker, which can produce different byte-for-byte hashes
+    when an AVI chunk contains padding or additional FFD9 patterns.
+    """
+    eoi = frame_data.find(b"\xff\xd9", 2)
+    if eoi >= 0:
+        return frame_data[: eoi + 2]
+    return frame_data
+
+
 def extract_avi_mjpeg_frames(avi_path: str) -> list[dict]:
     """
     Walk the RIFF AVI movi LIST and extract each video frame chunk.
@@ -111,12 +125,10 @@ def extract_avi_mjpeg_frames(avi_path: str) -> list[dict]:
                     is_jpeg = len(frame_data) >= 2 and frame_data[:2] == b"\xff\xd8"
                     # Trim to JPEG EOI (FFD9) — AVI chunks often include
                     # trailing padding after the JPEG end marker. The carver
-                    # extracts to FFD9, so we must hash the same boundary.
+                    # extracts to (first) FFD9, so we must hash the same boundary.
                     hash_data = frame_data
                     if is_jpeg:
-                        eoi = frame_data.rfind(b"\xff\xd9")
-                        if eoi >= 0:
-                            hash_data = frame_data[: eoi + 2]
+                        hash_data = trim_jpeg_to_first_eoi(frame_data)
                     frames.append({
                         "index": frame_idx,
                         "offset_in_avi": pos + 8,
