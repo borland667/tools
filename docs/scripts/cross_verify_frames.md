@@ -31,8 +31,12 @@ python3 cross_verify_frames.py /path/to/recovery
 
 ### Required
 
-- `<recovery_dir>`: recovery output directory containing `frames/` and
-  `videos/`.
+- `<recovery_dir>`: media_carver output directory.
+
+### Optional
+
+- `--scan-frames-dir`: hash every `frames/*.jpg` (legacy behavior). Prefer the
+  default manifest-based selection, especially after bucket reorganization.
 
 ## Input and Output
 
@@ -55,13 +59,16 @@ Document:
 
 High-level flow:
 
-1. Hash all files in `frames/` (SHA-256 per file).
-2. For each `.avi` in `videos/`, walks the RIFF `movi` list and extracts
+1. Load `.scan_state/recovery_manifest.jsonl` and select carved **frame
+   candidates** (bucket `frames` or `jpeg.inside_mjpeg_avi=true`).
+2. For each selected filename, locate it on disk (checks `frames/` and `photos/`
+   so reorg moves don’t break verification) and hash the file (SHA-256).
+3. For each `.avi` in `videos/`, walks the RIFF `movi` list and extracts
    `00dc/01dc` (and related) chunks as “frame candidates”.
-3. For frame candidates that appear to be JPEGs (`FFD8`), trims to the last
+4. For frame candidates that appear to be JPEGs (`FFD8`), trims to the **first**
    `FFD9` boundary and hashes.
-4. Compares AVI-frame SHA-256 hashes against carved-frame hashes.
-5. Reports:
+5. Compares AVI-frame SHA-256 hashes against carved-frame hashes.
+6. Reports:
    - which carved frames match which AVI + frame index,
    - which carved frames are orphaned (no AVI match),
    - which AVI MJPEG frames weren’t recovered as separate JPEGs.
