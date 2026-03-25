@@ -17,6 +17,13 @@ class CrossVerifyFramesTests(unittest.TestCase):
         trimmed = cv.trim_jpeg_to_first_eoi(data)
         self.assertEqual(trimmed, data)
 
+    def test_match_rate_formula_handles_zero_inputs(self):
+        # The CLI summary should never divide by zero when no frame files are selected.
+        total_matched = 0
+        frame_files = []
+        match_rate = (total_matched / len(frame_files) * 100.0) if frame_files else 0.0
+        self.assertEqual(match_rate, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

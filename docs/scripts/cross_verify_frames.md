@@ -21,7 +21,7 @@ python3 cross_verify_frames.py /path/to/recovery
 
 ### <use case 1>
 
-After a `media_carver.py` run (that produced `frames/` and `videos/`):
+After a `media_carver.py` run:
 
 ```bash
 python3 cross_verify_frames.py /path/to/recovery
@@ -39,7 +39,10 @@ python3 cross_verify_frames.py /path/to/recovery
 Document:
 
 - Expected input paths/formats:
-  - `recovery_dir/frames/*.jpg` (carved JPEG frames)
+  - `recovery_dir/.scan_state/recovery_manifest.jsonl` (to select carved frame
+    candidates in a way that survives post-processing moves)
+  - `recovery_dir/frames/*.jpg` and/or `recovery_dir/photos/*.jpg` (the carved
+    JPEGs referenced by filename in the manifest; may have moved after reorg)
   - `recovery_dir/videos/*.avi` (carved AVI files to scan for MJPEG chunks)
 - Output paths/formats:
   - Writes `recovery_dir/.scan_state/cross_verification_report.json`
@@ -71,7 +74,6 @@ High-level flow:
 ## Known Limitations
 
 - Scans only `videos/*.avi` (not MP4/MOV/etc.).
-- “Is JPEG” is detected by `FFD8` and uses a heuristic trim to the last `FFD9`.
 - “Is JPEG” is detected by `FFD8` and the verifier trims to the **first** `FFD9`
   (to mirror the carver’s JPEG EOI finder and produce matching hashes).
 - Only frames whose AVI chunks look like JPEGs participate in hash matching.
@@ -79,8 +81,8 @@ High-level flow:
 
 ## Validation Checklist
 
-- Sanity check: confirm `frames/` and `videos/` directories exist under your
-  recovery output.
+- Sanity check: confirm `.scan_state/recovery_manifest.jsonl` and `videos/`
+  exist under your recovery output.
 - Smoke test: run on a small recovery directory and inspect the JSON report.
 - Error-path check: ensure the script exits non-zero when directories are
   missing.
