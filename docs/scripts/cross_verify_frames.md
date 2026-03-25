@@ -72,6 +72,8 @@ High-level flow:
 
 - Scans only `videos/*.avi` (not MP4/MOV/etc.).
 - “Is JPEG” is detected by `FFD8` and uses a heuristic trim to the last `FFD9`.
+- “Is JPEG” is detected by `FFD8` and the verifier trims to the **first** `FFD9`
+  (to mirror the carver’s JPEG EOI finder and produce matching hashes).
 - Only frames whose AVI chunks look like JPEGs participate in hash matching.
 - Output paths assume carved frame files are `.jpg`.
 
