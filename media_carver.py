@@ -206,7 +206,7 @@ def suppress_native_stderr():
 # Constants
 # ---------------------------------------------------------------------------
 VERSION = "1.0.0"
-RECOVERY_MANIFEST_VERSION = 1
+RECOVERY_MANIFEST_VERSION = 2
  
 SCAN_BUFFER       = 32 * 1024 * 1024   # 32 MB read buffer per pass
 EXTRACT_BUFFER    = 4 * 1024 * 1024    # 4 MB streaming write buffer
@@ -1443,7 +1443,7 @@ def validate_jpeg(data: bytes, min_dim: int) -> Optional[tuple[int, int]]:
     """Validate JPEG data, returning (width, height) or None."""
     if not HAS_PIL:
         return (0, 0)  # Can't validate without PIL, accept everything
- 
+
     try:
         with suppress_native_stderr():
             img = PILImage.open(io.BytesIO(data))
@@ -1455,6 +1455,75 @@ def validate_jpeg(data: bytes, min_dim: int) -> Optional[tuple[int, int]]:
             return (w, h)
     except Exception:
         return None
+
+
+# SOF markers (start of frame); progressive DCT uses C2,C6,CA,CE.
+_JPEG_SOF_MARKERS = frozenset({
+    0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+})
+_JPEG_SOF_PROGRESSIVE = frozenset({0xC2, 0xC6, 0xCA, 0xCE})
+
+
+def jpeg_marker_sof_info(data: bytes) -> tuple[Optional[int], Optional[int], bool]:
+    """
+    Scan JPEG markers for the first SOF: (width, height, progressive).
+    Pure bytes; no Pillow. Width/height None if no SOF found.
+    """
+    n = len(data)
+    i = 0
+    progressive = False
+    while i < n - 1:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker == 0xD8:  # SOI
+            i += 2
+            continue
+        if marker == 0xD9:  # EOI
+            break
+        if marker in (0x01, 0xFF) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        if marker == 0xDA:  # SOS — start of entropy-coded data
+            break
+        if i + 4 > n:
+            break
+        seglen = (data[i + 2] << 8) | data[i + 3]
+        if seglen < 2 or i + 2 + seglen > n:
+            break
+        if marker in _JPEG_SOF_MARKERS:
+            if marker in _JPEG_SOF_PROGRESSIVE:
+                progressive = True
+            off = i + 4
+            # P, Y_hi, Y_lo, X_hi, X_lo
+            if off + 5 <= n:
+                h = (data[off + 1] << 8) | data[off + 2]
+                w = (data[off + 3] << 8) | data[off + 4]
+                if w > 0 and h > 0:
+                    return w, h, progressive
+        i += 2 + seglen
+    return None, None, progressive
+
+
+def jpeg_compression_manifest_hints(
+    jpeg_data: bytes, byte_size: int, width: int, height: int
+) -> dict:
+    """
+    Extra recovery-manifest fields for media_classifier (no Pillow required).
+    """
+    sof_w, sof_h, progressive = jpeg_marker_sof_info(jpeg_data)
+    ew = width if width > 0 else (sof_w or 0)
+    eh = height if height > 0 else (sof_h or 0)
+    bpp: Optional[float] = None
+    if ew > 0 and eh > 0 and byte_size > 0:
+        bpp = round((8.0 * byte_size) / float(ew * eh), 5)
+    matches_still = ew > 0 and eh > 0 and (ew, eh) in COMMON_STILL_PHOTO_RESOLUTIONS
+    return {
+        "bits_per_pixel": bpp,
+        "progressive_jpeg": progressive,
+        "matches_common_still_resolution": matches_still,
+    }
  
  
 def validate_extracted_media(path: Path, media_type: MediaType, ext: str) -> tuple[int, int]:
@@ -2014,6 +2083,9 @@ class MediaCarver:
                 "near_video_offset_bytes": near_video_dist,
                 "video_proximity_window_bytes": self.skip_jpeg_after_video_window_bytes,
             }
+            jpeg_carver_meta.update(
+                jpeg_compression_manifest_hints(jpeg_data, actual_size, w, h)
+            )
             dim_str = f"_{w}x{h}" if w > 0 else ""
         else:
             dim_str = ""

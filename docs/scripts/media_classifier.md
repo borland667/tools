@@ -4,13 +4,14 @@
 
 Second-pass **JPEG still vs video-frame** suggestions for output produced by
 [`media_carver.py`](../../media_carver.py). It reads per-file metadata emitted
-into `.scan_state/recovery_manifest.jsonl` and optionally augments it with
-EXIF from recovered files (when Pillow is installed).
+into `.scan_state/recovery_manifest.jsonl` and augments it with EXIF from
+recovered JPEGs **by default** (when Pillow is installed).
 
 ## Requirements
 
 - Python 3 (same environment as `media_carver.py` is fine)
-- Optional: **Pillow** for `--exif` (`python -m pip install pillow`)
+- Optional: **Pillow** for EXIF (`python -m pip install pillow`); without it,
+  classification still runs and `exif_skipped` records that Pillow was not found.
 
 ## Usage
 
@@ -22,11 +23,8 @@ By default the JSON report is written to
 `/path/to/recovery/.scan_state/classification_report.json`. Use `--no-report-json`
 for stdout only, or `--report-json /other/path.json` to override the location.
 
-With Pillow EXIF:
-
-```bash
-python3 media_classifier.py -o /path/to/recovery --exif
-```
+**EXIF** is on by default (`--exif`). Use **`--no-exif`** to score from carver
+manifest hints only (faster, no Pillow opens).
 
 CSV (in addition to the default JSON report unless `--no-report-json`):
 
@@ -54,8 +52,14 @@ Scores are **heuristic** and conservative:
 
 - **Carver hints** (bucket `photos` vs `frames`, MJPEG AVI span, default frame
   resolutions, proximity to a recovered video) push toward **frame** or **still**.
-- **EXIF** (`--exif`): camera make/model or timestamps nudge toward **still**
-  when present (many encoder frames lack rich EXIF).
+- **Manifest JPEG metadata** (from `media_carver` recovery manifest **v2+**):
+  - **`matches_common_still_resolution`**: +still (typical phone/compact sizes).
+  - **`bits_per_pixel`**: very low values (+frame, heavy compression common on
+    video frames); higher values (+still, milder compression).
+  - **`progressive_jpeg`**: +still (weak signal; baseline is common in MJPEG).
+  Older manifests without these keys are scored from carver hints and EXIF only.
+- **EXIF** (default on; **`--no-exif`** to disable): camera make/model or timestamps
+  nudge toward **still** when present (many encoder frames lack rich EXIF).
 
 Outputs `likely_still`, `likely_frame`, or `uncertain`. Use this for review /
 re-sorting, not as ground truth.
@@ -105,8 +109,8 @@ counts). Exit code **1** if **`--apply-bucket-moves`** was used and any rename f
   `--report-json PATH`; `--no-report-json` to skip) includes:
   - **`items`**: each JPEG scored, with `recovery_file_present`, classification
     `reasons`, optional `exif`, and optional **`exif_skipped`** (`reason_code` +
-    `explanation`) when `--exif` was requested but EXIF was not applied (missing
-    file, Pillow missing, unreadable EXIF).
+    `explanation`) when EXIF was enabled but not applied (missing file, Pillow
+    missing, unreadable EXIF). With **`--no-exif`**, EXIF is not read.
   - **`skipped_entries`**: manifest rows not scored (MP4/PNG/etc. or missing
     `format`), each with **`reason_code`** and a plain-language **`explanation`**.
   - **`manifest_load_issues`**: lines that were not valid JSON (line number,
@@ -116,13 +120,13 @@ counts). Exit code **1** if **`--apply-bucket-moves`** was used and any rename f
   - **`summary.skipped_entries_by_reason`**: counts grouped by `reason_code`.
   - **`bucket_moves`**: when `--reorganize-buckets` is used, each JPEG row’s
     planned or completed move (or skip reason).
-  - **`classifier_version`**: report schema version (currently **4**).
+  - **`classifier_version`**: report schema version (currently **5**).
 - **`--csv`**: optional tabular summary (classified JPEG rows only; use JSON for skips).
 
 ## Validation checklist
 
 - [ ] Run after a carver session that did not use `--no-recovery-manifest`
-- [ ] With `--exif`, spot-check a few `likely_still` vs `likely_frame` paths
+- [ ] Spot-check a few `likely_still` vs `likely_frame` paths (EXIF on by default)
 - [ ] Large jobs: keep the default JSON report (or `--report-json`) once, filter it
   rather than re-running EXIF
 

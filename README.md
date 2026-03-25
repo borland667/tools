@@ -85,11 +85,15 @@ These rules apply to all current and future scripts, regardless of language.
   Writes per-file metadata to `.scan_state/recovery_manifest.jsonl` by default
   (`--no-recovery-manifest` to disable).
 - [`media_classifier.py`](./media_classifier.py): second-pass JPEG **still vs frame**
-  suggestions using that manifest; writes
-  `.scan_state/classification_report.json` by default (`--no-report-json` to skip),
-  including skip diagnostics; optional `--reorganize-buckets` (list planned moves)
-  and `--apply-bucket-moves` (execute renames) between `photos/` and `frames/`.
-  See [`docs/scripts/media_classifier.md`](./docs/scripts/media_classifier.md).
+  suggestions using that manifest; uses Pillow **EXIF** by default (`--no-exif` to
+  skip); writes `.scan_state/classification_report.json` by default (`--no-report-json`
+  to skip), including skip diagnostics; optional `--reorganize-buckets` (list planned
+  moves) and `--apply-bucket-moves` (execute renames) between `photos/` and `frames/`.
+  Scoring uses carver manifest **v2** JPEG hints (bpp, progressive, common still
+  sizes) when present. See [`docs/scripts/media_classifier.md`](./docs/scripts/media_classifier.md).
+- [`cross_verify_frames.py`](./cross_verify_frames.py): optional validation that
+  cross-checks carved `frames/` JPEGs against MJPEG frames found inside carved
+  AVI files in `videos/`; see [`docs/scripts/cross_verify_frames.md`](./docs/scripts/cross_verify_frames.md).
 
 ## Optional Libraries (media_carver)
 

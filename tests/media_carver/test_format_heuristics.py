@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
+import base64
 import os
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 
 import media_carver as mc
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 def _avi_chunk(fourcc: bytes, payload: bytes) -> bytes:
@@ -121,6 +125,18 @@ class FormatHeuristicsTests(unittest.TestCase):
                 self.assertFalse(mc.avi_file_contains_mjpeg_video_stream(f, 0, len(blob)))
         finally:
             os.unlink(path)
+
+    def test_jpeg_marker_sof_info_fixture_pixel(self):
+        jpg_b64_path = FIXTURES_DIR / "pixel_1x1.jpg.b64"
+        raw = base64.b64decode(jpg_b64_path.read_text().strip())
+        w, h, prog = mc.jpeg_marker_sof_info(raw)
+        self.assertEqual((w, h), (1, 1))
+        self.assertFalse(prog)
+
+    def test_jpeg_compression_manifest_hints_bpp_without_sof(self):
+        hints = mc.jpeg_compression_manifest_hints(b"", 20_000, 100, 100)
+        self.assertAlmostEqual(hints["bits_per_pixel"], 16.0, places=3)
+        self.assertFalse(hints["matches_common_still_resolution"])
 
 
 if __name__ == "__main__":

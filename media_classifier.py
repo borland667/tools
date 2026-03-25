@@ -13,7 +13,7 @@ use `--no-report-json` for stdout-only runs.
 
 Usage:
   python3 media_classifier.py -o /path/to/recovery
-  python3 media_classifier.py -o /path/to/recovery --exif
+  python3 media_classifier.py -o /path/to/recovery --no-exif
   python3 media_classifier.py -o /path/to/recovery --reorganize-buckets
   python3 media_classifier.py -o /path/to/recovery --reorganize-buckets --apply-bucket-moves
 """
@@ -31,7 +31,7 @@ from typing import Any, Optional
 
 MANIFEST_NAME = "recovery_manifest.jsonl"
 DEFAULT_CLASSIFICATION_REPORT_NAME = "classification_report.json"
-CLASSIFIER_VERSION = 4
+CLASSIFIER_VERSION = 5
 
 
 def load_manifest(
@@ -235,8 +235,9 @@ def score_jpeg(record: dict[str, Any], exif: Optional[dict[str, Any]]) -> dict[s
         score_frame += 4
         reasons.append("jpeg_inside_mjpeg_avi")
 
-    if jpeg.get("matches_skip_frame_resolution"):
-        score_frame += 2
+    matches_frame_res = jpeg.get("matches_skip_frame_resolution", False)
+    if matches_frame_res:
+        score_frame += 4
         reasons.append("matches_skip_frame_resolution")
 
     nv = jpeg.get("near_video_offset_bytes")
@@ -244,6 +245,25 @@ def score_jpeg(record: dict[str, Any], exif: Optional[dict[str, Any]]) -> dict[s
     if nv is not None and isinstance(win, int) and nv >= 0 and nv <= win:
         score_frame += 1
         reasons.append("within_video_proximity_window")
+
+    if jpeg.get("matches_common_still_resolution"):
+        score_still += 2
+        reasons.append("common_still_photo_resolution")
+
+    bpp = jpeg.get("bits_per_pixel")
+    if isinstance(bpp, (int, float)) and bpp > 0:
+        if bpp < 0.22:
+            score_frame += 2
+            reasons.append("low_bits_per_pixel_heavy_compression")
+        elif bpp > 0.72 and not matches_frame_res:
+            # Higher BPP suggests a still, but not when the resolution
+            # explicitly matches user-declared video frame sizes.
+            score_still += 1
+            reasons.append("higher_bits_per_pixel_milder_compression")
+
+    if jpeg.get("progressive_jpeg") is True:
+        score_still += 1
+        reasons.append("progressive_jpeg")
 
     if exif:
         if exif.get("has_camera_identity"):
@@ -507,8 +527,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--exif",
-        action="store_true",
-        help="Open each file with Pillow and use EXIF when available",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Read EXIF from each recovered JPEG with Pillow when available "
+            "(default: --exif; use --no-exif for manifest-only scoring)"
+        ),
     )
     parser.add_argument(
         "--report-json",

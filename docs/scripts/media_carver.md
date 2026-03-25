@@ -268,11 +268,21 @@ Each successfully recovered file appends **one JSON line** to
 `.scan_state/recovery_manifest.jsonl` (default; disable with `--no-recovery-manifest`).
 Fields include relative `path`, output `bucket` (`photos` / `frames` /
 `videos`), source offsets, `format`, and for JPEGs a `jpeg` object with
-dimensions and carver hints (`inside_mjpeg_avi`, `matches_skip_frame_resolution`,
-video proximity, etc.).
+dimensions, carver hints (`inside_mjpeg_avi`, `matches_skip_frame_resolution`,
+video proximity), and **manifest v2** compression hints: `bits_per_pixel`
+(estimated from file size ÷ decoded dimensions), `progressive_jpeg` (first SOF
+is progressive DCT), and `matches_common_still_resolution` (WxH in a compact-
+camera resolution set used by the carver).
 
 Use [`media_classifier.py`](./media_classifier.md) on the same
 `-o` directory for suggested **still vs frame** labels and optional EXIF checks.
+
+Optional validation:
+
+- `cross_verify_frames.py` can cross-check carved `frames/` JPEG SHA-256
+  hashes against MJPEG frame chunks extracted from carved AVI files under
+  `videos/` (writes
+  `.scan_state/cross_verification_report.json`).
 
 Final report also includes timing stats:
 
