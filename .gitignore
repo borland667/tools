@@ -95,3 +95,4 @@ tmp_test/
 .tmp/
 .cache/
 recovery_test*
+recovery_full/

@@ -2036,7 +2036,31 @@ class MediaCarver:
                     retries += 1
             if dims is None:
                 stats.skipped_frames += 1
-                return True  # Skip but don't save
+                offset_mb = start / (1024 * 1024)
+                size_kb = actual_size / 1024
+                sof_w, sof_h, _ = jpeg_marker_sof_info(jpeg_data)
+                dim_str = f"{sof_w}x{sof_h}" if sof_w and sof_h else "unknown"
+                reason = "PIL validation failed after EOI retries" if HAS_PIL else "no PIL"
+                self.state.log(
+                    f"    SKIP JPEG @ {offset_mb:.1f}MB "
+                    f"({size_kb:.0f}KB, {dim_str}): {reason}"
+                )
+                if self.write_recovery_manifest:
+                    skip_rec: dict = {
+                        "v": 2,
+                        "status": "skipped",
+                        "format": "JPEG",
+                        "source_offset": start,
+                        "source_end": actual_end,
+                        "size": actual_size,
+                        "skip_reason": reason,
+                    }
+                    if sof_w and sof_h:
+                        skip_rec["jpeg"] = {"width": sof_w, "height": sof_h}
+                    self.state.append_manifest_record(skip_rec)
+                # Return False so the scan loop does NOT advance past end.
+                # A valid JPEG may start a few KB after this false SOI.
+                return False
             if dims == (0, 0):
                 # PIL not available, accept anyway
                 dims = None
