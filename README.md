@@ -66,6 +66,8 @@ These rules apply to all current and future scripts, regardless of language.
 
 - `media_carver.py` — media recovery script for raw images/devices.
 - `docs/scripts/media_carver.md` — script-specific documentation.
+- `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
+- `docs/workflow-sd-card-recovery.md` — benchmark results from SD card test run.
 - `docs/scripts/_template.md` — template for documenting new scripts.
 - `scripts/install-to-bin.sh` — install scripts into `~/bin`.
 - `scripts/README.md` — documentation for helper scripts.
@@ -94,6 +96,10 @@ These rules apply to all current and future scripts, regardless of language.
 - [`cross_verify_frames.py`](./cross_verify_frames.py): optional validation that
   cross-checks carved `frames/` JPEGs against MJPEG frames found inside carved
   AVI files in `videos/`; see [`docs/scripts/cross_verify_frames.md`](./docs/scripts/cross_verify_frames.md).
+- [`entropy_scanner.py`](./entropy_scanner.py): post-carve validation that scans the
+  raw image for high-entropy regions not covered by recovered files; cross-references
+  the recovery manifest to flag potential gaps; see
+  [`docs/scripts/entropy_scanner.md`](./docs/scripts/entropy_scanner.md).
 
 ## Optional Libraries (media_carver)
 
