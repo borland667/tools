@@ -502,6 +502,7 @@ class ScanState:
         self._seen: set[str] = set()
         self._seen_sha256: set[str] = set()
         self._counters: dict[str, int] = {"photo": 0, "video": 0}
+        self._counter_offsets: dict[str, int] = {"photo": 0, "video": 0}
         self._load()
  
     # ── persistence ───────────────────────────────────────────────────
@@ -560,11 +561,15 @@ class ScanState:
             f.write(digest + "\n")
  
     # ── counters ──────────────────────────────────────────────────────
+    def set_counter_offset(self, media_type_key: str, offset: int):
+        """Set a starting offset for counters (e.g. photo_start=100 → first id=100)."""
+        self._counter_offsets[media_type_key] = offset
+
     def next_id(self, media_type: MediaType) -> int:
         key = media_type.value
         self._counters[key] = self._counters.get(key, 0) + 1
         self._flush_counters()
-        return self._counters[key]
+        return self._counters[key] + self._counter_offsets.get(key, 0)
  
     # ── log ───────────────────────────────────────────────────────────
     def log(self, msg: str):
@@ -1749,6 +1754,10 @@ class MediaCarver:
         skip_jpeg_after_video_window_mb: int = 256,
         burst_frame_clustering: bool = False,
         write_recovery_manifest: bool = True,
+        photo_prefix: Optional[str] = None,
+        video_prefix: Optional[str] = None,
+        photo_start: int = 0,
+        video_start: int = 0,
     ):
         self.image_path = image_path
         self.image_size = detect_input_size(image_path)
@@ -1770,7 +1779,17 @@ class MediaCarver:
         self.skip_jpeg_after_video = skip_jpeg_after_video
         self.skip_jpeg_after_video_window_bytes = skip_jpeg_after_video_window_mb * 1024 * 1024
         self.burst_frame_clustering = burst_frame_clustering
+        self.photo_prefix = photo_prefix
+        self.video_prefix = video_prefix
         self.video_found = False
+
+        # Apply custom starting numbers via counter offsets.
+        # next_id returns counter + offset, so offset = start - 1
+        # means the very first file (counter=1) gets id = start.
+        if photo_start > 0:
+            state.set_counter_offset("photo", photo_start - 1)
+        if video_start > 0:
+            state.set_counter_offset("video", video_start - 1)
         self.video_found_offset: Optional[int] = None
         # Byte spans of recovered AVI files that declare MJPEG video (strh handler).
         self._mjpeg_avi_spans: list[tuple[int, int]] = []
@@ -2160,8 +2179,17 @@ class MediaCarver:
             else ("frames" if frame_mode else "photos")
         )
         size_label = f"_{actual_size // 1024}KB" if actual_size < 10 * 1024 * 1024 else f"_{actual_size // (1024*1024)}MB"
-        file_prefix = "video_frame" if frame_mode else media_type.value
-        filename = f"{file_prefix}_{file_id:05d}_{fmt_name}{dim_str}{size_label}.{ext}"
+        # Custom prefix mode: PHO00000.JPG / MOV00000.AVI (camera-style)
+        custom_prefix = None
+        if media_type == MediaType.PHOTO and self.photo_prefix and not frame_mode:
+            custom_prefix = self.photo_prefix
+        elif media_type == MediaType.VIDEO and self.video_prefix:
+            custom_prefix = self.video_prefix
+        if custom_prefix is not None:
+            filename = f"{custom_prefix}{file_id:05d}.{ext.upper()}"
+        else:
+            file_prefix = "video_frame" if frame_mode else media_type.value
+            filename = f"{file_prefix}_{file_id:05d}_{fmt_name}{dim_str}{size_label}.{ext}"
         out_path = out_dir / filename
  
         # Extract
@@ -2421,6 +2449,21 @@ def main():
         skip_jpeg_after_video=False,
         burst_frame_clustering=False,
     )
+    parser.add_argument("--photo-prefix", type=str, default=None,
+                        help=(
+                            "Custom photo filename prefix (e.g. 'PHO').  When set, photos "
+                            "are named <prefix><NNNNN>.<ext> with no format/dimension suffix "
+                            "(camera-style naming)."
+                        ))
+    parser.add_argument("--video-prefix", type=str, default=None,
+                        help=(
+                            "Custom video filename prefix (e.g. 'MOV').  When set, videos "
+                            "are named <prefix><NNNNN>.<ext> with no format/dimension suffix."
+                        ))
+    parser.add_argument("--photo-start", type=int, default=0,
+                        help="Starting number for photo filenames (default: 0)")
+    parser.add_argument("--video-start", type=int, default=0,
+                        help="Starting number for video filenames (default: 0)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Verbose logging")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -2507,6 +2550,10 @@ def main():
         skip_jpeg_after_video_window_mb=args.skip_jpeg_after_video_window_mb,
         burst_frame_clustering=args.burst_frame_clustering,
         write_recovery_manifest=args.recovery_manifest,
+        photo_prefix=args.photo_prefix,
+        video_prefix=args.video_prefix,
+        photo_start=args.photo_start,
+        video_start=args.video_start,
     )
  
     # Run
