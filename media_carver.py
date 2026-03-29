@@ -1440,7 +1440,13 @@ def detect_ftyp_brand(f: BinaryIO, start: int) -> tuple[str, str, MediaType]:
 # JPEG validation helper
 # ---------------------------------------------------------------------------
 def validate_jpeg(data: bytes, min_dim: int) -> Optional[tuple[int, int]]:
-    """Validate JPEG data, returning (width, height) or None."""
+    """Validate JPEG data, returning (width, height) or None.
+
+    Rejects truncated JPEGs that PIL silently fills with gray (128,128,128).
+    This catches a common carving artefact where a false early EOI marker
+    causes the file to be cut short — PIL opens & loads the partial data
+    without error but the bottom of the image is uniform gray fill.
+    """
     if not HAS_PIL:
         return (0, 0)  # Can't validate without PIL, accept everything
 
@@ -1452,6 +1458,24 @@ def validate_jpeg(data: bytes, min_dim: int) -> Optional[tuple[int, int]]:
                 return None
             # Force full decode so truncated/corrupt JPEGs are rejected.
             img.load()
+
+            # ── Gray-fill truncation check ──
+            # PIL fills un-decoded rows with (128, 128, 128).  Sample the
+            # bottom 5% of rows; if >50% are uniform gray the JPEG is
+            # almost certainly truncated.
+            test_rows = max(1, h // 20)
+            sample_cols = list(range(0, w, max(1, w // 10)))
+            gray_rows = 0
+            for row in range(h - test_rows, h):
+                pixels = [img.getpixel((x, row)) for x in sample_cols]
+                if all(
+                    all(125 <= c <= 131 for c in (p[:3] if isinstance(p, tuple) else (p,)))
+                    for p in pixels
+                ):
+                    gray_rows += 1
+            if gray_rows > test_rows * 0.5:
+                return None  # Likely truncated — reject
+
             return (w, h)
     except Exception:
         return None
