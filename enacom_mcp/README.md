@@ -21,13 +21,20 @@ MCP server that automates DDJJ filings on ENACOM's **Portal Hertz** for TIC lice
 ## Install
 
 ```bash
-cd enacom_mcp
+cd ~/tools/enacom_mcp        # the directory containing pyproject.toml
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e .             # installs the enacom_mcp package from src/
 playwright install chromium
 cp .env.example .env
 # edit .env to set ENACOM_TRACKER_PATH (and your CUIT/razón social/fundamento)
+```
+
+After installation the package can be imported and run from anywhere:
+
+```bash
+python -m enacom_mcp.scripts.make_tracker --help
+python -m enacom_mcp           # starts the MCP server on stdio
 ```
 
 ## Generate a tracker
