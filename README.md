@@ -65,13 +65,16 @@ These rules apply to all current and future scripts, regardless of language.
 ## Repository Layout
 
 - `media_carver.py` — media recovery script for raw images/devices.
+- `enacom_mcp/` — MCP server for automating ENACOM Hertz DDJJ filings (Python package).
 - `docs/scripts/media_carver.md` — script-specific documentation.
+- `docs/scripts/enacom_mcp.md` — script-specific documentation.
 - `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
 - `docs/workflow-sd-card-recovery.md` — benchmark results from SD card test run.
 - `docs/scripts/_template.md` — template for documenting new scripts.
 - `scripts/install-to-bin.sh` — install scripts into `~/bin`.
 - `scripts/README.md` — documentation for helper scripts.
 - `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
+- `tests/enacom_mcp/` — tests for the ENACOM tracker reader/writer.
 - `.github/pull_request_template.md` — default PR checklist/template.
 - `AGENTS.md` — guidance for coding agents working in this repository.
 - `LICENSE` — repository license.
@@ -100,6 +103,11 @@ These rules apply to all current and future scripts, regardless of language.
   raw image for high-entropy regions not covered by recovered files; cross-references
   the recovery manifest to flag potential gaps; see
   [`docs/scripts/entropy_scanner.md`](./docs/scripts/entropy_scanner.md).
+- [`enacom_mcp/`](./enacom_mcp/): MCP server (Python package) that automates
+  ENACOM Hertz DDJJ filings (TCFV / SU-M) for TIC licensees via Playwright,
+  with a dry-run-by-default safety switch. Includes
+  `enacom_mcp.scripts.make_tracker` to generate the Excel tracker.
+  See [`docs/scripts/enacom_mcp.md`](./docs/scripts/enacom_mcp.md).
 
 ## Optional Libraries (media_carver)
 
