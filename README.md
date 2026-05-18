@@ -66,8 +66,10 @@ These rules apply to all current and future scripts, regardless of language.
 
 - `media_carver.py` — media recovery script for raw images/devices.
 - `enacom_mcp/` — MCP server for automating ENACOM Hertz DDJJ filings (Python package).
+- `local_llm_mcp/` — MCP server that lets Claude Desktop optionally call local OpenAI-compatible LLMs.
 - `docs/scripts/media_carver.md` — script-specific documentation.
 - `docs/scripts/enacom_mcp.md` — script-specific documentation.
+- `docs/scripts/local_llm_mcp.md` — script-specific documentation.
 - `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
 - `docs/workflow-sd-card-recovery.md` — benchmark results from SD card test run.
 - `docs/scripts/_template.md` — template for documenting new scripts.
@@ -108,6 +110,14 @@ These rules apply to all current and future scripts, regardless of language.
   with a dry-run-by-default safety switch. Includes
   `enacom_mcp.scripts.make_tracker` to generate the Excel tracker.
   See [`docs/scripts/enacom_mcp.md`](./docs/scripts/enacom_mcp.md).
+- [`local_llm_mcp/`](./local_llm_mcp/): MCP server (Python package) that keeps
+  Claude Desktop running normally on hosted Claude while optionally exposing
+  tools backed by a local OpenAI-compatible endpoint such as LM Studio or
+  Ollama. Includes the `claude-local-api-mode` toggle CLI for turning those
+  local tools on and off without editing Claude Desktop config each time, plus
+  optional JSONL debug logging so you can see when Claude actually delegated
+  to the local backend. See
+  [`docs/scripts/local_llm_mcp.md`](./docs/scripts/local_llm_mcp.md).
 
 ## Optional Libraries (media_carver)
 

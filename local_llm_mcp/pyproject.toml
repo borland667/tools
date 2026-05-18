@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-llm-mcp"
+version = "0.1.0"
+description = "MCP server that lets Claude Desktop optionally call local OpenAI-compatible LLM APIs"
+authors = [{name = "Osvaldo Demo", email = "demoosvaldo@gmail.com"}]
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+local-llm-mcp = "local_llm_mcp.__main__:main"
+claude-local-api-mode = "local_llm_mcp.mode:cli_main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
