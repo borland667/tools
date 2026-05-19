@@ -69,11 +69,13 @@ These rules apply to all current and future scripts, regardless of language.
 - `local_llm_mcp/` — MCP server that lets Claude Desktop optionally call local OpenAI-compatible LLMs.
 - `lmstudio_claude_bridge/` — local Anthropic-compatible bridge that lets Claude Code talk to LM Studio while keeping the model picker populated from LM Studio's live model list.
 - `scripts/run_openhands_with_lmstudio.sh` — launcher for running OpenHands against LM Studio's local OpenAI-compatible API.
+- `scripts/run_openclaw_local_gateway.sh` — launcher for running the OpenClaw gateway in localhost-only mode.
 - `docs/scripts/media_carver.md` — script-specific documentation.
 - `docs/scripts/enacom_mcp.md` — script-specific documentation.
 - `docs/scripts/local_llm_mcp.md` — script-specific documentation.
 - `docs/scripts/lmstudio_claude_bridge.md` — script-specific documentation.
 - `docs/scripts/openhands_lmstudio.md` — script-specific documentation.
+- `docs/scripts/openclaw_local_gateway.md` — script-specific documentation.
 - `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
 - `docs/workflow-sd-card-recovery.md` — benchmark results from SD card test run.
 - `docs/scripts/_template.md` — template for documenting new scripts.
@@ -123,17 +125,26 @@ These rules apply to all current and future scripts, regardless of language.
   to the local backend. See
   [`docs/scripts/local_llm_mcp.md`](./docs/scripts/local_llm_mcp.md).
 - [`lmstudio_claude_bridge/`](./lmstudio_claude_bridge/): small Node bridge for
-  running Claude Code against a local LM Studio server through Anthropic-style
-  `/v1/messages`, while also syncing LM Studio's available models into Claude
-  Code's `additionalModelOptionsCache` so the app's model picker stays
-  selectable. Includes a launcher that starts Claude in a local-only-friendly
-  mode and prefers `abliterated` or `uncensored` model variants when present.
-  See [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
+  running Anthropic-style Claude clients against a local LM Studio server
+  through `/v1/messages`. It supports both `Claude Code` and Claude Desktop /
+  Cowork 3P `gateway` mode, rewrites provider-facing Anthropic model aliases to
+  local LM Studio model ids, can route tool-heavy requests to a more reliable
+  local tool-calling model, and can be kept alive through `launchd` for Desktop
+  use. The current Desktop/Cowork setup still uses bridge-backed local models
+  only in the 3P picker; it does not merge hosted Claude models into the same
+  dropdown, and plugin availability is a separate organization/marketplace
+  system. See
+  [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
 - [`scripts/run_openhands_with_lmstudio.sh`](./scripts/run_openhands_with_lmstudio.sh):
   launcher for running OpenHands against LM Studio's local OpenAI-compatible
   API. It verifies `/v1/models`, exports the required `LLM_*` variables, and
   optionally tries `lms server start` when the local API is down. See
   [`docs/scripts/openhands_lmstudio.md`](./docs/scripts/openhands_lmstudio.md).
+- [`scripts/run_openclaw_local_gateway.sh`](./scripts/run_openclaw_local_gateway.sh):
+  launcher for starting the OpenClaw gateway in localhost-only mode. It
+  persists `gateway.mode=local`, `gateway.bind=loopback`, and the selected
+  port before starting `openclaw gateway run --bind loopback ...`. See
+  [`docs/scripts/openclaw_local_gateway.md`](./docs/scripts/openclaw_local_gateway.md).
 
 ## Optional Libraries (media_carver)
 

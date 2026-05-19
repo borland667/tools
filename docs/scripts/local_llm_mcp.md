@@ -8,6 +8,12 @@ local `LiteLLM` proxy, while keeping Claude itself as the normal hosted model.
 When local mode is enabled, the server pushes Claude Desktop to use the local
 LLM as the primary response engine for most ordinary requests.
 
+If you want Claude Desktop / Claude Cowork to treat a local backend as the
+primary inference provider through 3P `gateway` mode, use
+[`lmstudio_claude_bridge`](/Users/borland/tools/lmstudio_claude_bridge/README.md)
+instead. This package is the delegation path, not the provider-replacement
+path.
+
 Use this when:
 
 - You want to keep using Claude Desktop normally for everyday work.
@@ -18,6 +24,8 @@ Use this when:
 Do NOT use this for:
 
 - Replacing Claude Desktop's main model. This package does not do that.
+- Populating the Cowork/Desktop 3P model picker with local models.
+- Populating the Cowork/Desktop Plugins directory.
 - Non-OpenAI-compatible endpoints unless you place a compatibility proxy in
   front of them.
 
@@ -68,6 +76,15 @@ Add it to Claude Desktop:
   }
 }
 ```
+
+Be careful to edit the config file the running app actually uses. Some installs
+use:
+
+- `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+and others, including the current machine during validation, use:
+
+- `~/Library/Application Support/Claude-3p/claude_desktop_config.json`
 
 Enable local API mode:
 
@@ -140,6 +157,13 @@ Useful events:
 
 If a prompt does not generate `mcp.tools_call` or `ask_local_llm.*`, Claude
 did not delegate that request to the local backend.
+
+If you only need to confirm that Claude loaded the MCP server at startup, the
+strongest first events are:
+
+- `server.start`
+- `mcp.initialize`
+- `mcp.tools_list`
 
 ### Let Claude call a local Ollama model
 
@@ -234,6 +258,19 @@ Output:
   That is useful for Qwen-style models but not universal.
 - The server exposes no tools when disabled, so mode status must be checked
   with the CLI in that state.
+- Claude remains the host model. Delegation is a preference layer, not a full
+  backend swap.
+- This package does not populate the Claude Cowork / Desktop 3P gateway picker.
+- This package does not control Cowork/Desktop plugin availability.
+
+## Relationship to `lmstudio_claude_bridge`
+
+- `local_llm_mcp` keeps hosted Claude as the main app model and adds optional
+  local tool calls.
+- `lmstudio_claude_bridge` points Anthropic-style clients at LM Studio through
+  an Anthropic-compatible local HTTP bridge.
+- If your goal is "use Qwen from Cowork's 3P provider picker", you want the
+  bridge, not this MCP package.
 
 ## Validation Checklist
 
