@@ -107,3 +107,48 @@ Headless mode:
 ```bash
 scripts/run_openhands_with_lmstudio.sh -- --headless --task "Reply with hello"
 ```
+
+## `run_openclaw_local_gateway.sh`
+
+Start the `OpenClaw` gateway in localhost-only mode.
+
+The helper:
+
+- sets `gateway.mode` to `local`,
+- sets `gateway.bind` to `loopback`,
+- sets the configured gateway port,
+- runs `openclaw gateway run --bind loopback ...`,
+- refuses passthrough `--bind` and `--port` overrides that would weaken the
+  local-only posture.
+
+### Usage
+
+```bash
+scripts/run_openclaw_local_gateway.sh [options] [-- <openclaw-gateway-args...>]
+```
+
+### Options
+
+- `--port <port>`: override the gateway port
+- `--dry-run`: print the commands without executing them
+- `-h`, `--help`: show help
+
+### Examples
+
+Start the normal localhost-only gateway:
+
+```bash
+scripts/run_openclaw_local_gateway.sh
+```
+
+Use a different loopback port:
+
+```bash
+scripts/run_openclaw_local_gateway.sh --port 19001
+```
+
+Preview the exact `openclaw` commands:
+
+```bash
+scripts/run_openclaw_local_gateway.sh --dry-run
+```

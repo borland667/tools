@@ -143,7 +143,9 @@ These rules apply to all current and future scripts, regardless of language.
 - [`scripts/run_openclaw_local_gateway.sh`](./scripts/run_openclaw_local_gateway.sh):
   launcher for starting the OpenClaw gateway in localhost-only mode. It
   persists `gateway.mode=local`, `gateway.bind=loopback`, and the selected
-  port before starting `openclaw gateway run --bind loopback ...`. See
+  port before starting `openclaw gateway run --bind loopback ...`. The
+  companion doc also covers Gateway auth, local-only model backends, and safer
+  Docker sandbox defaults. See
   [`docs/scripts/openclaw_local_gateway.md`](./docs/scripts/openclaw_local_gateway.md).
 
 ## Optional Libraries (media_carver)
