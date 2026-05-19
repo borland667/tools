@@ -61,3 +61,49 @@ Then reload your shell and verify:
 source ~/.bashrc
 which media_carver.py
 ```
+
+## `run_openhands_with_lmstudio.sh`
+
+Launch `OpenHands` against LM Studio's local OpenAI-compatible server with
+the required `LLM_*` environment variables already set.
+
+The helper:
+
+- checks that `openhands` is installed,
+- verifies that the LM Studio `/v1/models` endpoint is reachable,
+- defaults to `openai/qwen/qwen3-coder-30b`,
+- passes through the rest of your `openhands` arguments unchanged.
+
+### Usage
+
+```bash
+scripts/run_openhands_with_lmstudio.sh [options] [-- <openhands-args...>]
+```
+
+### Options
+
+- `--model <id>`: override the OpenHands model id
+- `--base-url <url>`: override the LM Studio base URL
+- `--api-key <key>`: override the API key sent to LM Studio
+- `--start-lmstudio`: try `lms server start` if the API is not already up
+- `-h`, `--help`: show help
+
+### Examples
+
+Open the normal OpenHands CLI:
+
+```bash
+scripts/run_openhands_with_lmstudio.sh
+```
+
+Start with an initial task:
+
+```bash
+scripts/run_openhands_with_lmstudio.sh -- --task "Summarize this repo"
+```
+
+Headless mode:
+
+```bash
+scripts/run_openhands_with_lmstudio.sh -- --headless --task "Reply with hello"
+```

@@ -67,9 +67,13 @@ These rules apply to all current and future scripts, regardless of language.
 - `media_carver.py` — media recovery script for raw images/devices.
 - `enacom_mcp/` — MCP server for automating ENACOM Hertz DDJJ filings (Python package).
 - `local_llm_mcp/` — MCP server that lets Claude Desktop optionally call local OpenAI-compatible LLMs.
+- `lmstudio_claude_bridge/` — local Anthropic-compatible bridge that lets Claude Code talk to LM Studio while keeping the model picker populated from LM Studio's live model list.
+- `scripts/run_openhands_with_lmstudio.sh` — launcher for running OpenHands against LM Studio's local OpenAI-compatible API.
 - `docs/scripts/media_carver.md` — script-specific documentation.
 - `docs/scripts/enacom_mcp.md` — script-specific documentation.
 - `docs/scripts/local_llm_mcp.md` — script-specific documentation.
+- `docs/scripts/lmstudio_claude_bridge.md` — script-specific documentation.
+- `docs/scripts/openhands_lmstudio.md` — script-specific documentation.
 - `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
 - `docs/workflow-sd-card-recovery.md` — benchmark results from SD card test run.
 - `docs/scripts/_template.md` — template for documenting new scripts.
@@ -118,6 +122,18 @@ These rules apply to all current and future scripts, regardless of language.
   optional JSONL debug logging so you can see when Claude actually delegated
   to the local backend. See
   [`docs/scripts/local_llm_mcp.md`](./docs/scripts/local_llm_mcp.md).
+- [`lmstudio_claude_bridge/`](./lmstudio_claude_bridge/): small Node bridge for
+  running Claude Code against a local LM Studio server through Anthropic-style
+  `/v1/messages`, while also syncing LM Studio's available models into Claude
+  Code's `additionalModelOptionsCache` so the app's model picker stays
+  selectable. Includes a launcher that starts Claude in a local-only-friendly
+  mode and prefers `abliterated` or `uncensored` model variants when present.
+  See [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
+- [`scripts/run_openhands_with_lmstudio.sh`](./scripts/run_openhands_with_lmstudio.sh):
+  launcher for running OpenHands against LM Studio's local OpenAI-compatible
+  API. It verifies `/v1/models`, exports the required `LLM_*` variables, and
+  optionally tries `lms server start` when the local API is down. See
+  [`docs/scripts/openhands_lmstudio.md`](./docs/scripts/openhands_lmstudio.md).
 
 ## Optional Libraries (media_carver)
 
