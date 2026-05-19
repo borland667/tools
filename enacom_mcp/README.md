@@ -21,7 +21,7 @@ MCP server that automates DDJJ filings on ENACOM's **Portal Hertz** for TIC lice
 ## Install
 
 ```bash
-cd ~/tools/enacom_mcp        # the directory containing pyproject.toml
+cd <repo-root>/enacom_mcp    # the directory containing pyproject.toml
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .             # installs the enacom_mcp package from src/
@@ -45,7 +45,7 @@ python -m enacom_mcp.scripts.make_tracker \
     --razon-social "NOMBRE APELLIDO" \
     --tcfv 2023-01:2024-12,2025-06:2025-12 \
     --su-m 2023-01:2024-12,2025-07:2025-12 \
-    --output ~/enacom/tracker.xlsx
+    --output ./tracker.xlsx
 ```
 
 Then point `ENACOM_TRACKER_PATH` in `.env` at that file.
@@ -61,7 +61,7 @@ This starts an MCP server over stdio. Wire it up in your MCP client of choice (C
 ### Claude Desktop config (example)
 
 ```jsonc
-// ~/Library/Application Support/Claude/claude_desktop_config.json
+// $HOME/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "enacom-ddjj": {

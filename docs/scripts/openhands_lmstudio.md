@@ -22,13 +22,13 @@ Use this when:
 
 Optional:
 
-- `~/.lmstudio/bin/lms` if you want the helper to try starting LM Studio with
+- `$HOME/.lmstudio/bin/lms` if you want the helper to try starting LM Studio with
   `--start-lmstudio`
 
 ## Quick Start
 
 ```bash
-cd /Users/borland/tools
+cd <repo-root>
 scripts/run_openhands_with_lmstudio.sh
 ```
 
@@ -80,7 +80,7 @@ scripts/run_openhands_with_lmstudio.sh --start-lmstudio
 - `--api-key <key>`: override the API key sent to LM Studio. The default is
   `lmstudio`.
 - `--start-lmstudio`: if the API is unreachable, try starting it with
-  `~/.lmstudio/bin/lms server start`.
+  `$HOME/.lmstudio/bin/lms server start`.
 - `--`: stop parsing launcher flags and pass the remaining arguments straight
   to `openhands`.
 - `-h`, `--help`: show help text.
@@ -142,5 +142,5 @@ Side effects:
 
 - Update this doc if the default model, launcher flags, or LM Studio startup
   behavior changes.
-- Keep `/Users/borland/tools/README.md` and `/Users/borland/tools/scripts/README.md`
-  in sync with the helper name and usage.
+- Keep the repository `README.md` and `scripts/README.md` in sync with the
+  helper name and usage.

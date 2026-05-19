@@ -79,7 +79,7 @@ These rules apply to all current and future scripts, regardless of language.
 - `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
 - `docs/workflow-sd-card-recovery.md` — benchmark results from SD card test run.
 - `docs/scripts/_template.md` — template for documenting new scripts.
-- `scripts/install-to-bin.sh` — install scripts into `~/bin`.
+- `scripts/install-to-bin.sh` — install scripts into `$HOME/bin`.
 - `scripts/README.md` — documentation for helper scripts.
 - `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
 - `tests/enacom_mcp/` — tests for the ENACOM tracker reader/writer.
@@ -169,9 +169,9 @@ For full details (benefits, startup warnings, and install guidance), see
 3. Add the script to the repository layout and script index above.
 4. Include at least one realistic usage example.
 
-## Running Scripts via PATH (`~/bin`)
+## Running Scripts via PATH (`$HOME/bin`)
 
-Use the helper installer to expose scripts via `~/bin`:
+Use the helper installer to expose scripts via `$HOME/bin`:
 
 ```bash
 scripts/install-to-bin.sh media_carver.py
@@ -189,7 +189,7 @@ Preview actions without changes:
 scripts/install-to-bin.sh --all --dry-run
 ```
 
-If `~/bin` is not in PATH, add:
+If `$HOME/bin` is not in PATH, add:
 
 ```bash
 export PATH="$HOME/bin:$PATH"

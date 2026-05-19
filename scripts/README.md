@@ -4,7 +4,7 @@ Helper scripts for repository maintenance and automation.
 
 ## `install-to-bin.sh`
 
-Install one or more repository scripts into `~/bin` so they are runnable from
+Install one or more repository scripts into `$HOME/bin` so they are runnable from
 `$PATH`.
 
 By default, installation uses symlinks (recommended), so updates in this repo
@@ -20,8 +20,8 @@ scripts/install-to-bin.sh [options] --all
 ### Options
 
 - `--all`: install all top-level executable scripts from repo root
-- `--copy`: copy files to `~/bin` instead of symlinking
-- `--force`: replace existing file/link in `~/bin`
+- `--copy`: copy files to `$HOME/bin` instead of symlinking
+- `--force`: replace existing file/link in `$HOME/bin`
 - `--dry-run`: print actions without changing files
 - `-h`, `--help`: show help
 
@@ -49,7 +49,7 @@ scripts/install-to-bin.sh --all --dry-run
 
 ### PATH setup
 
-If `~/bin` is not already in your Bash PATH, add this to `~/.bashrc`:
+If `$HOME/bin` is not already in your Bash PATH, add this to `$HOME/.bashrc`:
 
 ```bash
 export PATH="$HOME/bin:$PATH"
@@ -58,7 +58,7 @@ export PATH="$HOME/bin:$PATH"
 Then reload your shell and verify:
 
 ```bash
-source ~/.bashrc
+source "$HOME/.bashrc"
 which media_carver.py
 ```
 

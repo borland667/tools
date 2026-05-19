@@ -85,7 +85,7 @@ brew update
 brew install pyenv
 ```
 
-Add to Bash profile (`~/.bashrc`):
+Add to Bash profile (`$HOME/.bashrc`):
 
 ```bash
 export PYENV_ROOT="$HOME/.pyenv"
@@ -96,7 +96,7 @@ eval "$(pyenv init - bash)"
 Reload shell:
 
 ```bash
-source ~/.bashrc
+source "$HOME/.bashrc"
 ```
 
 ### 2) Install Python and set local version

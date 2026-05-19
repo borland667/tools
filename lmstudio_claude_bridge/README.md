@@ -3,7 +3,7 @@
 This bridge lets Anthropic-style Claude clients talk to a local LM Studio
 server while keeping the client's model picker usable.
 
-It currently supports two practical workflows on this machine:
+It currently supports two practical workflows:
 
 - `Claude Code`: launched with environment variables that point directly at the
   local bridge.
@@ -21,7 +21,7 @@ adds the missing glue:
 
 ## Which local tool to use
 
-- Use [`local_llm_mcp`](/Users/borland/tools/local_llm_mcp/README.md) if you
+- Use [`local_llm_mcp`](../local_llm_mcp/README.md) if you
   want normal hosted Claude plus optional local tool delegation inside Claude
   Desktop.
 - Use this bridge if you want the client's primary inference path to go to LM
@@ -29,8 +29,8 @@ adds the missing glue:
 
 ## Files
 
-- [bridge.mjs](/Users/borland/tools/lmstudio_claude_bridge/bridge.mjs)
-- [run_claude_with_lmstudio.sh](/Users/borland/tools/lmstudio_claude_bridge/run_claude_with_lmstudio.sh)
+- [bridge.mjs](./bridge.mjs)
+- [run_claude_with_lmstudio.sh](./run_claude_with_lmstudio.sh)
 
 ## Requirements
 
@@ -43,15 +43,55 @@ LM Studio docs used for this bridge:
 - [Messages](https://lmstudio.ai/docs/developer/anthropic-compat/messages)
 - [List Models](https://lmstudio.ai/docs/developer/openai-compat/models)
 
+## Prepare LM Studio Models
+
+The bridge only discovers models that LM Studio already knows about. Before
+setting up Claude Desktop or Claude Code against the bridge, make sure the
+models you want are downloaded and visible to LM Studio.
+
+Typical options:
+
+- Download them in the LM Studio app UI.
+- Or use the `lms` CLI to download and load them.
+
+Example CLI flow:
+
+```bash
+"$HOME/.lmstudio/bin/lms" get qwen/qwen3-coder-30b --gguf -y
+"$HOME/.lmstudio/bin/lms" get qwen/qwen3.5-32b --gguf -y
+"$HOME/.lmstudio/bin/lms" load qwen/qwen3-coder-30b -y
+"$HOME/.lmstudio/bin/lms" load qwen/qwen3.5-32b -y
+```
+
+If you prefer MLX variants on Apple Silicon, switch `--gguf` to `--mlx`.
+
+After downloading and loading, start the LM Studio API server if it is not
+already running:
+
+```bash
+"$HOME/.lmstudio/bin/lms" server start --port 1234
+```
+
+Then verify model discovery through the API:
+
+```bash
+curl http://127.0.0.1:1234/v1/models
+```
+
+The bridge and its `sync-models` command rely on that endpoint. If the model
+you want does not appear there, Claude will not be able to route to it through
+the bridge.
+
 ## Quick Start
 
 ### Claude Code
 
-1. Start LM Studio's local server.
-2. Run:
+1. Make sure your target models are already downloaded and loaded in LM Studio.
+2. Start LM Studio's local server.
+3. Run:
 
 ```bash
-cd /Users/borland/tools/lmstudio_claude_bridge
+cd <repo-root>/lmstudio_claude_bridge
 ./run_claude_with_lmstudio.sh
 ```
 
@@ -68,24 +108,25 @@ That launcher will:
 
 ### Claude Desktop / Claude Cowork 3P mode
 
-This is the setup we validated locally.
+This is a typical local setup.
 
-1. Start LM Studio's local server on `http://127.0.0.1:1234`.
-2. Verify LM Studio responds:
+1. Make sure your target models are already downloaded and loaded in LM Studio.
+2. Start LM Studio's local server on `http://127.0.0.1:1234`.
+3. Verify LM Studio responds:
 
 ```bash
 curl http://127.0.0.1:1234/v1/models
 ```
 
-3. Sync the bridge's model cache:
+4. Sync the bridge's model cache:
 
 ```bash
-cd /Users/borland/tools/lmstudio_claude_bridge
-/usr/local/bin/node bridge.mjs sync-models
+cd <repo-root>/lmstudio_claude_bridge
+node bridge.mjs sync-models
 ```
 
-4. Keep the bridge running on `http://127.0.0.1:1245`.
-   On this machine we use a LaunchAgent:
+5. Keep the bridge running on `http://127.0.0.1:1245`.
+   One option is a user LaunchAgent:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -93,11 +134,11 @@ cd /Users/borland/tools/lmstudio_claude_bridge
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.borland.lmstudio-claude-bridge</string>
+  <string>&lt;launch-agent-label&gt;</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/node</string>
-    <string>/Users/borland/tools/lmstudio_claude_bridge/bridge.mjs</string>
+    <string>/path/to/node</string>
+    <string>/path/to/repo/lmstudio_claude_bridge/bridge.mjs</string>
     <string>serve</string>
   </array>
   <key>EnvironmentVariables</key>
@@ -119,32 +160,45 @@ cd /Users/borland/tools/lmstudio_claude_bridge
 </plist>
 ```
 
-5. Load that LaunchAgent:
+6. Load that LaunchAgent:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist
+launchctl bootstrap gui/$(id -u) "<path-to-launch-agent-plist>"
 ```
 
-6. Confirm the bridge is healthy:
+7. Confirm the bridge is healthy:
 
 ```bash
 curl http://127.0.0.1:1245/healthz
 ```
 
-7. Point Claude Desktop's active 3P provider config at the bridge.
-   On this machine, the active provider id lives in:
+8. Point Claude Desktop's active 3P provider config at the bridge.
+   The active provider id typically lives in:
 
 ```bash
-~/Library/Application Support/Claude-3p/configLibrary/_meta.json
+$HOME/Library/Application Support/Claude-3p/configLibrary/_meta.json
 ```
 
 and the provider JSON itself lives in:
 
 ```bash
-~/Library/Application Support/Claude-3p/configLibrary/<provider-id>.json
+$HOME/Library/Application Support/Claude-3p/configLibrary/<provider-id>.json
 ```
 
-Set it to a fixed `gateway` config like:
+Before editing, make a backup copy of that provider JSON.
+
+In the active provider JSON, keep unrelated UI fields as they are and update
+the inference-related fields so they match the bridge. At minimum, make sure
+these keys have these values:
+
+- `"inferenceProvider": "gateway"`
+- `"inferenceGatewayBaseUrl": "http://127.0.0.1:1245"`
+- `"inferenceGatewayAuthScheme": "bearer"`
+- `"inferenceGatewayApiKey": "lmstudio"`
+- `"modelDiscoveryEnabled": false`
+
+Then replace the provider-facing model list with Anthropic-style ids that the
+bridge knows how to rewrite. A known-good example is:
 
 ```json
 {
@@ -167,12 +221,40 @@ Set it to a fixed `gateway` config like:
 }
 ```
 
-8. Restart Claude Desktop.
-9. Verify Claude is now targeting the bridge:
+What each JSON field is doing:
+
+- `inferenceProvider`: switches the provider into 3P gateway mode.
+- `inferenceGatewayBaseUrl`: points Claude Desktop at the local bridge, not at
+  LM Studio directly.
+- `inferenceGatewayAuthScheme`: keeps the provider on bearer-style auth.
+- `inferenceGatewayApiKey`: placeholder token the local bridge accepts.
+- `modelDiscoveryEnabled`: disables provider-side discovery so the app keeps
+  using the explicit model list below.
+- `inferenceModels`: the list shown in the Claude Desktop picker.
+- `inferenceModels[].name`: provider-facing ids Claude Desktop expects.
+- `inferenceModels[].labelOverride`: the human-readable labels you want shown
+  in the picker.
+
+Two important details:
+
+- Do not put raw LM Studio model ids such as `qwen/...` into
+  `inferenceModels[].name`. Keep Anthropic-style names there and let the bridge
+  rewrite them.
+- Do not point `inferenceGatewayBaseUrl` at `http://127.0.0.1:1234`. That
+  would bypass the bridge and lose the model-rewrite behavior.
+
+After saving the provider JSON, validate that it is still well-formed:
 
 ```bash
-rg "inference apiHost=http://127.0.0.1:1245" ~/Library/Logs/Claude-3p/main.log
-tail -f ~/Library/Logs/lmstudio-claude-bridge.log
+python -m json.tool "$HOME/Library/Application Support/Claude-3p/configLibrary/<provider-id>.json" >/dev/null
+```
+
+9. Restart Claude Desktop.
+10. Verify Claude is now targeting the bridge:
+
+```bash
+rg "inference apiHost=http://127.0.0.1:1245" "$HOME/Library/Logs/Claude-3p/main.log"
+tail -f "$HOME/Library/Logs/lmstudio-claude-bridge.log"
 ```
 
 You should see bridge rewrite lines such as:
@@ -212,7 +294,7 @@ export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_DISABLE_THINKING=1
 ```
 
-The launcher avoids Claude Code flags that are unavailable in older installations and relies on environment variables only. On this machine, that keeps the bridge compatible with Claude Code `2.1.74`.
+The launcher avoids Claude Code flags that are unavailable in older installations and relies on environment variables only.
 
 ## Model Selection
 
@@ -276,7 +358,7 @@ rejected as not usable.
   `unreachable` during startup even when real runtime inference is flowing
   through the bridge. Check the bridge log before assuming inference is broken.
 - Some local models still make malformed tool calls in Cowork/Desktop even when
-  they advertise tool-use support. During validation on this machine,
+  they advertise tool-use support. In one validation run,
   `qwen3.6-35b-a3b-abliterated-heretic-mlx` produced a `TaskCreate` call
   without the required `description`, while `qwen/qwen3-coder-30b` returned a
   valid tool payload immediately. `CLAUDE_LMSTUDIO_TOOL_MODEL` exists to
@@ -290,12 +372,12 @@ The local bridge only changes where inference requests go. It does not provide
 plugins or marketplaces.
 
 The current Cowork/Desktop 3P plugin UI is organization/marketplace driven.
-On this machine we observed:
+For example:
 
-- the Plugins directory says the organization has not provided plugins,
-- no organization plugin directory exists yet under
+- the Plugins directory may say the organization has not provided plugins,
+- no organization plugin directory may exist yet under
   `/Library/Application Support/Claude/org-plugins`,
-- no local plugin marketplace has been configured for the current 3P org.
+- no local plugin marketplace may be configured for the current 3P org.
 
 So if you want plugins in Claude Cowork with the local bridge, you need a
 separate plugin distribution path:

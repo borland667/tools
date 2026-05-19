@@ -43,12 +43,46 @@ Optional:
 
 The bridge is standard-library Node only.
 
+## Prepare LM Studio Models
+
+The bridge only discovers models that LM Studio already knows about. Before
+using the bridge, make sure the models you want are downloaded and visible to
+LM Studio.
+
+You can do that either in the LM Studio app UI or through the `lms` CLI.
+
+Example CLI flow:
+
+```bash
+"$HOME/.lmstudio/bin/lms" get qwen/qwen3-coder-30b --gguf -y
+"$HOME/.lmstudio/bin/lms" get qwen/qwen3.5-32b --gguf -y
+"$HOME/.lmstudio/bin/lms" load qwen/qwen3-coder-30b -y
+"$HOME/.lmstudio/bin/lms" load qwen/qwen3.5-32b -y
+```
+
+If you prefer MLX variants on Apple Silicon, switch `--gguf` to `--mlx`.
+
+Start the LM Studio API server if needed:
+
+```bash
+"$HOME/.lmstudio/bin/lms" server start --port 1234
+```
+
+Then verify that the models are discoverable:
+
+```bash
+curl http://127.0.0.1:1234/v1/models
+```
+
+If the model you expect is missing from `/v1/models`, `sync-models` will not
+add it to Claude-facing model options and the bridge will not route to it.
+
 ## Quick Start
 
 ### Claude Code
 
 ```bash
-cd /Users/borland/tools/lmstudio_claude_bridge
+cd <repo-root>/lmstudio_claude_bridge
 ./run_claude_with_lmstudio.sh
 ```
 
@@ -72,44 +106,57 @@ The Desktop/Cowork 3P path needs two pieces:
 
 Step by step:
 
-1. Start LM Studio's local server.
-2. Verify LM Studio responds:
+1. Make sure your target models are already downloaded and loaded in LM Studio.
+2. Start LM Studio's local server.
+3. Verify LM Studio responds:
 
 ```bash
 curl http://127.0.0.1:1234/v1/models
 ```
 
-3. Sync the bridge model cache:
+4. Sync the bridge model cache:
 
 ```bash
-cd /Users/borland/tools/lmstudio_claude_bridge
-/usr/local/bin/node bridge.mjs sync-models
+cd <repo-root>/lmstudio_claude_bridge
+node bridge.mjs sync-models
 ```
 
-4. Keep the bridge running continuously.
-   On this machine we use a user LaunchAgent:
+5. Keep the bridge running continuously.
+   One option is a user LaunchAgent:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist
+launchctl bootstrap gui/$(id -u) "<path-to-launch-agent-plist>"
 ```
 
-5. Verify bridge health:
+6. Verify bridge health:
 
 ```bash
 curl http://127.0.0.1:1245/healthz
-tail -f ~/Library/Logs/lmstudio-claude-bridge.log
+tail -f "$HOME/Library/Logs/lmstudio-claude-bridge.log"
 ```
 
-6. Find Claude Desktop's active 3P provider config:
+7. Find Claude Desktop's active 3P provider config:
 
 ```bash
-cat ~/Library/Application\ Support/Claude-3p/configLibrary/_meta.json
+cat "$HOME/Library/Application Support/Claude-3p/configLibrary/_meta.json"
 ```
 
 That file points at an active provider id. Edit the matching provider JSON in
-`~/Library/Application Support/Claude-3p/configLibrary/`.
+`$HOME/Library/Application Support/Claude-3p/configLibrary/`.
 
-7. Use a fixed provider config like:
+8. Before editing, make a backup copy of the active provider JSON.
+
+9. In that active provider JSON, leave unrelated UI fields alone and update
+   the inference-related fields so they match the bridge. At minimum, ensure:
+
+   - `"inferenceProvider": "gateway"`
+   - `"inferenceGatewayBaseUrl": "http://127.0.0.1:1245"`
+   - `"inferenceGatewayAuthScheme": "bearer"`
+   - `"inferenceGatewayApiKey": "lmstudio"`
+   - `"modelDiscoveryEnabled": false`
+
+10. Replace the provider-facing model list with Anthropic-style ids that the
+   bridge rewrites. A known-good example is:
 
 ```json
 {
@@ -132,17 +179,43 @@ That file points at an active provider id. Edit the matching provider JSON in
 }
 ```
 
-8. Restart Claude Desktop.
-9. Verify the app actually targets the bridge:
+What each JSON field is doing:
+
+- `inferenceProvider`: enables 3P gateway mode.
+- `inferenceGatewayBaseUrl`: points the app at the local bridge.
+- `inferenceGatewayAuthScheme`: keeps the gateway auth mode on bearer.
+- `inferenceGatewayApiKey`: placeholder token accepted by the bridge.
+- `modelDiscoveryEnabled`: forces Claude Desktop to use the explicit model
+  list instead of provider-side discovery.
+- `inferenceModels`: the list shown in the picker.
+- `inferenceModels[].name`: provider-facing Anthropic-style ids.
+- `inferenceModels[].labelOverride`: honest labels for the local models those
+  ids map to.
+
+Two important details:
+
+- Do not put raw LM Studio ids such as `qwen/...` into
+  `inferenceModels[].name`; the bridge expects Anthropic-style aliases there.
+- Do not point `inferenceGatewayBaseUrl` at `http://127.0.0.1:1234`, because
+  that bypasses the bridge and loses alias rewriting.
+
+11. Validate the JSON file after saving:
 
 ```bash
-rg "inference apiHost=http://127.0.0.1:1245" ~/Library/Logs/Claude-3p/main.log
+python -m json.tool "$HOME/Library/Application Support/Claude-3p/configLibrary/<provider-id>.json" >/dev/null
 ```
 
-10. Verify real model rewrites:
+12. Restart Claude Desktop.
+13. Verify the app actually targets the bridge:
 
 ```bash
-tail -f ~/Library/Logs/lmstudio-claude-bridge.log
+rg "inference apiHost=http://127.0.0.1:1245" "$HOME/Library/Logs/Claude-3p/main.log"
+```
+
+14. Verify real model rewrites:
+
+```bash
+tail -f "$HOME/Library/Logs/lmstudio-claude-bridge.log"
 ```
 
 Expected examples:
@@ -155,7 +228,7 @@ Expected examples:
 ### Run Claude Code against LM Studio
 
 ```bash
-cd /Users/borland/tools/lmstudio_claude_bridge
+cd <repo-root>/lmstudio_claude_bridge
 ./run_claude_with_lmstudio.sh
 ```
 
@@ -282,8 +355,8 @@ Input:
 - HTTP requests from Claude Desktop / Claude Cowork 3P gateway mode to the
   local bridge.
 - LM Studio model-list responses from `/api/v1/models` or `/v1/models`.
-- Claude Code global config JSON from `~/.claude/.config.json` or
-  `~/.claude.json` unless overridden.
+- Claude Code global config JSON from `$HOME/.claude/.config.json` or
+  `$HOME/.claude.json` unless overridden.
 
 Output:
 
@@ -354,7 +427,7 @@ Side effects:
 - `curl http://127.0.0.1:1245/healthz` succeeds while the bridge is running.
 - Claude Desktop logs `inference apiHost=http://127.0.0.1:1245` after the 3P
   provider is pointed at the bridge.
-- `~/Library/Logs/lmstudio-claude-bridge.log` shows `rewrite model ...` lines
+- `$HOME/Library/Logs/lmstudio-claude-bridge.log` shows `rewrite model ...` lines
   during real Cowork/Desktop traffic.
 
 ## Plugins in Claude Cowork
@@ -374,5 +447,5 @@ up one of those plugin distribution paths in addition to the bridge.
 
 - Update this doc when bridge commands, env vars, default model heuristics, or
   launcher behavior change.
-- Keep `/Users/borland/tools/README.md` in sync with the folder name and script
+- Keep the repository `README.md` in sync with the folder name and script
   description.

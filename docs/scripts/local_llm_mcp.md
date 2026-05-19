@@ -10,7 +10,7 @@ LLM as the primary response engine for most ordinary requests.
 
 If you want Claude Desktop / Claude Cowork to treat a local backend as the
 primary inference provider through 3P `gateway` mode, use
-[`lmstudio_claude_bridge`](/Users/borland/tools/lmstudio_claude_bridge/README.md)
+[`lmstudio_claude_bridge`](./lmstudio_claude_bridge.md)
 instead. This package is the delegation path, not the provider-replacement
 path.
 
@@ -44,7 +44,7 @@ The package is standard-library only.
 ## Quick Start
 
 ```bash
-cd ~/tools/local_llm_mcp
+cd <repo-root>/local_llm_mcp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -62,14 +62,14 @@ Add it to Claude Desktop:
 {
   "mcpServers": {
     "local-llm": {
-      "command": "/Users/borland/tools/local_llm_mcp/.venv/bin/python",
+      "command": "/path/to/repo/local_llm_mcp/.venv/bin/python",
       "args": ["-m", "local_llm_mcp"],
       "env": {
         "LOCAL_LLM_BASE_URL": "http://localhost:1234/v1",
         "LOCAL_LLM_MODEL": "qwen3.6-35b-a3b-abliterated-heretic-mlx",
         "LOCAL_LLM_API_KEY": "lmstudio",
         "LOCAL_LLM_MODE_DEFAULT": "false",
-        "LOCAL_LLM_DEBUG_LOG_FILE": "/Users/borland/.local-llm-mcp-debug.jsonl",
+        "LOCAL_LLM_DEBUG_LOG_FILE": "/path/to/debug/local-llm-mcp-debug.jsonl",
         "LOCAL_LLM_DISABLE_THINKING": "true"
       }
     }
@@ -80,16 +80,16 @@ Add it to Claude Desktop:
 Be careful to edit the config file the running app actually uses. Some installs
 use:
 
-- `~/Library/Application Support/Claude/claude_desktop_config.json`
+- `$HOME/Library/Application Support/Claude/claude_desktop_config.json`
 
-and others, including the current machine during validation, use:
+and others use:
 
-- `~/Library/Application Support/Claude-3p/claude_desktop_config.json`
+- `$HOME/Library/Application Support/Claude-3p/claude_desktop_config.json`
 
 Enable local API mode:
 
 ```bash
-/Users/borland/tools/local_llm_mcp/.venv/bin/claude-local-api-mode enable
+<repo-root>/local_llm_mcp/.venv/bin/claude-local-api-mode enable
 ```
 
 Restart Claude Desktop.
@@ -99,7 +99,7 @@ Restart Claude Desktop.
 ### Keep normal Claude and hide local tools
 
 ```bash
-/Users/borland/tools/local_llm_mcp/.venv/bin/claude-local-api-mode disable
+<repo-root>/local_llm_mcp/.venv/bin/claude-local-api-mode disable
 ```
 
 Restart Claude Desktop and use it as usual.
@@ -132,7 +132,7 @@ true model-backend swap.
 
 Set:
 
-- `LOCAL_LLM_DEBUG_LOG_FILE=/Users/borland/.local-llm-mcp-debug.jsonl`
+- `LOCAL_LLM_DEBUG_LOG_FILE=/path/to/debug/local-llm-mcp-debug.jsonl`
 
 Optional:
 
@@ -142,7 +142,7 @@ Optional:
 Then restart Claude Desktop and inspect the log:
 
 ```bash
-tail -f /Users/borland/.local-llm-mcp-debug.jsonl
+tail -f /path/to/debug/local-llm-mcp-debug.jsonl
 ```
 
 Useful events:
@@ -190,7 +190,7 @@ environment variables:
 - `LOCAL_LLM_TIMEOUT_SECONDS`: HTTP timeout, default `180`
 - `LOCAL_LLM_MAX_TOKENS`: default generation limit, default `2048`
 - `LOCAL_LLM_DISABLE_THINKING`: prepend `/no_think`, default `false`
-- `LOCAL_LLM_MODE_FILE`: JSON toggle-state file, default `~/.claude-local-api-mode.json`
+- `LOCAL_LLM_MODE_FILE`: JSON toggle-state file, default `$HOME/.claude-local-api-mode.json`
 - `LOCAL_LLM_MODE_DEFAULT`: whether tools are visible when the mode file is missing, default `false`
 - `LOCAL_LLM_DEBUG_LOG_FILE`: optional JSONL debug log path
 - `LOCAL_LLM_LOG_PROMPT_PREVIEW`: include prompt previews in the debug log, default `false`
