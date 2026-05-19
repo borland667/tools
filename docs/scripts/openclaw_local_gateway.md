@@ -25,7 +25,7 @@ Optional:
 ## Quick Start
 
 ```bash
-cd /Users/borland/tools
+cd <repo-root>
 scripts/run_openclaw_local_gateway.sh
 ```
 
@@ -227,5 +227,5 @@ ports:
 ## Maintenance Notes
 
 - Update this doc if the helper flags or default port change.
-- Keep `/Users/borland/tools/README.md` and `/Users/borland/tools/scripts/README.md`
-  in sync with the helper name and usage.
+- Keep the repository `README.md` and `scripts/README.md` in sync with the
+  helper name and usage.

@@ -47,7 +47,7 @@ python -m enacom_mcp.scripts.make_tracker \
     --razon-social "NOMBRE APELLIDO" \
     --tcfv 2023-01:2024-12,2025-06:2025-12 \
     --su-m 2023-01:2024-12,2025-07:2025-12 \
-    --output ~/enacom/tracker.xlsx
+    --output ./tracker.xlsx
 
 python -m enacom_mcp  # starts MCP server on stdio
 ```

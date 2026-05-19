@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "local-llm": {
-      "command": "/Users/borland/tools/local_llm_mcp/.venv/bin/python",
+      "command": "/path/to/repo/local_llm_mcp/.venv/bin/python",
       "args": [
         "-m",
         "local_llm_mcp"
@@ -11,7 +11,7 @@
         "LOCAL_LLM_MODEL": "qwen3.6-35b-a3b-abliterated-heretic-mlx",
         "LOCAL_LLM_API_KEY": "lmstudio",
         "LOCAL_LLM_MODE_DEFAULT": "false",
-        "LOCAL_LLM_DEBUG_LOG_FILE": "/Users/borland/.local-llm-mcp-debug.jsonl",
+        "LOCAL_LLM_DEBUG_LOG_FILE": "/path/to/debug/local-llm-mcp-debug.jsonl",
         "LOCAL_LLM_DISABLE_THINKING": "true",
         "LOCAL_LLM_MAX_TOKENS": "2048",
         "LOCAL_LLM_TIMEOUT_SECONDS": "180"

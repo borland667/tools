@@ -4,7 +4,7 @@ Small MCP server that keeps `Claude Desktop` running as normal hosted Claude, wh
 
 If you want Claude Desktop / Claude Cowork to send its primary inference
 traffic to a local backend through 3P `gateway` mode, use
-[`lmstudio_claude_bridge`](/Users/borland/tools/lmstudio_claude_bridge/README.md)
+[`lmstudio_claude_bridge`](../lmstudio_claude_bridge/README.md)
 instead. This MCP package is for hosted Claude plus optional local delegation.
 
 ## What it does
@@ -26,7 +26,7 @@ instead. This MCP package is for hosted Claude plus optional local delegation.
 ## Install
 
 ```bash
-cd ~/tools/local_llm_mcp
+cd <repo-root>/local_llm_mcp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -56,20 +56,20 @@ That starts the MCP server over stdio. Point Claude Desktop at that command usin
 ## Claude Desktop config example
 
 ```jsonc
-// Common path: ~/Library/Application Support/Claude/claude_desktop_config.json
-// On this machine the active app used:
-// ~/Library/Application Support/Claude-3p/claude_desktop_config.json
+// Example path: $HOME/Library/Application Support/Claude/claude_desktop_config.json
+// Some installs use:
+// $HOME/Library/Application Support/Claude-3p/claude_desktop_config.json
 {
   "mcpServers": {
     "local-llm": {
-      "command": "/Users/borland/tools/local_llm_mcp/.venv/bin/python",
+      "command": "/path/to/repo/local_llm_mcp/.venv/bin/python",
       "args": ["-m", "local_llm_mcp"],
       "env": {
         "LOCAL_LLM_BASE_URL": "http://localhost:1234/v1",
         "LOCAL_LLM_MODEL": "qwen3.6-35b-a3b-abliterated-heretic-mlx",
         "LOCAL_LLM_API_KEY": "lmstudio",
         "LOCAL_LLM_MODE_DEFAULT": "false",
-        "LOCAL_LLM_DEBUG_LOG_FILE": "/Users/borland/.local-llm-mcp-debug.jsonl",
+        "LOCAL_LLM_DEBUG_LOG_FILE": "/path/to/debug/local-llm-mcp-debug.jsonl",
         "LOCAL_LLM_DISABLE_THINKING": "true",
         "LOCAL_LLM_MAX_TOKENS": "2048",
         "LOCAL_LLM_TIMEOUT_SECONDS": "180"
@@ -89,9 +89,9 @@ actually reading. Some installs use `Claude`, others use `Claude-3p`.
 Hosted Claude stays available either way. These commands only control whether Claude can see and use the local tools.
 
 ```bash
-/Users/borland/tools/local_llm_mcp/.venv/bin/claude-local-api-mode enable
-/Users/borland/tools/local_llm_mcp/.venv/bin/claude-local-api-mode disable
-/Users/borland/tools/local_llm_mcp/.venv/bin/claude-local-api-mode status
+<repo-root>/local_llm_mcp/.venv/bin/claude-local-api-mode enable
+<repo-root>/local_llm_mcp/.venv/bin/claude-local-api-mode disable
+<repo-root>/local_llm_mcp/.venv/bin/claude-local-api-mode status
 ```
 
 Restart Claude Desktop after toggling.
@@ -110,7 +110,7 @@ To inspect real delegation events, set a debug log path in the Claude Desktop
 MCP config:
 
 ```json
-"LOCAL_LLM_DEBUG_LOG_FILE": "/Users/borland/.local-llm-mcp-debug.jsonl"
+"LOCAL_LLM_DEBUG_LOG_FILE": "/path/to/debug/local-llm-mcp-debug.jsonl"
 ```
 
 If you want short prompt previews in that log too, also set:
@@ -123,7 +123,7 @@ If you want short prompt previews in that log too, also set:
 Then restart Claude Desktop and watch the log:
 
 ```bash
-tail -f /Users/borland/.local-llm-mcp-debug.jsonl
+tail -f /path/to/debug/local-llm-mcp-debug.jsonl
 ```
 
 Useful events:
