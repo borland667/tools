@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "id": "qwen3-coder-30b-abliterated",
+      "object": "model",
+      "owned_by": "lmstudio"
+    },
+    {
+      "id": "qwen2.5-coder-7b-instruct-abliterated",
+      "object": "model",
+      "owned_by": "lmstudio"
+    },
+    {
+      "id": "gemma-3-12b-it",
+      "object": "model",
+      "owned_by": "lmstudio"
+    }
+  ]
+}
