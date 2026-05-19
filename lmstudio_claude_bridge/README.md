@@ -366,27 +366,176 @@ rejected as not usable.
 - Plugin availability is separate from inference. Pointing Claude Desktop at the
   local bridge does not populate the Plugins directory by itself.
 
+## Troubleshooting common runtime failures
+
+### "API Error: The socket connection was closed unexpectedly"
+
+If Cowork/Desktop shows:
+
+```text
+API Error: The socket connection was closed unexpectedly
+```
+
+that usually means the local model stream died while Claude was still reading
+it. In our validation, this was not a Cowork VM crash. The failing session
+stayed alive, but LM Studio or the upstream model closed the in-flight stream
+mid-turn.
+
+What to check:
+
+- `~/Library/Logs/Claude-3p/main.log`
+  - look for the affected `local_<session-id>` and lines such as
+    `Intermediate SDK error "unknown"` or `Turn failed`
+- `~/Library/Logs/lmstudio-claude-bridge.log`
+  - look for `[bridge] upstream request failed` or
+    `[bridge] upstream stream failed`
+- the session audit log under
+  `~/Library/Application Support/Claude-3p/local-agent-mode-sessions/.../audit.jsonl`
+  - this preserves the exact user-visible error message for the turn
+
+Bridge behavior:
+
+- The bridge now traps dropped upstream streams and emits an Anthropic-style
+  streaming error event instead of letting the HTTP socket die silently.
+- This makes the failure easier to diagnose and avoids the bridge looking like
+  it crashed locally when the real problem was upstream stream termination.
+
+Practical mitigations:
+
+- Set `CLAUDE_LMSTUDIO_TOOL_MODEL=qwen/qwen3-coder-30b` if the failure happens
+  during tool-heavy turns.
+- Consider setting `CLAUDE_LMSTUDIO_MAIN_MODEL=qwen/qwen3-coder-30b` as well if
+  the larger default chat model is unstable on your machine.
+- If the model is slow rather than broken, increase
+  `CLAUDE_LMSTUDIO_REQUEST_TIMEOUT_MS`.
+- Re-run the same task while tailing the bridge log:
+
+```bash
+tail -f ~/Library/Logs/lmstudio-claude-bridge.log
+```
+
+If the bridge logs repeated upstream stream failures, treat the local model or
+LM Studio runtime as the primary suspect before blaming Cowork itself.
+
 ## Plugins in Cowork
 
 The local bridge only changes where inference requests go. It does not provide
 plugins or marketplaces.
 
-The current Cowork/Desktop 3P plugin UI is organization/marketplace driven.
-For example:
+Claude's official Cowork on 3P docs describe three separate extension layers:
 
-- the Plugins directory may say the organization has not provided plugins,
-- no organization plugin directory may exist yet under
-  `/Library/Application Support/Claude/org-plugins`,
-- no local plugin marketplace may be configured for the current 3P org.
+- `managedMcpServers`: admin-provisioned remote MCP servers delivered through
+  managed config
+- organization plugins: filesystem-delivered plugin bundles under
+  `/Library/Application Support/Claude/org-plugins/`
+- user extensions: plugins installed from the in-app Plugins UI, connectors
+  installed as `.mcpb`, and local MCP servers added from Settings -> Developer
 
-So if you want plugins in Claude Cowork with the local bridge, you need a
-separate plugin distribution path:
+That means the bridge is compatible with plugins, but it is not the thing that
+installs or manages them.
 
-- an organization-provided plugin bundle,
-- a configured plugin marketplace repo,
-- or a local marketplace flow supported by the current Claude Desktop build.
+### Official plugin repos to use
 
-The bridge itself is not the missing piece for plugins.
+- `anthropics/knowledge-work-plugins`
+  - Purpose: role-based plugins primarily intended for Claude Cowork.
+  - Repo: [knowledge-work-plugins](https://github.com/anthropics/knowledge-work-plugins)
+  - Good starting points: `productivity`, `sales`, `customer-support`,
+    `product-management`, `marketing`, `legal`, `finance`, `data`,
+    `enterprise-search`, `bio-research`, `cowork-plugin-management`.
+  - Notes from the repo: these plugins are built for Claude Cowork and are also
+    compatible with Claude Code.
+
+- `anthropics/claude-plugins-official`
+  - Purpose: curated Anthropic-managed plugin directory with internal plugins in
+    `plugins/` and partner/community plugins in `external_plugins/`.
+  - Repo: [claude-plugins-official](https://github.com/anthropics/claude-plugins-official)
+  - Best fit: Claude Code and the shared plugin format reference. It can also be
+    mined for plugins to deploy into Cowork's `org-plugins/` directory when the
+    plugin structure matches Cowork's documented org-plugin format.
+
+### How to set up `knowledge-work-plugins` for Cowork on 3P
+
+Anthropic's Cowork on 3P docs say organization plugins are delivered by placing
+plugin folders in:
+
+```text
+/Library/Application Support/Claude/org-plugins/
+```
+
+Each subdirectory is one plugin, and the directory must contain
+`.claude-plugin/plugin.json`.
+
+Step by step:
+
+1. Clone the repo somewhere convenient:
+
+```bash
+git clone https://github.com/anthropics/knowledge-work-plugins.git
+```
+
+2. Pick the plugin you want, for example `productivity` or `finance`.
+3. Copy that plugin directory intact into the org-plugins folder so the final
+   shape is:
+
+```text
+/Library/Application Support/Claude/org-plugins/productivity/
+/Library/Application Support/Claude/org-plugins/finance/
+```
+
+4. If needed, customize the plugin before copying:
+   - edit `.mcp.json` to match your connector/tool stack
+   - edit skill markdown to reflect your team's workflows
+   - optionally set `"installationPreference"` in
+     `.claude-plugin/plugin.json` to one of:
+     - `"required"`: auto-installs and cannot be removed by users
+     - `"auto_install"`: auto-installs, but users may uninstall it
+     - `"available"`: appears in the plugin browser for opt-in install
+5. Restart Claude Desktop / Cowork.
+6. Verify the plugin appears in the Plugins UI or auto-installs, depending on
+   `installationPreference`.
+
+### How to set up `claude-plugins-official`
+
+There are two practical ways to use this repo:
+
+1. `Claude Code` / plugin marketplace workflow
+
+The repo README documents installs like:
+
+```text
+/plugin install {plugin-name}@claude-plugins-official
+```
+
+or discovery from `/plugin > Discover`.
+
+This is the most natural fit for Claude Code and for browsing Anthropic's
+curated plugin catalog.
+
+2. `Cowork on 3P` organization-plugin workflow
+
+If you want to use one of those plugins in Cowork on 3P, treat the individual
+plugin directory as a filesystem plugin bundle:
+
+- for Anthropic-maintained plugins, copy from `plugins/<plugin-name>/`
+- for partner/community plugins, copy from `external_plugins/<plugin-name>/`
+- place the chosen plugin under
+  `/Library/Application Support/Claude/org-plugins/<plugin-name>/`
+
+Keep the plugin directory structure intact, including `.claude-plugin`,
+`.mcp.json`, `commands/`, `agents/`, and `skills/` where present.
+
+### Practical guidance for this machine
+
+- Use `knowledge-work-plugins` first if your goal is Cowork-style business
+  workflows.
+- Use `claude-plugins-official` first if your goal is Claude Code plugins or a
+  curated plugin catalog.
+- The bridge can stay exactly as-is while you do either of those. Inference
+  routing and plugin delivery are separate concerns.
+- If a plugin depends on remote connectors, you may also need:
+  - `managedMcpServers` in the Cowork 3P configuration
+  - plugin-specific `.mcp.json` edits
+  - the relevant network egress allowed for Cowork's sandbox
 
 ## Testing With a Fixture
 

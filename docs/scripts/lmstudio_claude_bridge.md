@@ -417,6 +417,55 @@ Side effects:
 - Plugin availability is separate from inference routing. A working local bridge
   does not automatically populate Claude Cowork's Plugins directory.
 
+## Troubleshooting the socket-closed Cowork error
+
+Observed symptom:
+
+```text
+API Error: The socket connection was closed unexpectedly.
+For more information, pass `verbose: true` in the second argument to fetch()
+```
+
+What this usually means in this setup:
+
+- Claude Cowork kept running.
+- The local bridge stayed up.
+- The upstream LM Studio request or SSE response died mid-turn.
+
+In one traced failure on this machine, the Cowork session audit log captured the
+exact message while `Claude-3p/main.log` recorded an intermediate SDK stream
+error for the same `local_<session-id>`. The VM log did not show a Cowork VM
+crash, which points to inference-stream termination rather than a sandbox
+failure.
+
+Where to inspect:
+
+- `~/Library/Logs/Claude-3p/main.log`
+- `~/Library/Logs/lmstudio-claude-bridge.log`
+- the session-specific
+  `~/Library/Application Support/Claude-3p/local-agent-mode-sessions/.../audit.jsonl`
+
+Bridge-side behavior:
+
+- The bridge now catches dropped upstream streams during `/v1/messages`
+  streaming and converts them into Anthropic-style error events.
+- Before this change, a dead upstream stream could surface as a plain socket
+  close with little bridge-side context.
+
+Mitigations:
+
+- Prefer a stricter tool model with
+  `CLAUDE_LMSTUDIO_TOOL_MODEL=qwen/qwen3-coder-30b`
+- If the large main chat model is unstable, also set
+  `CLAUDE_LMSTUDIO_MAIN_MODEL=qwen/qwen3-coder-30b`
+- If the stream is just slow, increase
+  `CLAUDE_LMSTUDIO_REQUEST_TIMEOUT_MS`
+- Tail the bridge log during reproduction:
+
+```bash
+tail -f ~/Library/Logs/lmstudio-claude-bridge.log
+```
+
 ## Validation Checklist
 
 - `node bridge.mjs --help` prints the expected commands.
@@ -434,14 +483,125 @@ Side effects:
 
 The bridge does not provide plugins. It only provides inference routing.
 
-On this machine, Claude Cowork's plugin screen reported that the organization
-had not provided plugins, and no system plugin directory existed yet under
-`/Library/Application Support/Claude/org-plugins`.
+Official Cowork on 3P docs describe three extension layers:
 
-That implies plugin support is controlled separately from the bridge, through an
-organization/marketplace/plugin-bundle mechanism. To make plugins available in
-Cowork while still using the local bridge for inference, you will need to set
-up one of those plugin distribution paths in addition to the bridge.
+- `managedMcpServers`: admin-provisioned remote MCP servers
+- organization plugins: filesystem-delivered plugin bundles under
+  `/Library/Application Support/Claude/org-plugins/`
+- user extensions: plugins from the in-app Plugins UI, `.mcpb` connectors, and
+  local MCP servers from Settings -> Developer
+
+So the correct mental model is:
+
+- the bridge changes inference routing
+- Cowork's plugin system is a separate extension surface
+- both can be used together
+
+### Recommended official plugin repos
+
+1. `anthropics/knowledge-work-plugins`
+
+- Repo: [knowledge-work-plugins](https://github.com/anthropics/knowledge-work-plugins)
+- Intended audience: primarily Claude Cowork knowledge-work roles
+- Repo guidance: built for Claude Cowork, also compatible with Claude Code
+- Notable plugin directories:
+  - `productivity`
+  - `sales`
+  - `customer-support`
+  - `product-management`
+  - `marketing`
+  - `legal`
+  - `finance`
+  - `data`
+  - `enterprise-search`
+  - `bio-research`
+  - `cowork-plugin-management`
+
+2. `anthropics/claude-plugins-official`
+
+- Repo: [claude-plugins-official](https://github.com/anthropics/claude-plugins-official)
+- Intended audience: curated Anthropic-managed Claude plugin directory
+- Structure:
+  - `plugins/`: Anthropic-maintained plugins
+  - `external_plugins/`: partner/community plugins
+- Best fit: Claude Code installs, plugin-format reference, and curated plugin
+  sourcing for Cowork org-plugin deployment
+
+### Setup path: `knowledge-work-plugins` as Cowork org plugins
+
+Cowork on 3P organization plugins are installed by placing plugin directories
+under:
+
+```text
+/Library/Application Support/Claude/org-plugins/
+```
+
+Each subdirectory is a plugin, and the plugin is ignored if it does not contain
+`.claude-plugin/plugin.json`.
+
+Step by step:
+
+1. Clone the repo:
+
+```bash
+git clone https://github.com/anthropics/knowledge-work-plugins.git
+```
+
+2. Choose one plugin directory, for example `productivity`.
+3. Copy it into the org-plugin path as:
+
+```text
+/Library/Application Support/Claude/org-plugins/productivity/
+```
+
+4. Optionally customize before deployment:
+   - update `.mcp.json` for your actual tool stack
+   - edit skill files for your team's workflows and terminology
+   - set `"installationPreference"` in `.claude-plugin/plugin.json`
+     - `"required"`
+     - `"auto_install"`
+     - `"available"`
+5. Restart Claude Desktop / Cowork.
+6. Confirm the plugin appears in the plugin browser or auto-installs according
+   to `installationPreference`.
+
+### Setup path: `claude-plugins-official`
+
+There are two useful ways to consume this repo.
+
+For `Claude Code`:
+
+- install through the plugin system using the repo's documented flow:
+  - `/plugin install {plugin-name}@claude-plugins-official`
+  - or browse from `/plugin > Discover`
+
+For `Cowork on 3P`:
+
+- pick a plugin from `plugins/` or `external_plugins/`
+- copy the individual plugin directory into:
+
+```text
+/Library/Application Support/Claude/org-plugins/<plugin-name>/
+```
+
+- keep the plugin structure intact:
+  - `.claude-plugin/plugin.json`
+  - `.mcp.json` when present
+  - `commands/`
+  - `agents/`
+  - `skills/`
+
+### Operational caveats
+
+- User-added plugins are separate from org plugins. A Cowork screen that says
+  the organization has not provided plugins only describes the org-plugin
+  layer.
+- End users still may be able to add their own plugins unless admin policy
+  disables that extension surface.
+- End users cannot add remote MCP servers directly. Remote MCP should come from
+  `managedMcpServers` or an org plugin.
+- If a plugin depends on remote connectors, make sure Cowork's sandbox egress
+  and MCP configuration are compatible with those connectors.
 
 ## Maintenance Notes
 
