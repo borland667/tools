@@ -10,6 +10,26 @@ It currently supports two practical workflows:
 - `Claude Desktop` / `Claude Cowork` 3P mode: configured as a custom
   `gateway` provider that points at the local bridge.
 
+## Current reproducible setup on this machine
+
+The repository supports more than one routing pattern, but the setup we
+validated in this session and documented below is:
+
+- LM Studio local server on `http://127.0.0.1:1234`
+- bridge LaunchAgent at
+  `$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist`
+- bridge listener on `http://127.0.0.1:1245`
+- Claude Desktop / Cowork 3P provider config under
+  `$HOME/Library/Application Support/Claude-3p/configLibrary/`
+- provider-facing model ids:
+  - `claude-haiku-4-5`
+  - `claude-sonnet-4-6`
+- actual LM Studio route for both main and tool traffic:
+  - `qwen/qwen3-coder-30b`
+
+If you follow the Desktop/Cowork steps in this README exactly, that is the
+behavior you should reproduce.
+
 LM Studio already exposes an Anthropic-compatible `POST /v1/messages`
 endpoint, so this bridge does not try to reimplement inference. Instead it
 adds the missing glue:
@@ -126,7 +146,9 @@ node bridge.mjs sync-models
 ```
 
 5. Keep the bridge running on `http://127.0.0.1:1245`.
-   One option is a user LaunchAgent:
+   On this machine, the bridge is kept alive with this user LaunchAgent:
+
+`$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist`
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -134,11 +156,11 @@ node bridge.mjs sync-models
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>&lt;launch-agent-label&gt;</string>
+  <string>com.borland.lmstudio-claude-bridge</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/path/to/node</string>
-    <string>/path/to/repo/lmstudio_claude_bridge/bridge.mjs</string>
+    <string>/usr/local/bin/node</string>
+    <string>/Users/borland/tools/lmstudio_claude_bridge/bridge.mjs</string>
     <string>serve</string>
   </array>
   <key>EnvironmentVariables</key>
@@ -146,7 +168,7 @@ node bridge.mjs sync-models
     <key>LMSTUDIO_BASE_URL</key>
     <string>http://127.0.0.1:1234</string>
     <key>CLAUDE_LMSTUDIO_MAIN_MODEL</key>
-    <string>qwen3.6-35b-a3b-abliterated-heretic-mlx</string>
+    <string>qwen/qwen3-coder-30b</string>
     <key>CLAUDE_LMSTUDIO_SMALL_MODEL</key>
     <string>qwen/qwen3-coder-30b</string>
     <key>CLAUDE_LMSTUDIO_TOOL_MODEL</key>
@@ -156,23 +178,58 @@ node bridge.mjs sync-models
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>WorkingDirectory</key>
+  <string>/Users/borland/tools/lmstudio_claude_bridge</string>
+  <key>StandardOutPath</key>
+  <string>/Users/borland/Library/Logs/lmstudio-claude-bridge.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/borland/Library/Logs/lmstudio-claude-bridge.log</string>
 </dict>
 </plist>
 ```
 
-6. Load that LaunchAgent:
+What each key is doing:
+
+- `Label`: the launchd job name we later query with `launchctl print`.
+- `ProgramArguments`: runs `node bridge.mjs serve`.
+- `EnvironmentVariables`: pins all bridge routes to `qwen/qwen3-coder-30b`.
+- `WorkingDirectory`: makes relative bridge paths resolve consistently.
+- `StandardOutPath` / `StandardErrorPath`: sends bridge logs to one stable file.
+- `RunAtLoad` and `KeepAlive`: start the bridge at login and restart it if it exits.
+
+6. Validate the plist:
 
 ```bash
-launchctl bootstrap gui/$(id -u) "<path-to-launch-agent-plist>"
+plutil -lint "$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist"
 ```
 
-7. Confirm the bridge is healthy:
+7. Load that LaunchAgent the first time:
+
+```bash
+launchctl bootstrap gui/$(id -u) \
+  "$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist"
+```
+
+8. If you edit the plist later, do not rely on `launchctl kickstart` alone.
+   `kickstart` restarts the process, but launchd may keep the old cached
+   environment variables. Fully reload the job instead:
+
+```bash
+launchctl bootout gui/$(id -u) \
+  "$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist"
+
+launchctl bootstrap gui/$(id -u) \
+  "$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist"
+```
+
+9. Confirm the bridge is healthy and running with the expected env:
 
 ```bash
 curl http://127.0.0.1:1245/healthz
+launchctl print gui/$(id -u)/com.borland.lmstudio-claude-bridge
 ```
 
-8. Point Claude Desktop's active 3P provider config at the bridge.
+10. Point Claude Desktop's active 3P provider config at the bridge.
    The active provider id typically lives in:
 
 ```bash
@@ -198,7 +255,9 @@ these keys have these values:
 - `"modelDiscoveryEnabled": false`
 
 Then replace the provider-facing model list with Anthropic-style ids that the
-bridge knows how to rewrite. A known-good example is:
+bridge knows how to rewrite. Because the current LaunchAgent routes both
+Haiku-like and Sonnet-like requests to the coder model, the labels should be
+honest about that too. A known-good example is:
 
 ```json
 {
@@ -215,7 +274,7 @@ bridge knows how to rewrite. A known-good example is:
     },
     {
       "name": "claude-sonnet-4-6",
-      "labelOverride": "Qwen 35B A3B Abliterated (Sonnet route)"
+      "labelOverride": "Qwen Coder 30B (Sonnet route)"
     }
   ]
 }
@@ -243,6 +302,20 @@ Two important details:
 - Do not point `inferenceGatewayBaseUrl` at `http://127.0.0.1:1234`. That
   would bypass the bridge and lose the model-rewrite behavior.
 
+Official-docs caveat:
+
+- Anthropic's 3P configuration docs are stricter than this local setup.
+- The local bridge flow we validated uses `http://127.0.0.1:1245` and
+  Anthropic-style alias names in `inferenceModels[].name`.
+- Anthropic's published configuration reference prefers `https://` gateway URLs
+  and gateway model names that match the upstream `/v1/models` ids.
+- This repo documents the local setup that worked in practice on this machine,
+  but you should treat it as a localhost-oriented workaround rather than a
+  fully spec-aligned production deployment.
+- Anthropic's docs also recommend setting `deploymentOrganizationUuid` for 3P
+  deployments. Our local experiment ran without it, but add it if you want the
+  config to align more closely with the documented rollout model.
+
 After saving the provider JSON, validate that it is still well-formed:
 
 ```bash
@@ -260,7 +333,7 @@ tail -f "$HOME/Library/Logs/lmstudio-claude-bridge.log"
 You should see bridge rewrite lines such as:
 
 - `claude-haiku-4-5` -> `qwen/qwen3-coder-30b`
-- `claude-sonnet-4-6` -> `qwen3.6-35b-a3b-abliterated-heretic-mlx`
+- `claude-sonnet-4-6` -> `qwen/qwen3-coder-30b`
 
 ## Manual Usage
 
@@ -307,6 +380,11 @@ When LM Studio exposes `abliterated` or `uncensored` variants, the bridge now pr
 
 For Claude Code specifically, the included launcher pins the primary/default mapping to `qwen3.6-35b-a3b-abliterated-heretic-mlx` and the helper mapping to `qwen/qwen3-coder-30b` unless you override them. That keeps the picker dynamic while routing the main conversation to the largest abliterated model we verified on LM Studio's Anthropic-compatible `/v1/messages` path, while leaving helper/side work on a faster model that also behaves reliably there.
 
+That is different from the current Desktop/Cowork LaunchAgent documented
+earlier in this README, which pins `MAIN_MODEL`, `SMALL_MODEL`, and
+`TOOL_MODEL` all to `qwen/qwen3-coder-30b` to make the live route explicit and
+reduce ambiguity.
+
 You can override both:
 
 ```bash
@@ -339,7 +417,7 @@ In Claude Desktop 3P gateway mode, the model picker shows the configured
 That is why the UI may show labels like:
 
 - `Qwen Coder 30B (Haiku route)`
-- `Qwen 35B A3B Abliterated (Sonnet route)`
+- `Qwen Coder 30B (Sonnet route)`
 
 while the bridge log shows those names being rewritten to the actual LM Studio
 model ids.
@@ -347,6 +425,9 @@ model ids.
 This is intentional. The current Claude Desktop 3P gateway validation expects
 Anthropic-style model names for the provider-facing ids, and raw Qwen ids were
 rejected as not usable.
+
+If you later switch the Sonnet route back to a different local model, update
+`labelOverride` to match so the picker stays honest.
 
 ## Claude Desktop limitations we observed
 
@@ -417,6 +498,32 @@ tail -f ~/Library/Logs/lmstudio-claude-bridge.log
 If the bridge logs repeated upstream stream failures, treat the local model or
 LM Studio runtime as the primary suspect before blaming Cowork itself.
 
+### "Why are there huge node processes? Is the bridge leaking memory?"
+
+Usually no. In our validation, the largest `node` processes were LM Studio
+worker runtimes, not the bridge.
+
+How to tell them apart:
+
+- The bridge is the `launchd` job
+  `com.borland.lmstudio-claude-bridge` and normally shows up as a single
+  `node` listener on `127.0.0.1:1245`.
+- LM Studio model workers are child processes of the main `LM Studio` app and
+  run LM Studio's internal `llmworker.js`.
+
+Useful checks:
+
+```bash
+launchctl print gui/$(id -u)/com.borland.lmstudio-claude-bridge
+lsof -nP -iTCP:1245 -sTCP:LISTEN
+"$HOME/.lmstudio/bin/lms" ps --json
+```
+
+If you need to inspect memory ownership more deeply, `vmmap -summary <pid>`
+will usually show that the very large footprints belong to `IOAccelerator
+(graphics)` regions, which means GPU/Metal-backed model state rather than Node
+heap growth.
+
 ## Plugins in Cowork
 
 The local bridge only changes where inference requests go. It does not provide
@@ -433,6 +540,23 @@ Claude's official Cowork on 3P docs describe three separate extension layers:
 
 That means the bridge is compatible with plugins, but it is not the thing that
 installs or manages them.
+
+Important boundary:
+
+- We observed internal session data under
+  `~/Library/Application Support/Claude-3p/local-agent-mode-sessions/.../cowork_plugins/`,
+  but that appears to be an implementation detail of Cowork sessions, not the
+  documented deployment path.
+- For reproducible setup, do not rely on that internal session store. Prefer
+  the documented plugin paths:
+  - `/Library/Application Support/Claude/org-plugins/`
+  - the in-app Plugins / Connectors UI
+  - local MCP configuration in Settings -> Developer where applicable
+- On macOS, writing to `/Library/Application Support/Claude/org-plugins/`
+  usually requires administrator privileges.
+- If Cowork says your organization has not provided plugins, that usually means
+  nothing has been deployed into the supported org-plugin path yet; it is not a
+  bridge routing failure.
 
 ### Official plugin repos to use
 
