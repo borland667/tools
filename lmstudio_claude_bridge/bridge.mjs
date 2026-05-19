@@ -19,6 +19,7 @@ const MODEL_SYNC_INTERVAL_MS = Number(
 const REQUEST_TIMEOUT_MS = Number(
   process.env.CLAUDE_LMSTUDIO_REQUEST_TIMEOUT_MS ?? '600000',
 )
+const TOOL_MODEL_OVERRIDE = process.env.CLAUDE_LMSTUDIO_TOOL_MODEL ?? ''
 const MODELS_FIXTURE_FILE = process.env.LMSTUDIO_MODELS_FILE
 const LM_STUDIO_API_KEY = process.env.LMSTUDIO_API_KEY ?? ''
 
@@ -95,6 +96,7 @@ Environment:
   CLAUDE_LMSTUDIO_MODEL_SYNC_INTERVAL_MS  Model sync interval in ms (default: 30000)
   CLAUDE_LMSTUDIO_MAIN_MODEL              Override default mapped main model
   CLAUDE_LMSTUDIO_SMALL_MODEL             Override default mapped small/haiku model
+  CLAUDE_LMSTUDIO_TOOL_MODEL              Override model used for tool-enabled /v1/messages requests
   CLAUDE_LMSTUDIO_MODEL_MAP               JSON object of explicit model rewrites
   CLAUDE_GLOBAL_CONFIG_FILE               Override Claude global config path
   CLAUDE_CONFIG_DIR                       Alternate Claude config root
@@ -263,7 +265,7 @@ async function maybeRewriteRequestBody(pathname, rawBody) {
     return rawBody
   }
 
-  const rewrittenModel = mapRequestedModel(payload.model)
+  const rewrittenModel = mapRequestedModel(payload.model, payload)
   if (rewrittenModel === payload.model) {
     return rawBody
   }
@@ -273,17 +275,8 @@ async function maybeRewriteRequestBody(pathname, rawBody) {
   return Buffer.from(JSON.stringify(payload), 'utf8')
 }
 
-function mapRequestedModel(requestedModel) {
-  const explicitMap = parseExplicitModelMap()
-  if (explicitMap.has(requestedModel)) {
-    return explicitMap.get(requestedModel)
-  }
-
+function mapRequestedModel(requestedModel, payload = null) {
   const normalized = requestedModel.toLowerCase()
-  if (explicitMap.has(normalized)) {
-    return explicitMap.get(normalized)
-  }
-
   const exact = lastSyncedOptions.find(option => option.value === requestedModel)
   if (exact) {
     return exact.value
@@ -294,6 +287,20 @@ function mapRequestedModel(requestedModel) {
   )
   if (exactCaseInsensitive) {
     return exactCaseInsensitive.value
+  }
+
+  const preferredToolModel = pickToolAwareModel(payload, normalized)
+  if (preferredToolModel) {
+    return preferredToolModel
+  }
+
+  const explicitMap = parseExplicitModelMap()
+  if (explicitMap.has(requestedModel)) {
+    return explicitMap.get(requestedModel)
+  }
+
+  if (explicitMap.has(normalized)) {
+    return explicitMap.get(normalized)
   }
 
   if (normalized.includes('haiku')) {
@@ -309,6 +316,67 @@ function mapRequestedModel(requestedModel) {
   }
 
   return requestedModel
+}
+
+function pickToolAwareModel(payload, normalizedRequestedModel) {
+  if (!payloadHasTools(payload)) {
+    return null
+  }
+
+  if (!looksLikeAnthropicAlias(normalizedRequestedModel)) {
+    return null
+  }
+
+  const configuredToolModel =
+    pickConfiguredModelId(TOOL_MODEL_OVERRIDE) ??
+    modelSelection.smallModel ??
+    null
+
+  if (!configuredToolModel) {
+    return null
+  }
+
+  return configuredToolModel
+}
+
+function payloadHasTools(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === 'object' &&
+      Array.isArray(payload.tools) &&
+      payload.tools.length > 0,
+  )
+}
+
+function looksLikeAnthropicAlias(normalizedRequestedModel) {
+  return (
+    normalizedRequestedModel === 'default' ||
+    normalizedRequestedModel === 'best' ||
+    ANTHROPIC_FAMILY_PATTERNS.some(pattern =>
+      normalizedRequestedModel.includes(pattern),
+    )
+  )
+}
+
+function pickConfiguredModelId(candidate) {
+  if (!candidate) {
+    return null
+  }
+
+  const exact = lastSyncedOptions.find(option => option.value === candidate)
+  if (exact) {
+    return exact.value
+  }
+
+  const normalized = candidate.toLowerCase()
+  const caseInsensitive = lastSyncedOptions.find(
+    option => option.value.toLowerCase() === normalized,
+  )
+  if (caseInsensitive) {
+    return caseInsensitive.value
+  }
+
+  return null
 }
 
 function parseExplicitModelMap() {

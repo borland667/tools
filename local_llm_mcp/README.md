@@ -2,6 +2,11 @@
 
 Small MCP server that keeps `Claude Desktop` running as normal hosted Claude, while optionally exposing tools that call a local OpenAI-compatible API such as `LM Studio`, `Ollama`, or a local `LiteLLM` proxy.
 
+If you want Claude Desktop / Claude Cowork to send its primary inference
+traffic to a local backend through 3P `gateway` mode, use
+[`lmstudio_claude_bridge`](/Users/borland/tools/lmstudio_claude_bridge/README.md)
+instead. This MCP package is for hosted Claude plus optional local delegation.
+
 ## What it does
 
 - Starts a stdio MCP server for Claude Desktop or any MCP-capable client.
@@ -15,6 +20,8 @@ Small MCP server that keeps `Claude Desktop` running as normal hosted Claude, wh
 - Does not replace Claude Desktop's main model. Claude itself still runs on Anthropic.
 - Does not expose tools when local API mode is disabled.
 - Does not require a third-party MCP SDK; the server is standard-library Python.
+- Does not populate Cowork/Desktop's 3P provider model picker.
+- Does not provide plugins or change the Cowork/Desktop Plugins directory.
 
 ## Install
 
@@ -49,7 +56,9 @@ That starts the MCP server over stdio. Point Claude Desktop at that command usin
 ## Claude Desktop config example
 
 ```jsonc
-// ~/Library/Application Support/Claude/claude_desktop_config.json
+// Common path: ~/Library/Application Support/Claude/claude_desktop_config.json
+// On this machine the active app used:
+// ~/Library/Application Support/Claude-3p/claude_desktop_config.json
 {
   "mcpServers": {
     "local-llm": {
@@ -72,6 +81,9 @@ That starts the MCP server over stdio. Point Claude Desktop at that command usin
 
 Use `LOCAL_LLM_BASE_URL=http://localhost:11434/v1` to target Ollama instead.
 
+The important point is to edit the config file the running Claude app is
+actually reading. Some installs use `Claude`, others use `Claude-3p`.
+
 ## Toggle local API mode
 
 Hosted Claude stays available either way. These commands only control whether Claude can see and use the local tools.
@@ -88,6 +100,9 @@ Behavior by mode:
 
 - Disabled: Claude Desktop behaves like normal hosted Claude only.
 - Enabled: Claude Desktop is instructed to use `ask_local_llm` as its primary response engine for most ordinary requests, while still falling back to hosted Claude for Claude-specific/meta requests or local backend failures.
+
+This still does not turn the app into a pure local-model client. Claude remains
+the host application and decides when to delegate.
 
 ## Debug logging
 
@@ -123,6 +138,13 @@ Useful events:
 
 If a request produces no `mcp.tools_call` or `ask_local_llm.*` event, Claude
 answered it without local delegation.
+
+If you want to prove that the MCP server is loaded at all, the strongest early
+signals are:
+
+- `server.start`
+- `mcp.initialize`
+- `mcp.tools_list`
 
 ## Tools exposed when enabled
 
@@ -161,3 +183,12 @@ Use list_local_llm_models and tell me which local models are currently available
 ```bash
 python -m pytest tests/local_llm_mcp/
 ```
+
+## When to choose this vs the LM Studio bridge
+
+- Choose `local_llm_mcp` when you want normal hosted Claude plus optional local
+  tool delegation.
+- Choose `lmstudio_claude_bridge` when you want Claude Code or Claude Desktop /
+  Cowork 3P `gateway` mode to route primary inference through LM Studio.
+- Do not expect `local_llm_mcp` to make Cowork/Desktop's 3P model picker show
+  local models. That is a different integration path.
