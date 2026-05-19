@@ -208,23 +208,42 @@ async function routeRequest(req, res) {
 async function proxyToLmStudio(req, res, url) {
   const upstreamUrl = new URL(url.pathname + url.search, LM_STUDIO_BASE_URL)
   const headers = copyIncomingHeaders(req.headers)
+  let expectsStreamingResponse = false
 
   let body
   if (req.method && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
     const rawBody = await readRequestBody(req)
-    body = await maybeRewriteRequestBody(url.pathname, rawBody)
+    const prepared = await maybeRewriteRequestBody(url.pathname, rawBody)
+    body = prepared.body
+    expectsStreamingResponse = prepared.expectsStreamingResponse
   }
 
   if (LM_STUDIO_API_KEY) {
     headers.set('x-api-key', LM_STUDIO_API_KEY)
   }
 
-  const upstream = await fetch(upstreamUrl, {
-    method: req.method,
-    headers,
-    body,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
+  let upstream
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: req.method,
+      headers,
+      body,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch (error) {
+    console.error(
+      `[bridge] upstream request failed for ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
+    )
+    if (expectsStreamingResponse) {
+      writeAnthropicSseError(
+        res,
+        502,
+        `LM Studio upstream request failed: ${formatError(error)}`,
+      )
+      return
+    }
+    throw error
+  }
 
   res.statusCode = upstream.status
   res.statusMessage = upstream.statusText
@@ -240,39 +259,77 @@ async function proxyToLmStudio(req, res, url) {
     return
   }
 
-  await pipeline(Readable.fromWeb(upstream.body), res)
+  const isSseResponse = isEventStreamContentType(
+    upstream.headers.get('content-type'),
+  )
+
+  try {
+    await pipeline(Readable.fromWeb(upstream.body), res)
+  } catch (error) {
+    console.error(
+      `[bridge] upstream stream failed for ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
+    )
+    if (isSseResponse) {
+      writeAnthropicSseError(
+        res,
+        upstream.status || 502,
+        `LM Studio stream closed unexpectedly: ${formatError(error)}`,
+      )
+      return
+    }
+    throw error
+  }
 }
 
 async function maybeRewriteRequestBody(pathname, rawBody) {
   if (pathname !== '/v1/messages' || rawBody.length === 0) {
-    return rawBody
+    return {
+      body: rawBody,
+      expectsStreamingResponse: false,
+    }
   }
 
   let payload
   try {
     payload = JSON.parse(rawBody.toString('utf8'))
   } catch {
-    return rawBody
+    return {
+      body: rawBody,
+      expectsStreamingResponse: false,
+    }
   }
 
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return rawBody
+    return {
+      body: rawBody,
+      expectsStreamingResponse: false,
+    }
   }
 
+  const expectsStreamingResponse = payload.stream === true
   await syncModelOptions()
 
   if (typeof payload.model !== 'string' || payload.model.length === 0) {
-    return rawBody
+    return {
+      body: rawBody,
+      expectsStreamingResponse,
+    }
   }
 
   const rewrittenModel = mapRequestedModel(payload.model, payload)
   if (rewrittenModel === payload.model) {
-    return rawBody
+    return {
+      body: rawBody,
+      expectsStreamingResponse,
+    }
   }
 
   console.log(`[bridge] rewrite model "${payload.model}" -> "${rewrittenModel}"`)
   payload.model = rewrittenModel
-  return Buffer.from(JSON.stringify(payload), 'utf8')
+  return {
+    body: Buffer.from(JSON.stringify(payload), 'utf8'),
+    expectsStreamingResponse,
+  }
 }
 
 function mapRequestedModel(requestedModel, payload = null) {
@@ -758,6 +815,35 @@ function buildUpstreamHeaders() {
     headers.set('x-api-key', LM_STUDIO_API_KEY)
   }
   return headers
+}
+
+function isEventStreamContentType(contentType) {
+  return String(contentType ?? '')
+    .toLowerCase()
+    .includes('text/event-stream')
+}
+
+function writeAnthropicSseError(res, statusCode, message) {
+  if (!res.headersSent) {
+    res.statusCode = statusCode
+    res.setHeader('content-type', 'text/event-stream; charset=utf-8')
+    res.setHeader('cache-control', 'no-cache')
+  }
+
+  if (res.writableEnded || res.destroyed) {
+    return
+  }
+
+  res.write(
+    `event: error\ndata: ${JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'api_error',
+        message,
+      },
+    })}\n\n`,
+  )
+  res.end()
 }
 
 async function readRequestBody(req) {

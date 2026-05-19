@@ -129,11 +129,12 @@ These rules apply to all current and future scripts, regardless of language.
   through `/v1/messages`. It supports both `Claude Code` and Claude Desktop /
   Cowork 3P `gateway` mode, rewrites provider-facing Anthropic model aliases to
   local LM Studio model ids, can route tool-heavy requests to a more reliable
-  local tool-calling model, and can be kept alive through `launchd` for Desktop
-  use. The current Desktop/Cowork setup still uses bridge-backed local models
-  only in the 3P picker; it does not merge hosted Claude models into the same
-  dropdown, and plugin availability is a separate organization/marketplace
-  system. See
+  local tool-calling model, surfaces dropped upstream LM Studio streams as
+  structured Anthropic-style errors instead of opaque socket closes, and can be
+  kept alive through `launchd` for Desktop use. The current Desktop/Cowork
+  setup still uses bridge-backed local models only in the 3P picker; it does
+  not merge hosted Claude models into the same dropdown, and plugin
+  availability is a separate organization/marketplace system. See
   [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
 - [`scripts/run_openhands_with_lmstudio.sh`](./scripts/run_openhands_with_lmstudio.sh):
   launcher for running OpenHands against LM Studio's local OpenAI-compatible
