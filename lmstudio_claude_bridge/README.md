@@ -1,6 +1,6 @@
 # LM Studio Claude Bridge
 
-This bridge lets Anthropic-style Claude clients talk to a local LM Studio
+This bridge lets Anthropic-style Claude clients talk to a local inference
 server while keeping the client's model picker usable.
 
 It currently supports two practical workflows:
@@ -9,6 +9,11 @@ It currently supports two practical workflows:
   local bridge.
 - `Claude Desktop` / `Claude Cowork` 3P mode: configured as a custom
   `gateway` provider that points at the local bridge.
+
+It now supports two upstream backends behind the same bridge:
+
+- `lmstudio`: the current default
+- `omlx`: the next migration target
 
 ## Current reproducible setup on this machine
 
@@ -30,14 +35,15 @@ validated in this session and documented below is:
 If you follow the Desktop/Cowork steps in this README exactly, that is the
 behavior you should reproduce.
 
-LM Studio already exposes an Anthropic-compatible `POST /v1/messages`
-endpoint, so this bridge does not try to reimplement inference. Instead it
+LM Studio and oMLX both expose Anthropic-compatible `POST /v1/messages`
+endpoints, so this bridge does not try to reimplement inference. Instead it
 adds the missing glue:
 
-- it proxies `/v1/*` requests to LM Studio,
+- it proxies `/v1/*` requests to the selected upstream backend,
 - it rewrites Anthropic-style model names like `claude-sonnet-*` and
-  `claude-haiku-*` to local LM Studio model ids,
-- it syncs LM Studio's model list into Claude's local cache where applicable.
+  `claude-haiku-*` to local model ids,
+- it syncs the upstream backend's model list into Claude's local cache where
+  applicable.
 
 ## Which local tool to use
 
@@ -56,13 +62,72 @@ adds the missing glue:
 ## Requirements
 
 - Node 18+ (tested with Node 24)
-- LM Studio local server running
+- a local inference server running
 
 LM Studio docs used for this bridge:
 
 - [Anthropic Compatibility Endpoints](https://lmstudio.ai/docs/developer/anthropic-compat)
 - [Messages](https://lmstudio.ai/docs/developer/anthropic-compat/messages)
 - [List Models](https://lmstudio.ai/docs/developer/openai-compat/models)
+
+oMLX docs used for the migration path and backend-selection support:
+
+- [oMLX README](https://github.com/jundot/omlx)
+- [oMLX site](https://omlx.ai/)
+
+## Choose the upstream backend
+
+The bridge now supports two upstream backends:
+
+1. `lmstudio`
+   - default behavior
+   - base URL defaults to `http://127.0.0.1:1234`
+   - if you set an API key, the bridge uses `x-api-key` upstream by default
+2. `omlx`
+   - migration target when you want alias support and tighter multi-model
+     memory controls
+   - base URL defaults to `http://127.0.0.1:8000`
+   - if you set an API key, the bridge uses bearer auth upstream by default
+
+You can select the backend in one of three ways:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_BACKEND=lmstudio
+export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
+```
+
+or by setting a backend-specific base URL:
+
+```bash
+export LMSTUDIO_BASE_URL=http://127.0.0.1:1234
+export OMLX_BASE_URL=http://127.0.0.1:8000
+```
+
+or with one generic override:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_BASE_URL=http://127.0.0.1:8000
+```
+
+Optional upstream auth controls:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_API_KEY=your-secret-key
+export CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME=auto
+```
+
+Supported auth schemes:
+
+- `auto`
+  - `lmstudio` -> `x-api-key`
+  - `omlx` -> `Authorization: Bearer ...`
+- `none`
+- `bearer`
+- `x-api-key`
+- `both`
+
+`both` is mostly useful for experiments when you are not sure which header a
+local server expects.
 
 ## Prepare LM Studio Models
 
@@ -126,6 +191,23 @@ That launcher will:
 - keep the helper/default side path on `qwen/qwen3-coder-30b` unless you
   override it,
 - launch `claude`.
+
+To launch Claude Code against oMLX through the same bridge, keep using the same
+script but set the backend first:
+
+```bash
+cd <repo-root>/lmstudio_claude_bridge
+export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
+export OMLX_BASE_URL=http://127.0.0.1:8000
+./run_claude_with_lmstudio.sh
+```
+
+If your oMLX server is configured with an API key:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_API_KEY=your-secret-key
+export CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME=bearer
+```
 
 ### Claude Desktop / Claude Cowork 3P mode
 
@@ -447,6 +529,20 @@ That keeps plain chat on the larger main model while routing tool-heavy turns
 such as `TaskCreate`, file edits, and other agentic calls to a model that is
 less likely to omit required tool parameters.
 
+Important scope boundary:
+
+- `CLAUDE_LMSTUDIO_TOOL_MODEL` is a bridge feature, not an Anthropic Cowork 3P
+  configuration key.
+- Anthropic's 3P configuration docs describe model picker entries, built-in
+  tool enable/disable controls, MCP servers, and tool policies, but they do
+  not define a separate "tool model" field for routing tool-heavy turns.
+- In this setup, Claude only knows about the provider-facing picker entries.
+  The bridge silently decides whether a given `/v1/messages` request should use
+  the normal mapped model or the stricter tool model override.
+- Because of that, the Claude UI cannot natively show "this model uses a
+  special tool model" except through whatever text you choose in
+  `labelOverride`.
+
 ## Recommended models for this hardware
 
 On this machine, `llmfit` reports:
@@ -478,6 +574,54 @@ Practical recommendation:
 - use `Qwen3-Next-80B-A3B-Instruct` when you want a stronger general assistant
   route than the coder model
 
+## Which models are better for tool-heavy work
+
+For this bridge, "better for tooling" means more than raw quality. The model
+needs to:
+
+- emit a real Anthropic-style `tool_use` block instead of plain text
+- include every required tool parameter
+- do that reliably on LM Studio's `/v1/messages` path
+- avoid long reasoning detours that burn `max_tokens` before the tool call
+
+That makes the best tool model different from the best pure chat model.
+
+Current practical ranking for this machine:
+
+1. `qwen/qwen3-coder-30b`
+   - current best live choice for Cowork/Desktop tool-heavy turns
+   - returned a valid `tool_use` payload with all required fields in a direct
+     bridge test
+   - lower memory footprint, faster load/use, and already validated in real
+     Cowork sessions
+2. `Qwen/Qwen3-Coder-Next`
+   - best next model to test for higher coding quality with tools
+   - `llmfit` ranks it highest for coding + tool use on this hardware
+   - likely stronger than the 30B coder model, but not yet validated in this
+     exact Cowork/Desktop bridge path on this machine
+3. `Qwen/Qwen3-Next-80B-A3B-Instruct`
+   - strongest general chat / instruction-following candidate with tool-use
+     capability on paper
+   - a good candidate when you want one large general model instead of a
+     coding-specialized route
+   - still needs practical validation for strict tool payload reliability in
+     Cowork/Desktop
+
+Models to avoid as the primary tool route in the current setup:
+
+- `qwen3.6-35b-a3b-abliterated-heretic-mlx`
+  - in a traced Cowork session, it emitted a malformed `TaskCreate` payload
+    without the required `description`
+  - in a direct `/v1/messages` tool-use probe, it consumed the token budget and
+    stopped with `max_tokens` without producing a structured tool call
+
+So the current rule of thumb is:
+
+- best proven tool model now: `qwen/qwen3-coder-30b`
+- best next experimental tool model: `Qwen/Qwen3-Coder-Next`
+- best large general-purpose tool-use candidate to evaluate later:
+  `Qwen/Qwen3-Next-80B-A3B-Instruct`
+
 Avoid keeping several large models loaded at once unless you actually need
 them. LM Studio model workers can hold very large unified-memory allocations
 even while idle.
@@ -501,6 +645,13 @@ rejected as not usable.
 
 If you later switch the Sonnet route back to a different local model, update
 `labelOverride` to match so the picker stays honest.
+
+Also note:
+
+- `labelOverride` is only a display affordance.
+- It does not tell Claude which model should be used for tool-heavy turns.
+- If you want the UI to communicate tool behavior, you have to encode that
+  manually in the label text, such as `(... tool-safe route)`.
 
 ## Claude Desktop limitations we observed
 
@@ -750,6 +901,9 @@ The fixture can look like either LM Studio's richer `/api/v1/models` output or t
 If you want a more Anthropic-doc-aligned local gateway, OMLX is the most
 promising next step.
 
+The bridge no longer has to be removed first. The safer migration is to keep
+the bridge as the stable frontend and swap only the upstream backend behind it.
+
 Why it is attractive:
 
 - it already exposes Anthropic-compatible `POST /v1/messages`
@@ -771,17 +925,26 @@ Recommended migration plan:
 
 1. Keep the current LM Studio bridge as the known-good baseline.
 2. Install OMLX and point it at the same local model directory.
-3. In OMLX, create provider-facing aliases such as:
+3. Keep Claude Desktop / Cowork pointing at the bridge, not directly at OMLX.
+4. Switch only the bridge upstream:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
+export OMLX_BASE_URL=http://127.0.0.1:8000
+```
+
+5. In OMLX, create provider-facing aliases such as:
    - `claude-haiku-4-5`
    - `claude-sonnet-4-6`
-4. Expose a single local OMLX endpoint and test:
+6. Expose a single local OMLX endpoint and test:
    - `GET /v1/models`
    - `POST /v1/messages`
    - tool-heavy Cowork turns
    - long streaming responses
-5. Once OMLX is stable, replace the Claude Desktop 3P provider's
-   `inferenceGatewayBaseUrl` with the OMLX endpoint and remove the custom
-   rewrite bridge from the hot path.
+7. Once OMLX is stable behind the bridge, decide whether to:
+   - keep the bridge permanently for model routing policy and compatibility, or
+   - later point Claude Desktop's `inferenceGatewayBaseUrl` directly at OMLX
+     and remove the custom bridge from the hot path.
 
 Expected benefits of that migration:
 
