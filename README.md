@@ -131,10 +131,14 @@ These rules apply to all current and future scripts, regardless of language.
   local LM Studio model ids, can route tool-heavy requests to a more reliable
   local tool-calling model, surfaces dropped upstream LM Studio streams as
   structured Anthropic-style errors instead of opaque socket closes, and can be
-  kept alive through `launchd` for Desktop use. The current Desktop/Cowork
-  setup still uses bridge-backed local models only in the 3P picker; it does
-  not merge hosted Claude models into the same dropdown, and plugin
-  availability is a separate organization/marketplace system. See
+  kept alive through `launchd` for Desktop use. The docs also cover the exact
+  LaunchAgent/provider files we validated, Anthropic 3P hardening knobs such as
+  `deploymentOrganizationUuid` and `coworkEgressAllowedHosts`, recommended
+  local models for this hardware, and a concrete OMLX migration plan. The
+  current Desktop/Cowork setup still uses bridge-backed local models only in
+  the 3P picker; it does not merge hosted Claude models into the same
+  dropdown, and plugin availability is a separate organization/marketplace
+  system. See
   [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
 - [`scripts/run_openhands_with_lmstudio.sh`](./scripts/run_openhands_with_lmstudio.sh):
   launcher for running OpenHands against LM Studio's local OpenAI-compatible

@@ -1,0 +1,30 @@
+{
+  "deploymentOrganizationUuid": "11111111-2222-4333-8444-555555555555",
+  "disableDeploymentModeChooser": false,
+  "coworkEgressAllowedHosts": [
+    "127.0.0.1",
+    "localhost",
+    "pypi.org",
+    "files.pythonhosted.org",
+    "registry.npmjs.org",
+    "github.com",
+    "api.github.com",
+    "raw.githubusercontent.com"
+  ],
+  "inferenceGatewayApiKey": "lmstudio",
+  "inferenceGatewayAuthScheme": "bearer",
+  "inferenceGatewayBaseUrl": "http://127.0.0.1:1245",
+  "inferenceProvider": "gateway",
+  "isDesktopExtensionEnabled": true,
+  "modelDiscoveryEnabled": false,
+  "inferenceModels": [
+    {
+      "name": "claude-haiku-4-5",
+      "labelOverride": "Qwen Coder 30B (Haiku route)"
+    },
+    {
+      "name": "claude-sonnet-4-6",
+      "labelOverride": "Qwen Coder 30B (Sonnet route)"
+    }
+  ]
+}

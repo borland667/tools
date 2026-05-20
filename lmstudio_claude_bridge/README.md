@@ -51,6 +51,7 @@ adds the missing glue:
 
 - [bridge.mjs](./bridge.mjs)
 - [run_claude_with_lmstudio.sh](./run_claude_with_lmstudio.sh)
+- [claude-3p-provider.example.json](./claude-3p-provider.example.json)
 
 ## Requirements
 
@@ -244,14 +245,22 @@ $HOME/Library/Application Support/Claude-3p/configLibrary/<provider-id>.json
 
 Before editing, make a backup copy of that provider JSON.
 
+This repo also includes a ready-to-edit provider example at:
+
+```text
+lmstudio_claude_bridge/claude-3p-provider.example.json
+```
+
 In the active provider JSON, keep unrelated UI fields as they are and update
 the inference-related fields so they match the bridge. At minimum, make sure
 these keys have these values:
 
+- `"deploymentOrganizationUuid": "<your-uuid>"`
 - `"inferenceProvider": "gateway"`
 - `"inferenceGatewayBaseUrl": "http://127.0.0.1:1245"`
 - `"inferenceGatewayAuthScheme": "bearer"`
 - `"inferenceGatewayApiKey": "lmstudio"`
+- `"coworkEgressAllowedHosts": [...]`
 - `"modelDiscoveryEnabled": false`
 
 Then replace the provider-facing model list with Anthropic-style ids that the
@@ -261,11 +270,23 @@ honest about that too. A known-good example is:
 
 ```json
 {
+  "deploymentOrganizationUuid": "11111111-2222-4333-8444-555555555555",
   "disableDeploymentModeChooser": false,
+  "coworkEgressAllowedHosts": [
+    "127.0.0.1",
+    "localhost",
+    "pypi.org",
+    "files.pythonhosted.org",
+    "registry.npmjs.org",
+    "github.com",
+    "api.github.com",
+    "raw.githubusercontent.com"
+  ],
   "inferenceGatewayApiKey": "lmstudio",
   "inferenceGatewayAuthScheme": "bearer",
   "inferenceGatewayBaseUrl": "http://127.0.0.1:1245",
   "inferenceProvider": "gateway",
+  "isDesktopExtensionEnabled": true,
   "modelDiscoveryEnabled": false,
   "inferenceModels": [
     {
@@ -282,11 +303,18 @@ honest about that too. A known-good example is:
 
 What each JSON field is doing:
 
+- `deploymentOrganizationUuid`: gives the deployment a stable identity in
+  Anthropic's telemetry/support model instead of the shared placeholder UUID.
 - `inferenceProvider`: switches the provider into 3P gateway mode.
 - `inferenceGatewayBaseUrl`: points Claude Desktop at the local bridge, not at
   LM Studio directly.
 - `inferenceGatewayAuthScheme`: keeps the provider on bearer-style auth.
 - `inferenceGatewayApiKey`: placeholder token the local bridge accepts.
+- `coworkEgressAllowedHosts`: host allowlist for Cowork's web fetch, shell,
+  package installs, and many plugin or connector side effects. Keep this tight
+  and extend it only for the tools you actually use.
+- `isDesktopExtensionEnabled`: keeps local desktop extensions and plugin
+  installs available in the app.
 - `modelDiscoveryEnabled`: disables provider-side discovery so the app keeps
   using the explicit model list below.
 - `inferenceModels`: the list shown in the Claude Desktop picker.
@@ -313,8 +341,11 @@ Official-docs caveat:
   but you should treat it as a localhost-oriented workaround rather than a
   fully spec-aligned production deployment.
 - Anthropic's docs also recommend setting `deploymentOrganizationUuid` for 3P
-  deployments. Our local experiment ran without it, but add it if you want the
-  config to align more closely with the documented rollout model.
+  deployments. Use it in practice.
+- Anthropic's docs also make `coworkEgressAllowedHosts` central to whether
+  Cowork can actually fetch the web, install packages, or use plugins and
+  connectors that reach external services. If your tools mysteriously fail even
+  though inference works, inspect this allowlist before blaming the bridge.
 
 After saving the provider JSON, validate that it is still well-formed:
 
@@ -378,18 +409,25 @@ By default the bridge chooses:
 
 When LM Studio exposes `abliterated` or `uncensored` variants, the bridge now prefers those as the default base models before falling back to the regular variants.
 
-For Claude Code specifically, the included launcher pins the primary/default mapping to `qwen3.6-35b-a3b-abliterated-heretic-mlx` and the helper mapping to `qwen/qwen3-coder-30b` unless you override them. That keeps the picker dynamic while routing the main conversation to the largest abliterated model we verified on LM Studio's Anthropic-compatible `/v1/messages` path, while leaving helper/side work on a faster model that also behaves reliably there.
+For Claude Code specifically, the included launcher pins the primary/default
+mapping to `qwen3.6-35b-a3b-abliterated-heretic-mlx`, the helper mapping to
+`qwen/qwen3-coder-30b`, and now also pins `CLAUDE_LMSTUDIO_TOOL_MODEL` to
+`qwen/qwen3-coder-30b` unless you override them. That keeps the picker dynamic
+while routing the main conversation to the larger abliterated model we
+validated on LM Studio's Anthropic-compatible `/v1/messages` path, while
+making tool-heavy turns consistently use the stricter coder model.
 
 That is different from the current Desktop/Cowork LaunchAgent documented
 earlier in this README, which pins `MAIN_MODEL`, `SMALL_MODEL`, and
 `TOOL_MODEL` all to `qwen/qwen3-coder-30b` to make the live route explicit and
 reduce ambiguity.
 
-You can override both:
+You can override all three:
 
 ```bash
 export CLAUDE_LMSTUDIO_MAIN_MODEL=qwen3-coder-30b
 export CLAUDE_LMSTUDIO_SMALL_MODEL=qwen2.5-7b-instruct
+export CLAUDE_LMSTUDIO_TOOL_MODEL=qwen3-coder-30b
 ```
 
 You can also provide explicit rewrites:
@@ -408,6 +446,41 @@ export CLAUDE_LMSTUDIO_TOOL_MODEL=qwen/qwen3-coder-30b
 That keeps plain chat on the larger main model while routing tool-heavy turns
 such as `TaskCreate`, file edits, and other agentic calls to a model that is
 less likely to omit required tool parameters.
+
+## Recommended models for this hardware
+
+On this machine, `llmfit` reports:
+
+- `Apple M4 Max`
+- `128 GB` unified memory
+- about `116 GB` available during validation
+
+The strongest local fits we saw were:
+
+- `Qwen/Qwen3-Coder-Next`
+  - best coding-quality recommendation
+  - about `40.8 GB` estimated memory
+  - about `75.8 tok/s`
+- `Qwen/Qwen3-Next-80B-A3B-Instruct`
+  - best general chat / instruction-following recommendation
+  - about `41.7 GB` estimated memory
+  - about `74.8 tok/s`
+- `Qwen/Qwen3-Coder-30B-A3B-Instruct`
+  - best practical bridge default
+  - about `15.6 GB` estimated memory
+  - about `81 tok/s`
+
+Practical recommendation:
+
+- keep `qwen/qwen3-coder-30b` as the current Cowork/Desktop bridge model for
+  reliability and lower memory pressure
+- test `Qwen3-Coder-Next` next when you want the highest coding quality
+- use `Qwen3-Next-80B-A3B-Instruct` when you want a stronger general assistant
+  route than the coder model
+
+Avoid keeping several large models loaded at once unless you actually need
+them. LM Studio model workers can hold very large unified-memory allocations
+even while idle.
 
 ## What the picker is showing
 
@@ -671,3 +744,48 @@ node bridge.mjs sync-models
 ```
 
 The fixture can look like either LM Studio's richer `/api/v1/models` output or the OpenAI-compatible `/v1/models` output.
+
+## Next iteration: moving from LM Studio bridge to OMLX
+
+If you want a more Anthropic-doc-aligned local gateway, OMLX is the most
+promising next step.
+
+Why it is attractive:
+
+- it already exposes Anthropic-compatible `POST /v1/messages`
+- it exposes `GET /v1/models`
+- it supports API-visible model aliases, so `/v1/models` can return the exact
+  provider-facing ids Claude Cowork expects
+- it includes model TTL, LRU eviction, and explicit memory controls
+- according to the OMLX docs, it can reuse your existing LM Studio model
+  directory instead of forcing a second parallel model store
+
+Useful references:
+
+- [Anthropic Cowork 3P configuration](https://claude.com/docs/cowork/3p/configuration)
+- [Anthropic Cowork 3P installation](https://claude.com/docs/cowork/3p/installation)
+- [oMLX README](https://github.com/jundot/omlx)
+- [oMLX site](https://omlx.ai/)
+
+Recommended migration plan:
+
+1. Keep the current LM Studio bridge as the known-good baseline.
+2. Install OMLX and point it at the same local model directory.
+3. In OMLX, create provider-facing aliases such as:
+   - `claude-haiku-4-5`
+   - `claude-sonnet-4-6`
+4. Expose a single local OMLX endpoint and test:
+   - `GET /v1/models`
+   - `POST /v1/messages`
+   - tool-heavy Cowork turns
+   - long streaming responses
+5. Once OMLX is stable, replace the Claude Desktop 3P provider's
+   `inferenceGatewayBaseUrl` with the OMLX endpoint and remove the custom
+   rewrite bridge from the hot path.
+
+Expected benefits of that migration:
+
+- less custom glue
+- provider-facing model ids that match gateway discovery more naturally
+- better memory lifecycle controls for multiple large local models
+- a cleaner path to future plugin and connector experiments
