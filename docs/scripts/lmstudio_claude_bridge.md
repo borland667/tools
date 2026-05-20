@@ -2,10 +2,10 @@
 
 ## Purpose
 
-Small local bridge for running Anthropic-style Claude clients against
-`LM Studio` without changing the client source. It forwards
-Anthropic-compatible `/v1/*` requests to LM Studio, rewrites
-Anthropic-style default model names to local LM Studio model ids, and keeps
+Small local bridge for running Anthropic-style Claude clients against a local
+inference backend without changing the client source. It forwards
+Anthropic-compatible `/v1/*` requests to the selected upstream backend,
+rewrites Anthropic-style default model names to local model ids, and keeps
 Claude-side model pickers populated where the client supports that.
 
 Use this when:
@@ -13,6 +13,8 @@ Use this when:
 - You want Claude Code to run locally against LM Studio instead of Anthropic.
 - You want Claude Desktop / Claude Cowork 3P mode to use a local bridge-backed
   `gateway` provider instead of a hosted inference endpoint.
+- You want to keep the same bridge while choosing between `lmstudio` and
+  `omlx` as the upstream backend.
 - You want to pick among locally loaded models in the app instead of hardcoding
   one model id.
 - You want a lightweight bridge with no extra runtime dependencies beyond Node.
@@ -60,8 +62,60 @@ Optional:
 - `LMSTUDIO_API_KEY` if your LM Studio server expects one.
 - `LMSTUDIO_MODELS_FILE` for fixture-based testing without a live LM Studio
   server.
+- `OMLX_API_KEY` if your oMLX server expects one.
 
 The bridge is standard-library Node only.
+
+## Choose the upstream backend
+
+The bridge now supports two upstream backends:
+
+1. `lmstudio`
+   - current default
+   - base URL default: `http://127.0.0.1:1234`
+   - upstream auth default when an API key is set: `x-api-key`
+2. `omlx`
+   - migration target when you want alias support and stronger multi-model
+     memory controls
+   - base URL default: `http://127.0.0.1:8000`
+   - upstream auth default when an API key is set: bearer
+
+Backend selection options:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_BACKEND=lmstudio
+export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
+```
+
+or backend-specific base URLs:
+
+```bash
+export LMSTUDIO_BASE_URL=http://127.0.0.1:1234
+export OMLX_BASE_URL=http://127.0.0.1:8000
+```
+
+or one generic override:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_BASE_URL=http://127.0.0.1:8000
+```
+
+Optional generic auth controls:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_API_KEY=your-secret-key
+export CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME=auto
+```
+
+Supported `CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME` values:
+
+- `auto`
+- `none`
+- `bearer`
+- `x-api-key`
+- `both`
+
+`both` is mainly useful for compatibility experiments with local servers.
 
 ## Prepare LM Studio Models
 
@@ -116,6 +170,22 @@ That launcher:
 - keeps the helper/default side path on `qwen/qwen3-coder-30b` unless you
   override it,
 - runs `claude`.
+
+To use the same launcher against oMLX instead of LM Studio:
+
+```bash
+cd <repo-root>/lmstudio_claude_bridge
+export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
+export OMLX_BASE_URL=http://127.0.0.1:8000
+./run_claude_with_lmstudio.sh
+```
+
+If oMLX requires an API key:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_API_KEY=your-secret-key
+export CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME=bearer
+```
 
 ### Claude Desktop / Claude Cowork 3P mode
 
@@ -432,6 +502,13 @@ but label them honestly for the user:
 The bridge then rewrites those provider-facing ids to the real LM Studio model
 ids at request time.
 
+`labelOverride` is only for display:
+
+- it does not control tool routing
+- it does not expose bridge-side `CLAUDE_LMSTUDIO_TOOL_MODEL`
+- if you want the picker to hint that a route is more tool-safe, that must be
+  expressed manually in the label text
+
 ## Arguments and Options
 
 There are no required positional arguments.
@@ -446,8 +523,17 @@ There are no required positional arguments.
 
 Environment variables:
 
+- `CLAUDE_LOCAL_INFERENCE_BACKEND`: upstream backend selector, `lmstudio` or
+  `omlx`
+- `CLAUDE_LOCAL_INFERENCE_BASE_URL`: generic upstream base URL override
+- `CLAUDE_LOCAL_INFERENCE_API_KEY`: generic upstream API key override
+- `CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME`: upstream auth mode, `auto`, `none`,
+  `bearer`, `x-api-key`, or `both`
+- `CLAUDE_LOCAL_INFERENCE_MODELS_FILE`: generic fixture JSON path for testing
 - `LMSTUDIO_BASE_URL`: LM Studio base URL, default `http://127.0.0.1:1234`
 - `LMSTUDIO_API_KEY`: optional API key/header value for LM Studio
+- `OMLX_BASE_URL`: oMLX base URL, default `http://127.0.0.1:8000`
+- `OMLX_API_KEY`: optional API key/header value for oMLX
 - `CLAUDE_LMSTUDIO_BRIDGE_HOST`: bind host, default `127.0.0.1`
 - `CLAUDE_LMSTUDIO_BRIDGE_PORT`: bind port, default `1245`
 - `CLAUDE_LMSTUDIO_MODEL_SYNC_INTERVAL_MS`: periodic sync interval, default `30000`
@@ -482,6 +568,19 @@ Tool-aware routing behavior:
   acceptable for plain chat but a stricter tool-calling model is needed for
   `TaskCreate`, file-edit, and other agentic turns.
 
+Important scope boundary:
+
+- `CLAUDE_LMSTUDIO_TOOL_MODEL` is bridge-specific behavior, not an Anthropic
+  Cowork 3P configuration key.
+- Anthropic's 3P docs define model picker entries, tool availability controls,
+  MCP servers, and per-tool policies, but they do not define a separate "tool
+  model" routing field.
+- In this setup, Claude only sees the configured provider-facing picker model
+  ids. The bridge silently reroutes tool-bearing `/v1/messages` requests to the
+  stricter tool model when configured.
+- The picker therefore cannot natively communicate tool-model routing except
+  through whatever human text you put in `labelOverride`.
+
 ## Recommended models for this hardware
 
 During validation on this machine, `llmfit` reported:
@@ -511,6 +610,41 @@ Recommended use:
 - test `Qwen3-Coder-Next` as the next higher-quality coding route
 - use `Qwen3-Next-80B-A3B-Instruct` when general assistant quality matters
   more than strict coding specialization
+
+## Which models are better for tooling
+
+For this bridge, "better for tooling" means the model reliably emits
+structured tool calls with complete required arguments on LM Studio's
+Anthropic-compatible `/v1/messages` path.
+
+That is a stricter requirement than simply being a strong coding or chat model.
+
+Current practical ranking on this machine:
+
+1. `qwen/qwen3-coder-30b`
+   - best proven current option
+   - returned a valid bridge-routed `tool_use` block with all required fields
+     in direct testing
+   - also behaved correctly in the Cowork/Desktop route we validated
+2. `Qwen/Qwen3-Coder-Next`
+   - best next candidate to test
+   - top `llmfit` coding + tool-use recommendation for this hardware
+   - not yet validated in this exact Cowork/Desktop bridge path here
+3. `Qwen/Qwen3-Next-80B-A3B-Instruct`
+   - strongest general-purpose tool-capable candidate on paper
+   - worth testing when you want a single larger non-coder-specialized route
+
+Current negative finding:
+
+- `qwen3.6-35b-a3b-abliterated-heretic-mlx`
+  - produced a malformed `TaskCreate` payload in a real Cowork session
+  - in a direct `/v1/messages` tool-use test, spent the token budget and
+    stopped at `max_tokens` without producing a structured tool call
+
+So the operational recommendation remains:
+
+- live tool route: `qwen/qwen3-coder-30b`
+- next experimental upgrade: `Qwen/Qwen3-Coder-Next`
 
 ## Input and Output
 
@@ -842,14 +976,24 @@ Migration plan:
 
 1. Keep the current LM Studio bridge as the fallback baseline.
 2. Install OMLX and point it at the same local model directory.
-3. Define provider-facing aliases in OMLX for the ids Claude should see.
-4. Validate OMLX directly with:
+3. Keep Claude Desktop / Cowork pointing at the bridge.
+4. Switch only the bridge upstream:
+
+```bash
+export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
+export OMLX_BASE_URL=http://127.0.0.1:8000
+```
+
+5. Define provider-facing aliases in OMLX for the ids Claude should see.
+6. Validate OMLX directly with:
    - `GET /v1/models`
    - `POST /v1/messages`
    - tool-heavy Cowork flows
    - long streaming turns
-5. Switch Claude Desktop's `inferenceGatewayBaseUrl` to the OMLX endpoint once
-   that validation passes.
+7. Once that works behind the bridge, decide whether to:
+   - keep the bridge permanently for routing policy and compatibility, or
+   - later switch Claude Desktop's `inferenceGatewayBaseUrl` directly to OMLX
+     and remove the custom bridge from the hot path.
 
 Expected benefits:
 

@@ -19,7 +19,7 @@ if [[ -z "${NODE_BIN}" ]]; then
 fi
 
 if [[ -z "${NODE_BIN}" ]]; then
-  echo "node is required to run the LM Studio bridge" >&2
+  echo "node is required to run the local inference bridge" >&2
   exit 1
 fi
 
@@ -39,6 +39,7 @@ fi
 export CLAUDE_LMSTUDIO_MAIN_MODEL="${CLAUDE_LMSTUDIO_MAIN_MODEL:-${DEFAULT_CLAUDE_CODE_MAIN_MODEL}}"
 export CLAUDE_LMSTUDIO_SMALL_MODEL="${CLAUDE_LMSTUDIO_SMALL_MODEL:-${DEFAULT_CLAUDE_CODE_SMALL_MODEL}}"
 export CLAUDE_LMSTUDIO_TOOL_MODEL="${CLAUDE_LMSTUDIO_TOOL_MODEL:-${DEFAULT_CLAUDE_CODE_SMALL_MODEL}}"
+export CLAUDE_LOCAL_INFERENCE_BACKEND="${CLAUDE_LOCAL_INFERENCE_BACKEND:-${CLAUDE_LMSTUDIO_BACKEND:-}}"
 
 # Replace any previous bridge instance so the current model mapping wins.
 if command -v pgrep >/dev/null 2>&1; then

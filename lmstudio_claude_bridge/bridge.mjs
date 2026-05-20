@@ -8,8 +8,17 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
-const LM_STUDIO_BASE_URL = stripTrailingSlash(
-  process.env.LMSTUDIO_BASE_URL ?? 'http://127.0.0.1:1234',
+const BACKEND_KIND = normalizeBackendKind(
+  process.env.CLAUDE_LOCAL_INFERENCE_BACKEND ??
+    process.env.CLAUDE_LMSTUDIO_BACKEND ??
+    (process.env.OMLX_BASE_URL ? 'omlx' : 'lmstudio'),
+)
+const BACKEND_DISPLAY_NAME = BACKEND_KIND === 'omlx' ? 'oMLX' : 'LM Studio'
+const UPSTREAM_BASE_URL = stripTrailingSlash(
+  process.env.CLAUDE_LOCAL_INFERENCE_BASE_URL ??
+    (BACKEND_KIND === 'omlx'
+      ? process.env.OMLX_BASE_URL ?? 'http://127.0.0.1:8000'
+      : process.env.LMSTUDIO_BASE_URL ?? 'http://127.0.0.1:1234'),
 )
 const BRIDGE_HOST = process.env.CLAUDE_LMSTUDIO_BRIDGE_HOST ?? '127.0.0.1'
 const BRIDGE_PORT = Number(process.env.CLAUDE_LMSTUDIO_BRIDGE_PORT ?? '1245')
@@ -20,8 +29,17 @@ const REQUEST_TIMEOUT_MS = Number(
   process.env.CLAUDE_LMSTUDIO_REQUEST_TIMEOUT_MS ?? '600000',
 )
 const TOOL_MODEL_OVERRIDE = process.env.CLAUDE_LMSTUDIO_TOOL_MODEL ?? ''
-const MODELS_FIXTURE_FILE = process.env.LMSTUDIO_MODELS_FILE
-const LM_STUDIO_API_KEY = process.env.LMSTUDIO_API_KEY ?? ''
+const MODELS_FIXTURE_FILE =
+  process.env.CLAUDE_LOCAL_INFERENCE_MODELS_FILE ??
+  process.env.LMSTUDIO_MODELS_FILE
+const UPSTREAM_API_KEY =
+  process.env.CLAUDE_LOCAL_INFERENCE_API_KEY ??
+  (BACKEND_KIND === 'omlx'
+    ? process.env.OMLX_API_KEY ?? ''
+    : process.env.LMSTUDIO_API_KEY ?? '')
+const UPSTREAM_AUTH_SCHEME = normalizeAuthScheme(
+  process.env.CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME ?? 'auto',
+)
 
 const ANTHROPIC_FAMILY_PATTERNS = [
   'claude-',
@@ -81,7 +99,7 @@ async function main() {
 }
 
 function printHelp() {
-  console.log(`Claude <-> LM Studio bridge
+  console.log(`Claude <-> local inference bridge
 
 Usage:
   node bridge.mjs serve
@@ -89,8 +107,15 @@ Usage:
   node bridge.mjs print-env
 
 Environment:
+  CLAUDE_LOCAL_INFERENCE_BACKEND          Upstream backend: lmstudio or omlx (default: ${BACKEND_KIND})
+  CLAUDE_LOCAL_INFERENCE_BASE_URL         Generic upstream base URL override
+  CLAUDE_LOCAL_INFERENCE_API_KEY          Generic upstream API key override
+  CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME      Upstream auth: auto, none, bearer, x-api-key, both
+  CLAUDE_LOCAL_INFERENCE_MODELS_FILE      Local JSON fixture for testing model sync
   LMSTUDIO_BASE_URL                       LM Studio base URL (default: http://127.0.0.1:1234)
   LMSTUDIO_API_KEY                        Optional LM Studio API key to inject upstream
+  OMLX_BASE_URL                           oMLX base URL (default: http://127.0.0.1:8000)
+  OMLX_API_KEY                            Optional oMLX API key to inject upstream
   CLAUDE_LMSTUDIO_BRIDGE_HOST             Bridge listen host (default: 127.0.0.1)
   CLAUDE_LMSTUDIO_BRIDGE_PORT             Bridge listen port (default: 1245)
   CLAUDE_LMSTUDIO_MODEL_SYNC_INTERVAL_MS  Model sync interval in ms (default: 30000)
@@ -100,7 +125,7 @@ Environment:
   CLAUDE_LMSTUDIO_MODEL_MAP               JSON object of explicit model rewrites
   CLAUDE_GLOBAL_CONFIG_FILE               Override Claude global config path
   CLAUDE_CONFIG_DIR                       Alternate Claude config root
-  LMSTUDIO_MODELS_FILE                    Local JSON fixture for testing model sync`)
+  LMSTUDIO_MODELS_FILE                    Legacy alias for local JSON fixture`)
 }
 
 function printEnvBlock(bridgeBaseUrl) {
@@ -143,7 +168,7 @@ async function startServer() {
   })
 
   console.log(
-    `[bridge] listening on http://${BRIDGE_HOST}:${BRIDGE_PORT} -> ${LM_STUDIO_BASE_URL}`,
+    `[bridge] listening on http://${BRIDGE_HOST}:${BRIDGE_PORT} -> ${BACKEND_DISPLAY_NAME} ${UPSTREAM_BASE_URL}`,
   )
   printEnvBlock(`http://${BRIDGE_HOST}:${BRIDGE_PORT}`)
 
@@ -162,7 +187,8 @@ async function routeRequest(req, res) {
     await syncModelOptions()
     return writeJson(res, 200, {
       ok: true,
-      upstream: LM_STUDIO_BASE_URL,
+      backend: BACKEND_KIND,
+      upstream: UPSTREAM_BASE_URL,
       models: lastSyncedOptions.length,
       mainModel: modelSelection.mainModel,
       smallModel: modelSelection.smallModel,
@@ -197,7 +223,7 @@ async function routeRequest(req, res) {
   }
 
   if (url.pathname.startsWith('/v1/')) {
-    return proxyToLmStudio(req, res, url)
+    return proxyToUpstream(req, res, url)
   }
 
   return writeJson(res, 404, {
@@ -205,8 +231,8 @@ async function routeRequest(req, res) {
   })
 }
 
-async function proxyToLmStudio(req, res, url) {
-  const upstreamUrl = new URL(url.pathname + url.search, LM_STUDIO_BASE_URL)
+async function proxyToUpstream(req, res, url) {
+  const upstreamUrl = new URL(url.pathname + url.search, UPSTREAM_BASE_URL)
   const headers = copyIncomingHeaders(req.headers)
   let expectsStreamingResponse = false
 
@@ -218,9 +244,7 @@ async function proxyToLmStudio(req, res, url) {
     expectsStreamingResponse = prepared.expectsStreamingResponse
   }
 
-  if (LM_STUDIO_API_KEY) {
-    headers.set('x-api-key', LM_STUDIO_API_KEY)
-  }
+  applyUpstreamAuthHeaders(headers)
 
   let upstream
   try {
@@ -238,7 +262,7 @@ async function proxyToLmStudio(req, res, url) {
       writeAnthropicSseError(
         res,
         502,
-        `LM Studio upstream request failed: ${formatError(error)}`,
+        `${BACKEND_DISPLAY_NAME} upstream request failed: ${formatError(error)}`,
       )
       return
     }
@@ -273,7 +297,7 @@ async function proxyToLmStudio(req, res, url) {
       writeAnthropicSseError(
         res,
         upstream.status || 502,
-        `LM Studio stream closed unexpectedly: ${formatError(error)}`,
+        `${BACKEND_DISPLAY_NAME} stream closed unexpectedly: ${formatError(error)}`,
       )
       return
     }
@@ -466,7 +490,7 @@ async function syncModelOptions() {
   const payload = await fetchModelsPayload()
   const options = normalizeModelOptions(payload)
   if (options.length === 0) {
-    throw new Error('LM Studio did not return any usable LLM models')
+    throw new Error(`${BACKEND_DISPLAY_NAME} did not return any usable LLM models`)
   }
 
   lastSyncedOptions = options
@@ -506,7 +530,7 @@ async function fetchModelsPayload() {
 
   for (const candidate of candidates) {
     try {
-      const response = await fetch(new URL(candidate, LM_STUDIO_BASE_URL), {
+      const response = await fetch(new URL(candidate, UPSTREAM_BASE_URL), {
         headers: buildUpstreamHeaders(),
         signal: AbortSignal.timeout(5000),
       })
@@ -521,7 +545,7 @@ async function fetchModelsPayload() {
     }
   }
 
-  throw lastError ?? new Error('failed to fetch models from LM Studio')
+  throw lastError ?? new Error(`failed to fetch models from ${BACKEND_DISPLAY_NAME}`)
 }
 
 function normalizeModelOptions(payload) {
@@ -607,7 +631,7 @@ function normalizeModelOption(model) {
   const description =
     descriptionParts.length > 0
       ? descriptionParts.join(' · ')
-      : `LM Studio model (${id})`
+      : `${BACKEND_DISPLAY_NAME} model (${id})`
 
   return {
     value: id,
@@ -792,7 +816,9 @@ function copyIncomingHeaders(headers) {
   for (const [key, value] of Object.entries(headers)) {
     if (
       value == null ||
-      ['host', 'connection', 'content-length'].includes(key.toLowerCase())
+      ['host', 'connection', 'content-length', 'authorization', 'x-api-key'].includes(
+        key.toLowerCase(),
+      )
     ) {
       continue
     }
@@ -811,10 +837,29 @@ function copyIncomingHeaders(headers) {
 
 function buildUpstreamHeaders() {
   const headers = new Headers()
-  if (LM_STUDIO_API_KEY) {
-    headers.set('x-api-key', LM_STUDIO_API_KEY)
-  }
+  applyUpstreamAuthHeaders(headers)
   return headers
+}
+
+function applyUpstreamAuthHeaders(headers) {
+  if (!UPSTREAM_API_KEY || UPSTREAM_AUTH_SCHEME === 'none') {
+    return
+  }
+
+  const authScheme =
+    UPSTREAM_AUTH_SCHEME === 'auto'
+      ? BACKEND_KIND === 'omlx'
+        ? 'bearer'
+        : 'x-api-key'
+      : UPSTREAM_AUTH_SCHEME
+
+  if (authScheme === 'x-api-key' || authScheme === 'both') {
+    headers.set('x-api-key', UPSTREAM_API_KEY)
+  }
+
+  if (authScheme === 'bearer' || authScheme === 'both') {
+    headers.set('authorization', `Bearer ${UPSTREAM_API_KEY}`)
+  }
 }
 
 function isEventStreamContentType(contentType) {
@@ -938,6 +983,25 @@ function compactNumber(value) {
 
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, '')
+}
+
+function normalizeBackendKind(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+  return normalized === 'omlx' ? 'omlx' : 'lmstudio'
+}
+
+function normalizeAuthScheme(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (['auto', 'none', 'bearer', 'x-api-key', 'both'].includes(normalized)) {
+    return normalized
+  }
+
+  return 'auto'
 }
 
 function formatError(error) {
