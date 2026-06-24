@@ -24,7 +24,7 @@ Use this when:
 The bridge can support other model-routing patterns, but the setup validated in
 this session and documented below is:
 
-- LM Studio local server on `http://127.0.0.1:1234`
+- oMLX local server on `http://127.0.0.1:8005`
 - bridge LaunchAgent at
   `$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist`
 - bridge listener on `http://127.0.0.1:1245`
@@ -33,11 +33,23 @@ this session and documented below is:
 - provider-facing ids:
   - `claude-haiku-4-5`
   - `claude-sonnet-4-6`
-- actual LM Studio route for both main and tool traffic:
-  - `qwen/qwen3-coder-30b`
+- default local route:
+  - `Qwen3-Coder-Next-MLX-4bit`
+- bridge backend:
+  - `CLAUDE_LOCAL_INFERENCE_BACKEND=omlx`
 
 If you follow the Desktop/Cowork section exactly, that is the behavior you
 should reproduce.
+
+### Cowork model testing
+
+Cowork's `inferenceModels` accepts only Anthropic catalogue routes; raw OMLX
+model IDs make the whole provider configuration invalid. Keep the Cowork model
+list on accepted `claude-*` IDs and set `CLAUDE_LMSTUDIO_MODEL_MAP` in the
+LaunchAgent to map each route to a full OMLX ID. The root bridge README records
+the current 10-model test matrix. Do not include
+`Qwen3-Embedding-0.6B-4bit-DWQ`: it is an embedding model, not a conversation
+model.
 
 Do NOT use this for:
 
@@ -476,6 +488,26 @@ earlier in this file, which pins `MAIN_MODEL`, `SMALL_MODEL`, and
 node bridge.mjs sync-models
 ```
 
+### Disable or re-enable the Desktop/Cowork 3P bridge
+
+After the LaunchAgent and 3P provider config are in place, use
+[`toggle_claude_lmstudio_bridge.sh`](../../lmstudio_claude_bridge/toggle_claude_lmstudio_bridge.sh)
+to flip between the bridge-active provider config and a pre-bridge baseline
+without editing JSON or running `launchctl` by hand:
+
+```bash
+./lmstudio_claude_bridge/toggle_claude_lmstudio_bridge.sh --status
+./lmstudio_claude_bridge/toggle_claude_lmstudio_bridge.sh --disable
+./lmstudio_claude_bridge/toggle_claude_lmstudio_bridge.sh --enable
+```
+
+Both actions also start or stop the bridge LaunchAgent
+(`com.borland.lmstudio-claude-bridge`). Restart Claude Desktop afterwards so
+it picks up the provider change.
+
+The toggle is config-config: it does not delete the LaunchAgent plist or the
+provider entry, so you can flip back and forth as often as needed.
+
 ### Test with a fixture instead of LM Studio
 
 ```bash
@@ -520,6 +552,37 @@ There are no required positional arguments.
   global config cache.
 - `print-env`: print the recommended Claude Code environment variables.
 - `--help`: show usage.
+
+`toggle_claude_lmstudio_bridge.sh` flags (Desktop/Cowork 3P provider toggle):
+
+- `--disable`: snapshot the current bridge-active 3P provider config to
+  `<id>.json.bridge-on.bak`, restore the disabled snapshot
+  `<id>.json.bridge-off.bak` to the active provider file, and `launchctl
+  bootout` the bridge LaunchAgent.
+- `--enable`: snapshot the current disabled provider config to
+  `<id>.json.bridge-off.bak`, restore `<id>.json.bridge-on.bak` to the active
+  provider file, and `launchctl bootstrap` the bridge LaunchAgent.
+- `--status`: print the active provider id, whether the live config matches
+  the enabled or disabled snapshot, and whether the bridge LaunchAgent is
+  loaded.
+- `--baseline <path>`: only valid with `--disable`; seeds the
+  `bridge-off.bak` snapshot from the given JSON file on first use. If
+  omitted, the script auto-picks a single `<id>.json.bak-bridge-<timestamp>`
+  backup if exactly one is present.
+- `-h`, `--help`: show usage.
+
+Toggle environment overrides:
+
+- `CLAUDE_3P_CONFIG_LIB`: path to the Claude 3P `configLibrary/` directory.
+- `BRIDGE_LAUNCH_AGENT`: path to the bridge LaunchAgent plist.
+
+Toggle safety behavior:
+
+- The script refuses to overwrite an existing snapshot when the active
+  provider config matches neither managed snapshot, so manual edits do not
+  silently clobber known-good states.
+- `launchctl bootstrap` and `launchctl bootout` are idempotent: already
+  loaded / already not loaded are treated as no-ops.
 
 Environment variables:
 
@@ -806,6 +869,8 @@ than Node heap growth.
 - `curl http://127.0.0.1:1245/healthz` succeeds while the bridge is running.
 - `launchctl print gui/$(id -u)/com.borland.lmstudio-claude-bridge` shows the
   expected env vars and plist path.
+- `./toggle_claude_lmstudio_bridge.sh --status` reports the active provider id
+  and whether the live config matches the enabled or disabled snapshot.
 - Claude Desktop logs `inference apiHost=http://127.0.0.1:1245` after the 3P
   provider is pointed at the bridge.
 - `$HOME/Library/Logs/lmstudio-claude-bridge.log` shows `rewrite model ...` lines

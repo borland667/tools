@@ -88,7 +88,15 @@ async function main() {
       return
     }
     case 'serve':
-      await syncModelOptions()
+      // Keep the local endpoint available while a backend is restarting.
+      // Periodic syncs and request handling will recover once it is reachable.
+      try {
+        await syncModelOptions()
+      } catch (error) {
+        console.error(
+          `[bridge] initial model sync failed; starting anyway: ${formatError(error)}`,
+        )
+      }
       await startServer()
       return
     default:

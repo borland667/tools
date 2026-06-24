@@ -17,23 +17,24 @@ It now supports two upstream backends behind the same bridge:
 
 ## Current reproducible setup on this machine
 
-The repository supports more than one routing pattern, but the setup we
-validated in this session and documented below is:
+The repository supports more than one routing pattern, but the active setup
+validated in this session is:
 
-- LM Studio local server on `http://127.0.0.1:1234`
+- oMLX local server on `http://127.0.0.1:8005`
 - bridge LaunchAgent at
   `$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist`
 - bridge listener on `http://127.0.0.1:1245`
 - Claude Desktop / Cowork 3P provider config under
   `$HOME/Library/Application Support/Claude-3p/configLibrary/`
-- provider-facing model ids:
-  - `claude-haiku-4-5`
-  - `claude-sonnet-4-6`
-- actual LM Studio route for both main and tool traffic:
-  - `qwen/qwen3-coder-30b`
+- `CLAUDE_LOCAL_INFERENCE_BACKEND=omlx`
+- default and tool route:
+  - `Qwen3-Coder-Next-MLX-4bit`
+- Cowork uses Anthropic catalogue route IDs; the bridge maps those IDs to
+  OMLX model IDs through `CLAUDE_LMSTUDIO_MODEL_MAP`. The current 10-route
+  test matrix appears in [Cowork OMLX test matrix](#cowork-omlx-test-matrix).
 
-If you follow the Desktop/Cowork steps in this README exactly, that is the
-behavior you should reproduce.
+Keep Cowork pointed at the bridge, not directly at OMLX. Cowork rejects raw
+local model IDs in its provider config even when OMLX exposes those IDs.
 
 LM Studio and oMLX both expose Anthropic-compatible `POST /v1/messages`
 endpoints, so this bridge does not try to reimplement inference. Instead it
@@ -57,6 +58,7 @@ adds the missing glue:
 
 - [bridge.mjs](./bridge.mjs)
 - [run_claude_with_lmstudio.sh](./run_claude_with_lmstudio.sh)
+- [toggle_claude_lmstudio_bridge.sh](./toggle_claude_lmstudio_bridge.sh)
 - [claude-3p-provider.example.json](./claude-3p-provider.example.json)
 
 ## Requirements
@@ -448,6 +450,53 @@ You should see bridge rewrite lines such as:
 - `claude-haiku-4-5` -> `qwen/qwen3-coder-30b`
 - `claude-sonnet-4-6` -> `qwen/qwen3-coder-30b`
 
+## Disable / Enable the bridge
+
+Once the Desktop/Cowork 3P provider is wired up, you can flip between the
+bridge-active config and a pre-bridge baseline with
+[`toggle_claude_lmstudio_bridge.sh`](./toggle_claude_lmstudio_bridge.sh)
+without editing the JSON or running `launchctl` by hand.
+
+The script keeps two snapshots next to the active provider JSON in
+`configLibrary/`:
+
+- `<id>.json.bridge-on.bak` - bridge-active config (what `--enable` restores)
+- `<id>.json.bridge-off.bak` - pre-bridge config (what `--disable` restores)
+
+Typical first-time disable, when only the live bridge config is in place:
+
+```bash
+./toggle_claude_lmstudio_bridge.sh --status
+./toggle_claude_lmstudio_bridge.sh --disable
+```
+
+On the first `--disable`, the script seeds `<id>.json.bridge-off.bak` from
+either `--baseline <path>` or, if exactly one `<id>.json.bak-bridge-<timestamp>`
+backup is present in `configLibrary/`, that file. After that, the toggle is
+purely between the two managed `.bridge-on.bak` / `.bridge-off.bak` snapshots.
+
+Re-enable later:
+
+```bash
+./toggle_claude_lmstudio_bridge.sh --enable
+```
+
+Both actions also start or stop the bridge LaunchAgent
+(`com.borland.lmstudio-claude-bridge`) using `launchctl bootstrap` /
+`launchctl bootout`. Restart Claude Desktop afterwards so it picks up the
+provider change.
+
+If the active config matches neither managed snapshot (for example after a
+manual edit), the script refuses to overwrite an existing snapshot and asks
+you to inspect the situation first instead of clobbering history.
+
+Override paths for non-default setups:
+
+```bash
+export CLAUDE_3P_CONFIG_LIB="$HOME/Library/Application Support/Claude-3p/configLibrary"
+export BRIDGE_LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist"
+```
+
 ## Manual Usage
 
 Sync model options only:
@@ -722,6 +771,23 @@ tail -f ~/Library/Logs/lmstudio-claude-bridge.log
 If the bridge logs repeated upstream stream failures, treat the local model or
 LM Studio runtime as the primary suspect before blaming Cowork itself.
 
+### Bridge starts before OMLX is ready
+
+OMLX may briefly reject connections while it is starting or restarting. The
+bridge is intentionally tolerant of that state: it starts its local listener
+even when its initial model sync fails, then retries sync every 30 seconds.
+
+Verify recovery with:
+
+```bash
+curl http://127.0.0.1:1245/healthz
+curl http://127.0.0.1:8005/health
+```
+
+If the OMLX health request still fails, restart OMLX first. Do not change the
+Cowork profile to point at OMLX directly: keeping Cowork on the bridge avoids
+its model-discovery filter rejecting raw local model IDs.
+
 ### "Why are there huge node processes? Is the bridge leaking memory?"
 
 Usually no. In our validation, the largest `node` processes were LM Studio
@@ -952,3 +1018,30 @@ Expected benefits of that migration:
 - provider-facing model ids that match gateway discovery more naturally
 - better memory lifecycle controls for multiple large local models
 - a cleaner path to future plugin and connector experiments
+
+## Cowork OMLX test matrix
+
+Cowork rejects raw local IDs such as `Qwen3-Coder-Next-8bit` in
+`inferenceModels`, even when that model is available from the gateway. Use a
+catalogue-compatible Claude route in Cowork and map it to the full OMLX ID
+with `CLAUDE_LMSTUDIO_MODEL_MAP` in the bridge LaunchAgent instead.
+
+The active local test matrix is:
+
+| Cowork route | OMLX model |
+| --- | --- |
+| `claude-sonnet-4-6` | `Qwen3-Coder-Next-MLX-4bit` |
+| `claude-haiku-4-5` | `Qwen3-Coder-Next-MLX-4bit` |
+| `claude-opus-4-6` | `Qwen3-Coder-Next-8bit` |
+| `claude-sonnet-4-5` | `Qwen3-Next-80B-A3B-Instruct-MLX-4bit` |
+| `claude-opus-4-1` | `Qwen3-Next-80B-A3B-Instruct-MLX-8bit` |
+| `claude-3-7-sonnet-20250219` | `DeepSeek-R1-0528-Qwen3-8B-MLX-4bit` |
+| `claude-3-5-haiku-20241022` | `Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit` |
+| `claude-opus-4-0` | `Qwen3.6-27B-Heretic-MLX-bf16` |
+| `claude-opus-4-20250514` | `Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit` |
+| `claude-3-opus-20240229` | `gemma-4-12b-coder-fable5-composer2.5-8bit` |
+
+The embedding-only `Qwen3-Embedding-0.6B-4bit-DWQ` is deliberately omitted:
+it cannot serve Cowork conversations. The default route remains the 4-bit
+Qwen coder. Tool-bearing requests keep using `CLAUDE_LMSTUDIO_TOOL_MODEL`, so
+use ordinary chat turns when comparing model-specific behaviour.
