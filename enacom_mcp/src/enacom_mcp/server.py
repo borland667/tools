@@ -13,6 +13,7 @@ Tools exposed:
   - hertz_login_open(): open browser, return immediately (non-blocking 'connect')
   - hertz_login_status(): report browser's current URL / Hertz arrival
   - hertz_login_capture(): persist session cookies to ENACOM_STORAGE_STATE
+  - hertz_dump_dom(label?): snapshot DOM + interactive-element inventory
   - hertz_open_workspace(): navigate to "Declaraciones Juradas"
   - submit_one(servicio, anio, periodo_num): create+fill+submit one DDJJ
   - submit_batch(limit, dry_run): iterate over pending DDJJ
@@ -166,6 +167,19 @@ def hertz_login_status() -> dict:
 
 
 @mcp.tool()
+def hertz_dump_dom(label: str = "dump") -> dict:
+    """Capture the current page's DOM to help fix selectors.
+
+    Writes an HTML snapshot, a full-page screenshot, and a JSON inventory of
+    interactive elements (each with a suggested Playwright locator) to
+    ENACOM_ARTIFACTS_DIR. Use this on your first live login to replace the
+    guessed selectors in selectors.py with real ones. Non-destructive.
+    """
+    h = _hertz_client()
+    return h.dump_dom(label)
+
+
+@mcp.tool()
 def hertz_login_capture() -> dict:
     """Persist the current session cookies to ENACOM_STORAGE_STATE.
 
@@ -195,9 +209,14 @@ def submit_one(servicio: str, anio: int, periodo_num: int) -> dict:
     Behavior:
       • Reads the row from the tracker for context.
       • Skips if estado is already 'Enviada', 'Validada' or 'Finalizada'.
-      • In ENACOM_DRY_RUN=true mode: stops before clicking 'Enviar' and
-        leaves the draft visible for you to review.
       • Updates the tracker row with the new Carpeta Técnica and estado.
+
+    ⚠️  DRY RUN IS NOT A NO-OP. With ENACOM_DRY_RUN=true this still creates a
+    REAL draft in the portal and saves its 'Datos Generales' — it only skips
+    the final 'Enviar' click, leaving the draft visible for you to review.
+    The tracker row flips to 'En curso' (not 'Pendiente'), so a later
+    submit_batch will NOT pick it up again; to actually send it, set
+    ENACOM_DRY_RUN=false and re-call submit_one for the same period.
     """
     row = TRACKER.find(servicio, anio, periodo_num)
     if row is None:

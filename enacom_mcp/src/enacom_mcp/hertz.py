@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import functools
+import json
 import logging
 import os
 import time
@@ -29,6 +30,7 @@ from typing import Iterator
 
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
+from . import dom_report
 from . import selectors as S
 
 log = logging.getLogger("enacom_mcp.hertz")
@@ -201,19 +203,23 @@ class HertzClient:
         """
         page = self.page
         try:
-            page.locator(S.HERTZ_PROFILE_INGRESAR_BTN).click(timeout=3_000)
-        except Exception as e:
+            self._click(
+                page, S.HERTZ_PROFILE_INGRESAR_BTN,
+                role="button", name=S.NAME_INGRESAR, timeout=3_000,
+            )
+        except Exception:
             log.info(
-                "No profile-picker 'Ingresar' button found (selector=%s) — "
-                "assuming single-profile account, continuing.",
-                S.HERTZ_PROFILE_INGRESAR_BTN,
+                "No profile-picker 'Ingresar' button found — assuming "
+                "single-profile account, continuing."
             )
 
     @_on_pw_thread
     def open_declaraciones_juradas(self) -> None:
         page = self.page
-        page.locator(S.HERTZ_CARPETAS_TECNICAS_BTN).click()
-        page.locator(S.HERTZ_DECLARACIONES_JURADAS_LINK).click()
+        self._click(page, S.HERTZ_CARPETAS_TECNICAS_BTN,
+                    role="button", name=S.NAME_CARPETAS_TECNICAS)
+        self._click(page, S.HERTZ_DECLARACIONES_JURADAS_LINK,
+                    role="link", name=S.NAME_DECLARACIONES_JURADAS)
         self._snap("dj_workspace")
 
     # ---------- DDJJ creation ----------
@@ -236,8 +242,8 @@ class HertzClient:
           4. Save
         """
         page = self.page
-        page.locator(S.TAB_INICIADAS).click()
-        page.locator(S.NEW_DDJJ_BUTTON).click()
+        self._click(page, S.TAB_INICIADAS, role="tab", name=S.NAME_TAB_INICIADAS)
+        self._click(page, S.NEW_DDJJ_BUTTON, role="button", name=S.NAME_NUEVA_DDJJ)
 
         carpeta = page.locator(S.DATOS_GENERALES_NUMERO_FIELD).input_value()
         log.info("Created draft Nº %s for %s %d-%s", carpeta, servicio, anio, periodo_nombre)
@@ -261,7 +267,7 @@ class HertzClient:
             fundamento or self.cfg.fundamento
         )
         # Save
-        page.locator(S.DATOS_GENERALES_GUARDAR_BTN).click()
+        self._click(page, S.DATOS_GENERALES_GUARDAR_BTN, role="button", name=S.NAME_GUARDAR)
         self._snap(f"datos_generales_{carpeta}")
         return carpeta
 
@@ -269,34 +275,120 @@ class HertzClient:
     def fill_principal_zero(self) -> None:
         """Open Formulario Principal and fill all numeric fields with 0."""
         page = self.page
-        page.locator(S.DATOS_GENERALES_FORMULARIOS_BTN).click()
-        page.locator(S.FORM_PRINCIPAL_TAB).click()
-        page.locator(S.FORM_PRINCIPAL_NUEVO_BTN).click()
-        page.locator(S.FORM_PRINCIPAL_VER_DETALLES).click()
+        self._click(page, S.DATOS_GENERALES_FORMULARIOS_BTN, role="button", name=S.NAME_FORMULARIOS)
+        self._click(page, S.FORM_PRINCIPAL_TAB, role="tab", name=S.NAME_FORM_PRINCIPAL_TAB)
+        self._click(page, S.FORM_PRINCIPAL_NUEVO_BTN, role="button", name=S.NAME_NUEVO_FORMULARIO)
+        self._click(page, S.FORM_PRINCIPAL_VER_DETALLES, role="button", name=S.NAME_VER_DETALLES)
         for field, sel in S.FORM_PRINCIPAL_FIELDS.items():
             page.locator(sel).fill("0")
-        page.locator(S.FORM_PRINCIPAL_GUARDAR).click()
-        page.locator(S.FORM_PRINCIPAL_CERRAR).click()
+        self._click(page, S.FORM_PRINCIPAL_GUARDAR, role="button", name=S.NAME_GUARDAR)
+        self._click(page, S.FORM_PRINCIPAL_CERRAR, role="button", name=S.NAME_CERRAR)
         self._snap("formulario_principal_cero")
 
     @_on_pw_thread
     def submit_ddjj(self) -> None:
-        """Click 'Enviar'. Skipped when dry_run=True."""
+        """Click 'Enviar' to send the DDJJ.
+
+        Only this final send is gated by dry_run. When dry_run=True the draft
+        (already created and saved by create_ddjj/fill_principal_zero) is left
+        in place and 'Enviar' is NOT clicked.
+        """
         page = self.page
-        page.locator(S.DATOS_GENERALES_CARPETA_TECNICA_BTN).click()
+        self._click(page, S.DATOS_GENERALES_CARPETA_TECNICA_BTN,
+                    role="button", name=S.NAME_CARPETA_TECNICA)
         if self.cfg.dry_run:
             log.warning("DRY RUN — skipping final 'Enviar' click. Review the draft visually.")
             self._snap("dry_run_before_enviar")
             return
-        page.locator(S.DATOS_GENERALES_ENVIAR_BTN).click()
+        self._click(page, S.DATOS_GENERALES_ENVIAR_BTN, role="button", name=S.NAME_ENVIAR)
         try:
-            page.locator(S.CONFIRM_ENVIAR_DIALOG).click(timeout=5_000)
+            self._click(page, S.CONFIRM_ENVIAR_DIALOG,
+                        role="button", name=S.NAME_CONFIRMAR, timeout=5_000)
         except Exception:
             pass
         page.wait_for_selector(S.SUCCESS_TOAST, timeout=15_000)
         self._snap("submitted")
 
+    # ---------- diagnostics ----------
+    @_on_pw_thread
+    def dump_dom(self, label: str = "dump") -> dict:
+        """Capture the current page's DOM for selector bring-up.
+
+        Writes three artifacts to ENACOM_ARTIFACTS_DIR:
+          • {ts}_{label}.html            — full page HTML
+          • {ts}_{label}.png             — full-page screenshot
+          • {ts}_{label}_elements.json   — inventory of interactive elements
+            (buttons/links/inputs/selects/textareas) with a suggested
+            Playwright locator for each.
+
+        Returns a summary dict (paths + element counts + current URL/title) so
+        you can lock down real selectors on your first live login instead of
+        guessing.
+        """
+        page = self.page
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        base = self.cfg.artifacts_dir / f"{ts}_{label}"
+        html = page.content()
+        report = dom_report.summarize_interactive_elements(html)
+
+        html_path = base.with_suffix(".html")
+        html_path.write_text(html, encoding="utf-8")
+        json_path = self.cfg.artifacts_dir / f"{ts}_{label}_elements.json"
+        json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        png_path = base.with_suffix(".png")
+        try:
+            page.screenshot(path=str(png_path), full_page=True)
+        except Exception as e:
+            log.warning("dump_dom screenshot failed: %s", e)
+            png_path = None
+
+        log.info("🧭 dump_dom wrote %s (%s)", html_path.name, report["counts"])
+        return {
+            "url": page.url,
+            "title": page.title(),
+            "counts": report["counts"],
+            "html_path": str(html_path),
+            "elements_json_path": str(json_path),
+            "screenshot_path": str(png_path) if png_path else None,
+        }
+
     # ---------- helpers ----------
+    def _click(
+        self,
+        page: Page,
+        css: str,
+        *,
+        role: str | None = None,
+        name: str | None = None,
+        timeout: int = 10_000,
+    ) -> None:
+        """Click an element, trying a role-based locator first, then CSS.
+
+        Runs on the Playwright worker thread (call only from @_on_pw_thread
+        methods). The role-based attempt (get_by_role(role, name=name)) is far
+        more resilient to CSS churn; if it fails we fall back to the exact CSS
+        selector so behavior never regresses. Raises the last error if both
+        strategies fail.
+        """
+        last_err: Exception | None = None
+        if role and name:
+            try:
+                page.get_by_role(role, name=name).first.click(timeout=timeout)
+                log.info("clicked via role=%s name=%r", role, name)
+                return
+            except Exception as e:  # noqa: BLE001 - fall back to CSS
+                last_err = e
+                log.debug("role click failed (role=%s name=%r): %s", role, name, e)
+        try:
+            page.locator(css).first.click(timeout=timeout)
+            log.info("clicked via css=%s", css)
+            return
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            log.warning("click failed for css=%s (role=%s name=%r): %s", css, role, name, e)
+        raise last_err if last_err else RuntimeError(f"click failed: {css}")
+
     def _snap(self, label: str) -> None:
         ts = time.strftime("%Y%m%d-%H%M%S")
         path = self.cfg.artifacts_dir / f"{ts}_{label}.png"

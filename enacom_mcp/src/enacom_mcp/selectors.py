@@ -99,3 +99,28 @@ SUCCESS_TOAST = "[role='status']"
 
 # ---------- Export "DJ FINALIZADAS" ----------
 EXPORT_BUTTON = "button:has-text('Exportar')"
+
+
+# ---------------------------------------------------------------------------
+# Role-based accessible names (PREFERRED strategy)
+# ---------------------------------------------------------------------------
+# Playwright's get_by_role(name=...) matches the element's accessible name
+# (usually its visible text), case-insensitively and as a substring after
+# whitespace normalization. This is far more resilient to CSS class churn than
+# the raw selectors above. `HertzClient._click` tries these first and falls
+# back to the matching CSS constant. Correct any that are wrong using the
+# output of the `hertz_dump_dom()` tool on your first live login.
+NAME_INGRESAR = "Ingresar"
+NAME_CARPETAS_TECNICAS = "Carpetas Técnicas"
+NAME_DECLARACIONES_JURADAS = "DECLARACIONES JURADAS"
+NAME_TAB_INICIADAS = "DDJJ Iniciadas"
+NAME_NUEVA_DDJJ = "Nueva DDJJ"
+NAME_GUARDAR = "Guardar"
+NAME_FORMULARIOS = "Formularios"
+NAME_FORM_PRINCIPAL_TAB = "Formulario principal DDJJ"
+NAME_NUEVO_FORMULARIO = "Nuevo Formulario"
+NAME_VER_DETALLES = "Ver Detalles"
+NAME_CERRAR = "Cerrar"
+NAME_CARPETA_TECNICA = "Carpeta Técnica"
+NAME_ENVIAR = "Enviar"
+NAME_CONFIRMAR = "Confirmar"

@@ -81,6 +81,13 @@ python -m enacom_mcp.scripts.make_tracker \
 The browser stops before clicking *Enviar*. Visually review the draft, then
 set `ENACOM_DRY_RUN=false` in `.env`, restart, and re-call `submit_one`.
 
+> ⚠️  **Dry run is not a no-op.** Even with `ENACOM_DRY_RUN=true`, `submit_one`
+> creates a **real draft** in the portal and saves its *Datos Generales* — only
+> the final *Enviar* click is skipped. The tracker row also moves to `En curso`
+> (not `Pendiente`), so a later `submit_batch` will **not** re-process it. To
+> actually send a dry-run draft, set `ENACOM_DRY_RUN=false` and re-call
+> `submit_one` for the same period.
+
 ### Capture login once, reuse the session
 
 The blocking `hertz_open_and_login` requires the MCP client to hold the call
@@ -158,14 +165,24 @@ Output:
 1. `make_tracker` builds the Excel template with three sheets (Tracker,
    Resumen, DJ FINALIZADAS).
 2. The MCP server boots with FastMCP and registers tools.
-3. `hertz_open_and_login` launches Chromium and waits for the user to reach
-   the Hertz portal via TAD.
-4. `submit_one` clicks `+ Nueva DDJJ`, captures the Carpeta Técnica number,
+3. `hertz_open_and_login` (or the non-blocking `hertz_login_open` /
+   `hertz_login_capture` pair) launches Chromium and waits for the user to
+   reach the Hertz portal via TAD.
+4. `hertz_dump_dom` can snapshot any page's HTML + a full-page screenshot +
+   a JSON inventory of interactive elements (each with a suggested Playwright
+   locator) into the artifacts dir, so real selectors can replace the guessed
+   ones in `selectors.py`.
+5. `submit_one` clicks `+ Nueva DDJJ`, captures the Carpeta Técnica number,
    fills Datos Generales (servicio / período / año / Original / fundamento)
    and the Formulario Principal in zero, and either submits or stops on
    dry-run.
-5. The tracker row is updated to `Enviada` (live) or `En curso` (dry-run).
-6. Screenshots are written into the artifacts dir at every meaningful step.
+6. The tracker row is updated to `Enviada` (live) or `En curso` (dry-run).
+7. Screenshots are written into the artifacts dir at every meaningful step.
+
+Selector strategy: for buttons/links/tabs the client tries a role-based
+`get_by_role(name=...)` locator (using the `NAME_*` constants in
+`selectors.py`) first and falls back to the raw CSS constant, so a wrong CSS
+guess degrades gracefully rather than hard-failing.
 7. `submit_batch` iterates over pending rows; stops on the first error to
    avoid cascading mistakes.
 8. `close_session` tears down the browser.
@@ -202,7 +219,9 @@ Output:
   argparse help.
 - `python -m enacom_mcp.scripts.make_tracker --cuit ... --razon-social ...
   --tcfv 2023-01:2023-03 --output /tmp/t.xlsx` writes a 3-row tracker.
-- `pytest tests/enacom_mcp/` is green.
+- `pytest tests/enacom_mcp/` is green (tracker, make_tracker round-trip,
+  HertzConfig.from_env, selector-constants sanity, dom_report, and a
+  server tool-registration smoke test).
 - `python -m enacom_mcp` boots the server (it will exit on missing
   `ENACOM_TRACKER_PATH` — set it to the test tracker for a smoke test).
 - With a real Hertz session: `submit_one` in dry-run leaves the browser at a
@@ -215,6 +234,8 @@ When changing behavior or flags, update:
 - This doc.
 - `enacom_mcp/.env.example` if env vars change.
 - `enacom_mcp/README.md` for tool list / install steps.
-- `tests/enacom_mcp/test_tracker.py` for tracker schema changes.
+- `tests/enacom_mcp/` (test_tracker, test_make_tracker, test_config,
+  test_selectors, test_dom_report, test_server_smoke) for schema, config,
+  selector, or tool-surface changes.
 - `selectors.py` whenever ENACOM revises the Hertz UI; document the change in
   the file's docstring.

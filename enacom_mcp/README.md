@@ -87,6 +87,7 @@ This starts an MCP server over stdio. Wire it up in your MCP client of choice (C
 | `hertz_login_open()` | Open browser at TAD, return immediately (non-blocking "connect") |
 | `hertz_login_status()` | Return browser's current URL / Hertz arrival check |
 | `hertz_login_capture()` | Persist current session cookies to `ENACOM_STORAGE_STATE` |
+| `hertz_dump_dom(label?)` | Snapshot DOM + interactive-element inventory to artifacts, for fixing selectors |
 | `hertz_open_workspace()` | Navigate to Declaraciones Juradas |
 | `submit_one(servicio, anio, periodo_num)` | Create+fill+submit one DDJJ |
 | `submit_batch(limit?)` | Iterate over pending DDJJ |
@@ -99,14 +100,32 @@ This starts an MCP server over stdio. Wire it up in your MCP client of choice (C
 
 ## Selectors
 
-Hertz is gated behind clave fiscal so the selectors in `selectors.py` were inferred from ENACOM's official PDF guide and **almost certainly need a few tweaks** the first time you run it. Recommended bring-up:
+Hertz is gated behind clave fiscal so the selectors in `selectors.py` were inferred from ENACOM's official PDF guide and **almost certainly need a few tweaks** the first time you run it.
+
+Two strategies are used, in order:
+
+1. **Role-based (preferred).** For buttons, links and tabs the client calls
+   `page.get_by_role(role, name=...)` using the accessible-name constants
+   (`NAME_*`) in `selectors.py`. These match visible text case-insensitively and
+   survive CSS class churn.
+2. **CSS fallback.** If the role-based locator fails, the client falls back to
+   the raw CSS constant, so behavior never regresses.
+
+Recommended bring-up:
 
 1. Run with `ENACOM_HEADED=true ENACOM_DRY_RUN=true`.
-2. Call `hertz_open_and_login()`. Log into TAD, open *Declaraciones juradas TCFV/SU – HERTZ*.
-3. Call `hertz_open_workspace()`. If something fails, open DevTools (F12), find the right selector, paste it into `selectors.py`, restart.
-4. Call `submit_one("TCFV", 2023, 1)`. Watch the form fill itself; the browser stops before *Enviar* because of dry-run.
-5. If the draft looks correct, set `ENACOM_DRY_RUN=false` and call `submit_one` again on the same period.
-6. Run `submit_batch(limit=1)` then `submit_batch(limit=5)` once you trust it.
+2. Log in via the capture flow (`hertz_login_open` → log in → `hertz_login_capture`).
+3. **Call `hertz_dump_dom("hertz_home")`.** This writes an HTML snapshot, a
+   screenshot, and a `*_elements.json` inventory of every button/link/input/
+   select on the page — each with a suggested Playwright locator. Use it to
+   correct the `NAME_*` and CSS constants in `selectors.py` from ground truth.
+4. Call `hertz_open_workspace()`; if a step fails, `hertz_dump_dom()` again on
+   that page and fix the relevant selector.
+5. Call `submit_one("TCFV", 2023, 1)`. Watch the form fill itself; the browser
+   stops before *Enviar* because of dry-run.
+6. If the draft looks correct, set `ENACOM_DRY_RUN=false` and call `submit_one`
+   again on the same period.
+7. Run `submit_batch(limit=1)` then `submit_batch(limit=5)` once you trust it.
 
 ## Tests
 
