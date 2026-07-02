@@ -83,11 +83,19 @@ This starts an MCP server over stdio. Wire it up in your MCP client of choice (C
 | `tracker_summary()` | Counts of DDJJ by status |
 | `list_pending_ddjj(limit?)` | Pending rows from the tracker |
 | `update_tracker(...)` | Mutate one tracker row by hand |
-| `hertz_open_and_login(timeout_seconds?)` | Launch browser, wait for manual login |
+| `hertz_open_and_login(timeout_seconds?)` | Launch browser, wait for manual login (blocking) |
+| `hertz_login_open()` | Open browser at TAD, return immediately (non-blocking "connect") |
+| `hertz_login_status()` | Return browser's current URL / Hertz arrival check |
+| `hertz_login_capture()` | Persist current session cookies to `ENACOM_STORAGE_STATE` |
 | `hertz_open_workspace()` | Navigate to Declaraciones Juradas |
 | `submit_one(servicio, anio, periodo_num)` | Create+fill+submit one DDJJ |
 | `submit_batch(limit?)` | Iterate over pending DDJJ |
 | `close_session()` | Tear down browser |
+
+### Two ways to log in
+
+- **One-shot blocking flow** (`hertz_open_and_login`): launches the browser, then polls for arrival on the Hertz portal for up to N seconds. Simple but the call blocks; aborts to the MCP client invalidate the session.
+- **Non-blocking capture flow** (`hertz_login_open` → manual login → `hertz_login_capture`): three short tools you call yourself. Recommended once, then `ENACOM_STORAGE_STATE` cookies are reused on subsequent runs and you usually skip straight to `hertz_open_workspace`.
 
 ## Selectors
 

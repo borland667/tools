@@ -21,7 +21,7 @@ from __future__ import annotations
 
 # ---------- Login & navigation ----------
 TAD_URL = "https://tramitesadistancia.gob.ar"
-HERTZ_HOME_HINT = "Portal Hertz"  # text expected on Hertz landing page
+HERTZ_HOME_HINT = "HERTZ 2.4"  # appears in "Bienvenido X a HERTZ 2.4.x" on portal home
 TAD_LOGIN_AFIP_BUTTON = "text=AFIP con tu clave fiscal"
 TAD_TRAMITE_SEARCH_INPUT = "input[type='search']"
 TAD_TRAMITE_NAME = "Declaraciones juradas TCFV/SU – HERTZ"

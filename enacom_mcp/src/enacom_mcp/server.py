@@ -9,7 +9,10 @@ Tools exposed:
   - tracker_summary(): counts by status
   - list_pending_ddjj(limit?): list pending rows from the Excel tracker
   - update_tracker(...): mutate one row of the tracker
-  - hertz_open_and_login(): launch browser, wait for manual login
+  - hertz_open_and_login(): launch browser, wait for manual login (blocking)
+  - hertz_login_open(): open browser, return immediately (non-blocking 'connect')
+  - hertz_login_status(): report browser's current URL / Hertz arrival
+  - hertz_login_capture(): persist session cookies to ENACOM_STORAGE_STATE
   - hertz_open_workspace(): navigate to "Declaraciones Juradas"
   - submit_one(servicio, anio, periodo_num): create+fill+submit one DDJJ
   - submit_batch(limit, dry_run): iterate over pending DDJJ
@@ -126,6 +129,63 @@ def hertz_open_workspace() -> dict:
     h.select_profile()
     h.open_declaraciones_juradas()
     return {"status": "ok"}
+
+
+# ---------- Non-blocking login flow (capture + reuse cookies) ----------
+
+@mcp.tool()
+def hertz_login_open() -> dict:
+    """Open the browser at TAD and return immediately. The 'connect' button.
+
+    Non-blocking: no polling, no long wait. If a saved storage_state file
+    exists at ENACOM_STORAGE_STATE, its cookies are auto-loaded so you may
+    already be logged in. Otherwise log in manually via AFIP in the
+    "Google Chrome for Testing" window, navigate to the Hertz portal,
+    then call hertz_login_capture() to persist the session.
+    """
+    h = _hertz_client()
+    h.open_tad()
+    return {
+        "status": "opened",
+        "url": "https://tramitesadistancia.gob.ar",
+        "next_step": (
+            "Log into AFIP in the 'Google Chrome for Testing' window and "
+            "navigate to 'Declaraciones juradas TCFV/SU – HERTZ'. Then call "
+            "hertz_login_capture() to save cookies. If saved cookies already "
+            "had you logged in, you can call hertz_login_capture() right away."
+        ),
+    }
+
+
+@mcp.tool()
+def hertz_login_status() -> dict:
+    """Return the browser's current URL and whether it looks like Hertz portal."""
+    h = _hertz_client()
+    url = h.current_url()
+    return {"current_url": url, "on_hertz": "hertz.enacom.gob.ar" in url}
+
+
+@mcp.tool()
+def hertz_login_capture() -> dict:
+    """Persist the current session cookies to ENACOM_STORAGE_STATE.
+
+    Call this once you've reached the Hertz portal in the browser. Verifies
+    URL contains 'hertz.enacom.gob.ar' before writing. Browser stays open.
+    """
+    h = _hertz_client()
+    url = h.current_url()
+    if "hertz.enacom.gob.ar" not in url:
+        return {
+            "status": "not_ready",
+            "current_url": url,
+            "hint": (
+                "Browser is not on the Hertz portal yet. Navigate there "
+                "manually (URL should contain 'hertz.enacom.gob.ar'), then "
+                "call hertz_login_capture() again."
+            ),
+        }
+    path = h.save_storage_state()
+    return {"status": "saved", "storage_state_path": path, "url": url}
 
 
 @mcp.tool()

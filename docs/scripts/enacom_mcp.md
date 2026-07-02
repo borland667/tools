@@ -81,6 +81,26 @@ python -m enacom_mcp.scripts.make_tracker \
 The browser stops before clicking *Enviar*. Visually review the draft, then
 set `ENACOM_DRY_RUN=false` in `.env`, restart, and re-call `submit_one`.
 
+### Capture login once, reuse the session
+
+The blocking `hertz_open_and_login` requires the MCP client to hold the call
+open for the whole login (which can take minutes and dies if interrupted).
+The non-blocking capture flow is more robust: each tool call is short, and
+the resulting cookies are reused on every subsequent run via
+`ENACOM_STORAGE_STATE`.
+
+```text
+> hertz_login_open()              # opens browser at TAD, returns immediately
+# ... log in via AFIP, navigate to "Declaraciones juradas TCFV/SU – HERTZ" ...
+> hertz_login_status()            # optional: confirms current_url contains hertz.enacom.gob.ar
+> hertz_login_capture()           # writes cookies to ENACOM_STORAGE_STATE
+> hertz_open_workspace()
+> submit_one(...)
+```
+
+On subsequent runs, `hertz_login_open()` auto-loads the saved cookies and you
+usually skip straight to `hertz_open_workspace()`.
+
 ### Mark a period filed by hand
 
 ```text
