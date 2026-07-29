@@ -21,6 +21,11 @@ This repository is a personal collection of scripts/tools. It currently includes
 - Prefer the simplest implementation that satisfies requirements.
 - Never perform destructive operations against source media in recovery flows.
 - Committing directly to `main` is allowed in this repository.
+- Before committing or pushing, audit the staged/tracked changes for secrets
+  and credentials. Do not commit real API keys, tokens, passwords, private
+  keys, `.env` files, or machine-local credentials. Placeholders such as
+  `sk-local`, `lmstudio`, `replace-with-...`, and values in `.env.example`
+  files are acceptable only when clearly non-secret.
 
 ## Documentation Requirements
 
