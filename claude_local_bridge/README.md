@@ -536,7 +536,12 @@ node --check bridge.mjs
 bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
+node --test ../tests/claude_local_bridge/bridge.test.mjs
 ```
+
+The Node test suite starts loopback-only stub providers and a loopback bridge
+process. In sandboxed runners, allow local `127.0.0.1` listener binds for this
+command.
 
 Offline model sync with fixture:
 
