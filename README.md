@@ -86,6 +86,8 @@ These rules apply to all current and future scripts, regardless of language.
 - `.github/pull_request_template.md` — default PR checklist/template.
 - `.beads/` — Beads issue tracker metadata and hooks.
 - `.claude/settings.json` — Claude Code hook configuration for Beads context.
+- `.agents/skills/beads/` — official Beads skill installed by `bd setup codex`.
+- `.codex/` — Codex native hook configuration installed by `bd setup codex`.
 - `AGENTS.md` — guidance for coding agents working in this repository.
 - `LICENSE` — repository license.
 
