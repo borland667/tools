@@ -28,21 +28,22 @@ validated in this session is:
   `$HOME/Library/Application Support/Claude-3p/configLibrary/`
 - `CLAUDE_LOCAL_INFERENCE_BACKEND=omlx`
 - default and tool route:
-  - `Qwen3-Coder-Next-MLX-4bit`
-- Cowork uses Anthropic catalogue route IDs; the bridge maps those IDs to
-  OMLX model IDs through `CLAUDE_LMSTUDIO_MODEL_MAP`. The current 10-route
-  test matrix appears in [Cowork OMLX test matrix](#cowork-omlx-test-matrix).
+  - `Qwen3.5-9b-Sushi-Coder-RL-MLX`
+- Cowork uses the exact gateway model IDs returned by the bridge's
+  `/v1/models` endpoint. In the OMLX setup those IDs are the actual local OMLX
+  model IDs, with picker labels supplied through `labelOverride`. The current
+  route matrix appears in [Cowork OMLX test matrix](#cowork-omlx-test-matrix).
 
-Keep Cowork pointed at the bridge, not directly at OMLX. Cowork rejects raw
-local model IDs in its provider config even when OMLX exposes those IDs.
+Keep Cowork pointed at the bridge, not directly at OMLX. The bridge filters
+out utility/image models before Claude sees the model list.
 
 LM Studio and oMLX both expose Anthropic-compatible `POST /v1/messages`
 endpoints, so this bridge does not try to reimplement inference. Instead it
 adds the missing glue:
 
 - it proxies `/v1/*` requests to the selected upstream backend,
-- it rewrites Anthropic-style model names like `claude-sonnet-*` and
-  `claude-haiku-*` to local model ids,
+- it rewrites configured gateway model names to local model ids when a route
+  map is present,
 - it syncs the upstream backend's model list into Claude's local cache where
   applicable.
 
@@ -250,14 +251,22 @@ node bridge.mjs sync-models
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>LMSTUDIO_BASE_URL</key>
-    <string>http://127.0.0.1:1234</string>
+    <key>CLAUDE_LOCAL_INFERENCE_BACKEND</key>
+    <string>omlx</string>
+    <key>OMLX_BASE_URL</key>
+    <string>http://127.0.0.1:8005</string>
+    <key>CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME</key>
+    <string>x-api-key</string>
+    <key>CLAUDE_LOCAL_INFERENCE_API_KEY</key>
+    <string>replace-with-local-omlx-token</string>
     <key>CLAUDE_LMSTUDIO_MAIN_MODEL</key>
-    <string>qwen/qwen3-coder-30b</string>
+    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
     <key>CLAUDE_LMSTUDIO_SMALL_MODEL</key>
-    <string>qwen/qwen3-coder-30b</string>
+    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
     <key>CLAUDE_LMSTUDIO_TOOL_MODEL</key>
-    <string>qwen/qwen3-coder-30b</string>
+    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+    <key>CLAUDE_LMSTUDIO_MODEL_MAP</key>
+    <string>{"Qwen3.5-9b-Sushi-Coder-RL-MLX":"Qwen3.5-9b-Sushi-Coder-RL-MLX","Qwen3-Next-80B-A3B-Instruct-4bit":"Qwen3-Next-80B-A3B-Instruct-4bit","Qwen3-Next-80B-A3B-Thinking-4bit":"Qwen3-Next-80B-A3B-Thinking-4bit","Qwen3.6-27B-Heretic-MLX-bf16":"Qwen3.6-27B-Heretic-MLX-bf16","Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit":"Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit","Qwen3.6-35B-A3B-MLX-4bit":"Qwen3.6-35B-A3B-MLX-4bit","gemma-4-12b-coder-fable5-composer2.5-8bit":"gemma-4-12b-coder-fable5-composer2.5-8bit","gemma-4-e4b-it-4bit":"gemma-4-e4b-it-4bit","Qwen3-VL-4B-Instruct-4bit":"Qwen3-VL-4B-Instruct-4bit"}</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -277,7 +286,9 @@ What each key is doing:
 
 - `Label`: the launchd job name we later query with `launchctl print`.
 - `ProgramArguments`: runs `node bridge.mjs serve`.
-- `EnvironmentVariables`: pins all bridge routes to `qwen/qwen3-coder-30b`.
+- `EnvironmentVariables`: selects the OMLX backend, pins default/tool routes to
+  the current local coder model, and maps Claude catalogue routes to current
+  OMLX model ids.
 - `WorkingDirectory`: makes relative bridge paths resolve consistently.
 - `StandardOutPath` / `StandardErrorPath`: sends bridge logs to one stable file.
 - `RunAtLoad` and `KeepAlive`: start the bridge at login and restart it if it exits.
@@ -357,29 +368,50 @@ honest about that too. A known-good example is:
   "deploymentOrganizationUuid": "11111111-2222-4333-8444-555555555555",
   "disableDeploymentModeChooser": false,
   "coworkEgressAllowedHosts": [
-    "127.0.0.1",
-    "localhost",
-    "pypi.org",
-    "files.pythonhosted.org",
-    "registry.npmjs.org",
-    "github.com",
-    "api.github.com",
-    "raw.githubusercontent.com"
+    "*"
   ],
   "inferenceGatewayApiKey": "lmstudio",
-  "inferenceGatewayAuthScheme": "bearer",
+  "inferenceGatewayAuthScheme": "x-api-key",
   "inferenceGatewayBaseUrl": "http://127.0.0.1:1245",
   "inferenceProvider": "gateway",
   "isDesktopExtensionEnabled": true,
   "modelDiscoveryEnabled": false,
   "inferenceModels": [
     {
-      "name": "claude-haiku-4-5",
-      "labelOverride": "Qwen Coder 30B (Haiku route)"
+      "name": "Qwen3.5-9b-Sushi-Coder-RL-MLX",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via OMLX Bridge"
     },
     {
-      "name": "claude-sonnet-4-6",
-      "labelOverride": "Qwen Coder 30B (Sonnet route)"
+      "name": "Qwen3-Next-80B-A3B-Instruct-4bit",
+      "labelOverride": "Qwen3 Next 80B Instruct 4-bit via OMLX Bridge"
+    },
+    {
+      "name": "Qwen3-Next-80B-A3B-Thinking-4bit",
+      "labelOverride": "Qwen3 Next 80B Thinking 4-bit via OMLX Bridge"
+    },
+    {
+      "name": "Qwen3.6-27B-Heretic-MLX-bf16",
+      "labelOverride": "Qwen3.6 Heretic 27B bf16 via OMLX Bridge"
+    },
+    {
+      "name": "Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit",
+      "labelOverride": "Qwen3.6 Claude Opus VL Graft 35B 8-bit via OMLX Bridge"
+    },
+    {
+      "name": "Qwen3.6-35B-A3B-MLX-4bit",
+      "labelOverride": "Qwen3.6 35B A3B 4-bit via OMLX Bridge"
+    },
+    {
+      "name": "gemma-4-12b-coder-fable5-composer2.5-8bit",
+      "labelOverride": "Gemma 4 12B Coder Fable via OMLX Bridge"
+    },
+    {
+      "name": "gemma-4-e4b-it-4bit",
+      "labelOverride": "Gemma 4 E4B IT 4-bit via OMLX Bridge"
+    },
+    {
+      "name": "Qwen3-VL-4B-Instruct-4bit",
+      "labelOverride": "Qwen3 VL 4B Instruct 4-bit via OMLX Bridge"
     }
   ]
 }
@@ -392,19 +424,22 @@ What each JSON field is doing:
 - `inferenceProvider`: switches the provider into 3P gateway mode.
 - `inferenceGatewayBaseUrl`: points Claude Desktop at the local bridge, not at
   LM Studio directly.
-- `inferenceGatewayAuthScheme`: keeps the provider on bearer-style auth.
+- `inferenceGatewayAuthScheme`: uses `x-api-key`, matching the local bridge
+  LaunchAgent.
 - `inferenceGatewayApiKey`: placeholder token the local bridge accepts.
 - `coworkEgressAllowedHosts`: host allowlist for Cowork's web fetch, shell,
-  package installs, and many plugin or connector side effects. Keep this tight
-  and extend it only for the tools you actually use.
+  package installs, and many plugin or connector side effects. The local
+  workstation config currently uses `["*"]` for maximum compatibility; tighten
+  it later if you want a stricter profile.
 - `isDesktopExtensionEnabled`: keeps local desktop extensions and plugin
   installs available in the app.
 - `modelDiscoveryEnabled`: disables provider-side discovery so the app keeps
   using the explicit model list below.
 - `inferenceModels`: the list shown in the Claude Desktop picker.
-- `inferenceModels[].name`: provider-facing ids Claude Desktop expects.
-- `inferenceModels[].labelOverride`: the human-readable labels you want shown
-  in the picker.
+- `inferenceModels[].name`: exact gateway model IDs from the bridge's
+  `/v1/models` response.
+- `inferenceModels[].labelOverride`: the human-readable labels shown in the
+  picker. This is display-only; Claude still sends `name`.
 
 Two important details:
 
@@ -1021,27 +1056,85 @@ Expected benefits of that migration:
 
 ## Cowork OMLX test matrix
 
-Cowork rejects raw local IDs such as `Qwen3-Coder-Next-8bit` in
-`inferenceModels`, even when that model is available from the gateway. Use a
-catalogue-compatible Claude route in Cowork and map it to the full OMLX ID
-with `CLAUDE_LMSTUDIO_MODEL_MAP` in the bridge LaunchAgent instead.
+For a `gateway` provider, Claude Desktop expects `inferenceModels[].name` to
+match the exact model ID returned by the gateway's `/v1/models` endpoint.
+`labelOverride` is only the picker display string. Our bridge therefore
+returns actual local OMLX model IDs from `/v1/models`, filtered to the
+conversation-capable entries below.
 
 The active local test matrix is:
 
-| Cowork route | OMLX model |
+| Gateway model ID | Picker label |
 | --- | --- |
-| `claude-sonnet-4-6` | `Qwen3-Coder-Next-MLX-4bit` |
-| `claude-haiku-4-5` | `Qwen3-Coder-Next-MLX-4bit` |
-| `claude-opus-4-6` | `Qwen3-Coder-Next-8bit` |
-| `claude-sonnet-4-5` | `Qwen3-Next-80B-A3B-Instruct-MLX-4bit` |
-| `claude-opus-4-1` | `Qwen3-Next-80B-A3B-Instruct-MLX-8bit` |
-| `claude-3-7-sonnet-20250219` | `DeepSeek-R1-0528-Qwen3-8B-MLX-4bit` |
-| `claude-3-5-haiku-20241022` | `Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit` |
-| `claude-opus-4-0` | `Qwen3.6-27B-Heretic-MLX-bf16` |
-| `claude-opus-4-20250514` | `Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit` |
-| `claude-3-opus-20240229` | `gemma-4-12b-coder-fable5-composer2.5-8bit` |
+| `Qwen3.5-9b-Sushi-Coder-RL-MLX` | Qwen3.5 Sushi Coder 9B via OMLX Bridge |
+| `Qwen3-Next-80B-A3B-Instruct-4bit` | Qwen3 Next 80B Instruct 4-bit via OMLX Bridge |
+| `Qwen3-Next-80B-A3B-Thinking-4bit` | Qwen3 Next 80B Thinking 4-bit via OMLX Bridge |
+| `Qwen3.6-27B-Heretic-MLX-bf16` | Qwen3.6 Heretic 27B bf16 via OMLX Bridge |
+| `Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit` | Qwen3.6 Claude Opus VL Graft 35B 8-bit via OMLX Bridge |
+| `Qwen3.6-35B-A3B-MLX-4bit` | Qwen3.6 35B A3B 4-bit via OMLX Bridge |
+| `gemma-4-12b-coder-fable5-composer2.5-8bit` | Gemma 4 12B Coder Fable via OMLX Bridge |
+| `gemma-4-e4b-it-4bit` | Gemma 4 E4B IT 4-bit via OMLX Bridge |
+| `Qwen3-VL-4B-Instruct-4bit` | Qwen3 VL 4B Instruct 4-bit via OMLX Bridge |
 
-The embedding-only `Qwen3-Embedding-0.6B-4bit-DWQ` is deliberately omitted:
-it cannot serve Cowork conversations. The default route remains the 4-bit
-Qwen coder. Tool-bearing requests keep using `CLAUDE_LMSTUDIO_TOOL_MODEL`, so
-use ordinary chat turns when comparing model-specific behaviour.
+`Qwen3-Embedding-0.6B-4bit-DWQ`, `Qwen3-Reranker-0.6B-4bit`,
+`HiDream-O1-Image-Dev-mlx-bf16`, and `VisualQuality-R1-7B-4bit` are
+deliberately omitted: they are embedding, reranking, image-generation, or
+image-quality models rather than reliable Cowork conversation routes. The
+default route is now `Qwen3.5-9b-Sushi-Coder-RL-MLX`. Tool-bearing requests
+keep using `CLAUDE_LMSTUDIO_TOOL_MODEL`, so use ordinary chat turns when
+comparing model-specific behaviour.
+
+To validate the bridge against the recorded current OMLX inventory without
+starting OMLX:
+
+```bash
+CLAUDE_LOCAL_INFERENCE_MODELS_FILE=./omlx-models.current.example.json \
+CLAUDE_GLOBAL_CONFIG_FILE=/tmp/claude-bridge-model-cache.json \
+node bridge.mjs sync-models
+```
+
+## Refreshing From Live OMLX
+
+Use `refresh_omlx_cowork_models.py` whenever the model list in OMLX changes.
+The script reads live `GET /v1/models`, removes utility models that should not
+be conversation routes, generates a gateway route map using actual OMLX model
+IDs, and can update both the active Claude Desktop/Cowork provider config and
+the bridge LaunchAgent.
+
+Preview only:
+
+```bash
+./refresh_omlx_cowork_models.py --print-json
+```
+
+Apply the generated route map and restart the bridge LaunchAgent:
+
+```bash
+./refresh_omlx_cowork_models.py --apply --restart-agent
+```
+
+Also refresh the checked-in current-model fixture:
+
+```bash
+./refresh_omlx_cowork_models.py --write-fixture
+```
+
+What the script changes with `--apply`:
+
+- preserves the active Claude Desktop provider identity and existing
+  `coworkEgressAllowedHosts`
+- sets `inferenceProvider=gateway`
+- sets `inferenceGatewayBaseUrl=http://127.0.0.1:1245`
+- sets `inferenceGatewayAuthScheme=x-api-key`
+- sets `modelDiscoveryEnabled=false`
+- replaces `inferenceModels` with actual gateway model IDs and honest
+  local-model labels
+- updates LaunchAgent `CLAUDE_LMSTUDIO_MODEL_MAP`, main, small, and tool model
+  environment variables
+- writes timestamped `.bak-refresh-*` backups before changing live files
+- updates the `.bridge-on.bak` snapshot when that snapshot exists
+
+The script deliberately keeps utility OMLX IDs out of `inferenceModels`.
+Conversation model IDs remain visible because the bridge returns those exact
+IDs from `/v1/models`, which is what Claude Desktop's gateway configuration
+expects.

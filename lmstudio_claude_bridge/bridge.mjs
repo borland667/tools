@@ -230,6 +230,16 @@ async function routeRequest(req, res) {
     })
   }
 
+  if (
+    req.method === 'GET' &&
+    (url.pathname === '/v1/models' || url.pathname === '/api/v1/models')
+  ) {
+    const routeList = await buildGatewayModelList()
+    if (routeList) {
+      return writeJson(res, 200, routeList)
+    }
+  }
+
   if (url.pathname.startsWith('/v1/')) {
     return proxyToUpstream(req, res, url)
   }
@@ -388,8 +398,11 @@ function mapRequestedModel(requestedModel, payload = null) {
     return explicitMap.get(requestedModel)
   }
 
-  if (explicitMap.has(normalized)) {
-    return explicitMap.get(normalized)
+  const caseInsensitiveMatch = [...explicitMap.entries()].find(
+    ([key]) => key.toLowerCase() === normalized,
+  )
+  if (caseInsensitiveMatch) {
+    return caseInsensitiveMatch[1]
   }
 
   if (normalized.includes('haiku')) {
@@ -481,16 +494,50 @@ function parseExplicitModelMap() {
     }
 
     return new Map(
-      Object.entries(parsed)
-        .filter(([, value]) => typeof value === 'string' && value.length > 0)
-        .flatMap(([key, value]) => [
-          [key, value],
-          [key.toLowerCase(), value],
-        ]),
+      Object.entries(parsed).filter(
+        ([key, value]) =>
+          typeof key === 'string' &&
+          key.length > 0 &&
+          typeof value === 'string' &&
+          value.length > 0,
+      ),
     )
   } catch {
     console.error('[bridge] ignoring invalid CLAUDE_LMSTUDIO_MODEL_MAP JSON')
     return new Map()
+  }
+}
+
+async function buildGatewayModelList() {
+  const explicitMap = parseExplicitModelMap()
+  if (explicitMap.size === 0) {
+    return null
+  }
+
+  await syncModelOptions()
+  const availableModels = new Set(lastSyncedOptions.map(option => option.value))
+  const data = []
+  const seenRoutes = new Set()
+
+  for (const [route, target] of explicitMap.entries()) {
+    if (seenRoutes.has(route)) {
+      continue
+    }
+    if (!availableModels.has(target)) {
+      continue
+    }
+    data.push({
+      id: route,
+      object: 'model',
+      created: 0,
+      owned_by: BACKEND_KIND,
+    })
+    seenRoutes.add(route)
+  }
+
+  return {
+    object: 'list',
+    data,
   }
 }
 
@@ -588,6 +635,9 @@ function normalizeModelOption(model) {
     model?.name,
   )
   if (!id) {
+    return null
+  }
+  if (isNonConversationModelId(id)) {
     return null
   }
 
@@ -711,6 +761,7 @@ function chooseBestModelId(models, { preferSmall }) {
         ),
     }))
     .filter(model => model.id)
+    .filter(model => !isNonConversationModelId(model.id))
     .filter(model => !model.type || model.type === 'llm' || model.type === 'model')
 
   if (candidates.length === 0) {
@@ -734,7 +785,10 @@ function modelSortScore(model, preferSmall) {
   if (model.toolUse) {
     score += 500
   }
-  if (/(coder|instruct|chat)/i.test(`${model.id} ${model.hint}`)) {
+  if (/coder/i.test(`${model.id} ${model.hint}`)) {
+    score += preferSmall ? 550 : 150
+  }
+  if (/(instruct|chat)/i.test(`${model.id} ${model.hint}`)) {
     score += 100
   }
   if (isAbliteratedModel(model)) {
@@ -759,6 +813,10 @@ function modelSortScore(model, preferSmall) {
 
 function isAbliteratedModel(model) {
   return /(abliterat|uncensor)/i.test(`${model.id} ${model.hint}`)
+}
+
+function isNonConversationModelId(id) {
+  return /(embedding|reranker|hidream|image|visualquality)/i.test(id)
 }
 
 function parseParamsString(paramsString) {
