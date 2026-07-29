@@ -10,7 +10,6 @@ import { pipeline } from 'node:stream/promises'
 
 const BACKEND_KIND = normalizeBackendKind(
   process.env.CLAUDE_LOCAL_INFERENCE_BACKEND ??
-    process.env.CLAUDE_LMSTUDIO_BACKEND ??
     (process.env.OMLX_BASE_URL ? 'omlx' : 'lmstudio'),
 )
 const BACKEND_DISPLAY_NAME = BACKEND_KIND === 'omlx' ? 'oMLX' : 'LM Studio'
@@ -20,15 +19,18 @@ const UPSTREAM_BASE_URL = stripTrailingSlash(
       ? process.env.OMLX_BASE_URL ?? 'http://127.0.0.1:8000'
       : process.env.LMSTUDIO_BASE_URL ?? 'http://127.0.0.1:1234'),
 )
-const BRIDGE_HOST = process.env.CLAUDE_LMSTUDIO_BRIDGE_HOST ?? '127.0.0.1'
-const BRIDGE_PORT = Number(process.env.CLAUDE_LMSTUDIO_BRIDGE_PORT ?? '1245')
+const BRIDGE_HOST =
+  process.env.CLAUDE_LOCAL_BRIDGE_HOST ?? '127.0.0.1'
+const BRIDGE_PORT = Number(
+  process.env.CLAUDE_LOCAL_BRIDGE_PORT ?? '1245',
+)
 const MODEL_SYNC_INTERVAL_MS = Number(
-  process.env.CLAUDE_LMSTUDIO_MODEL_SYNC_INTERVAL_MS ?? '30000',
+  process.env.CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS ?? '30000',
 )
 const REQUEST_TIMEOUT_MS = Number(
-  process.env.CLAUDE_LMSTUDIO_REQUEST_TIMEOUT_MS ?? '600000',
+  process.env.CLAUDE_LOCAL_REQUEST_TIMEOUT_MS ?? '600000',
 )
-const TOOL_MODEL_OVERRIDE = process.env.CLAUDE_LMSTUDIO_TOOL_MODEL ?? ''
+const TOOL_MODEL_OVERRIDE = process.env.CLAUDE_LOCAL_TOOL_MODEL ?? ''
 const MODELS_FIXTURE_FILE =
   process.env.CLAUDE_LOCAL_INFERENCE_MODELS_FILE ??
   process.env.LMSTUDIO_MODELS_FILE
@@ -124,16 +126,18 @@ Environment:
   LMSTUDIO_API_KEY                        Optional LM Studio API key to inject upstream
   OMLX_BASE_URL                           oMLX base URL (default: http://127.0.0.1:8000)
   OMLX_API_KEY                            Optional oMLX API key to inject upstream
-  CLAUDE_LMSTUDIO_BRIDGE_HOST             Bridge listen host (default: 127.0.0.1)
-  CLAUDE_LMSTUDIO_BRIDGE_PORT             Bridge listen port (default: 1245)
-  CLAUDE_LMSTUDIO_MODEL_SYNC_INTERVAL_MS  Model sync interval in ms (default: 30000)
-  CLAUDE_LMSTUDIO_MAIN_MODEL              Override default mapped main model
-  CLAUDE_LMSTUDIO_SMALL_MODEL             Override default mapped small/haiku model
-  CLAUDE_LMSTUDIO_TOOL_MODEL              Override model used for tool-enabled /v1/messages requests
-  CLAUDE_LMSTUDIO_MODEL_MAP               JSON object of explicit model rewrites
+  CLAUDE_LOCAL_BRIDGE_HOST                Bridge listen host (default: 127.0.0.1)
+  CLAUDE_LOCAL_BRIDGE_PORT                Bridge listen port (default: 1245)
+  CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS     Model sync interval in ms (default: 30000)
+  CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
+  CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
+  CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
+  CLAUDE_LOCAL_MODEL_MAP                  JSON object of explicit model rewrites
+  CLAUDE_PROFILE_NAME                     Named Claude profile under ~/.claude-instances
+  CLAUDE_PROFILE_DIR                      Explicit Claude profile user-data dir
   CLAUDE_GLOBAL_CONFIG_FILE               Override Claude global config path
   CLAUDE_CONFIG_DIR                       Alternate Claude config root
-  LMSTUDIO_MODELS_FILE                    Legacy alias for local JSON fixture`)
+  LMSTUDIO_MODELS_FILE                    LM Studio-specific fixture alias`)
 }
 
 function printEnvBlock(bridgeBaseUrl) {
@@ -482,7 +486,7 @@ function pickConfiguredModelId(candidate) {
 }
 
 function parseExplicitModelMap() {
-  const raw = process.env.CLAUDE_LMSTUDIO_MODEL_MAP
+  const raw = process.env.CLAUDE_LOCAL_MODEL_MAP
   if (!raw) {
     return new Map()
   }
@@ -503,7 +507,7 @@ function parseExplicitModelMap() {
       ),
     )
   } catch {
-    console.error('[bridge] ignoring invalid CLAUDE_LMSTUDIO_MODEL_MAP JSON')
+    console.error('[bridge] ignoring invalid CLAUDE_LOCAL_MODEL_MAP JSON')
     return new Map()
   }
 }
@@ -702,8 +706,8 @@ function chooseDefaultModels(payload, options) {
   const models = coerceModelsArray(payload)
   const byId = new Map(options.map(option => [option.value, option]))
 
-  const envMain = process.env.CLAUDE_LMSTUDIO_MAIN_MODEL
-  const envSmall = process.env.CLAUDE_LMSTUDIO_SMALL_MODEL
+  const envMain = process.env.CLAUDE_LOCAL_MAIN_MODEL
+  const envSmall = process.env.CLAUDE_LOCAL_SMALL_MODEL
 
   const mainModel =
     (envMain && byId.has(envMain) && envMain) ||
@@ -1003,6 +1007,15 @@ async function getClaudeGlobalConfigPath() {
     return process.env.CLAUDE_GLOBAL_CONFIG_FILE
   }
 
+  const profileDir = getClaudeProfileDir()
+  if (profileDir) {
+    const profileLegacyPath = path.join(profileDir, '.config.json')
+    if (existsSync(profileLegacyPath)) {
+      return profileLegacyPath
+    }
+    return path.join(profileDir, '.claude.json')
+  }
+
   const claudeConfigDir = (
     process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude')
   ).normalize('NFC')
@@ -1012,6 +1025,19 @@ async function getClaudeGlobalConfigPath() {
   }
 
   return path.join(process.env.CLAUDE_CONFIG_DIR ?? homedir(), '.claude.json')
+}
+
+function getClaudeProfileDir() {
+  if (process.env.CLAUDE_PROFILE_DIR) {
+    return process.env.CLAUDE_PROFILE_DIR
+  }
+
+  const profileName = firstString(process.env.CLAUDE_PROFILE_NAME)
+  if (!profileName || profileName === 'default') {
+    return null
+  }
+
+  return path.join(homedir(), '.claude-instances', profileName)
 }
 
 function firstString(...values) {

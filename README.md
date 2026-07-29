@@ -67,13 +67,13 @@ These rules apply to all current and future scripts, regardless of language.
 - `media_carver.py` — media recovery script for raw images/devices.
 - `enacom_mcp/` — MCP server for automating ENACOM Hertz DDJJ filings (Python package).
 - `local_llm_mcp/` — MCP server that lets Claude Desktop optionally call local OpenAI-compatible LLMs.
-- `lmstudio_claude_bridge/` — local Anthropic-compatible bridge that lets Claude Code talk to LM Studio while keeping the model picker populated from LM Studio's live model list.
+- `claude_local_bridge/` — local Anthropic-compatible bridge for Claude Code and Claude Desktop/Cowork profiles, with OMLX or LM Studio upstream backends.
 - `scripts/run_openhands_with_lmstudio.sh` — launcher for running OpenHands against LM Studio's local OpenAI-compatible API.
 - `scripts/run_openclaw_local_gateway.sh` — launcher for running the OpenClaw gateway in localhost-only mode.
 - `docs/scripts/media_carver.md` — script-specific documentation.
 - `docs/scripts/enacom_mcp.md` — script-specific documentation.
 - `docs/scripts/local_llm_mcp.md` — script-specific documentation.
-- `docs/scripts/lmstudio_claude_bridge.md` — script-specific documentation.
+- `docs/scripts/claude_local_bridge.md` — script-specific documentation.
 - `docs/scripts/openhands_lmstudio.md` — script-specific documentation.
 - `docs/scripts/openclaw_local_gateway.md` — script-specific documentation.
 - `docs/recovery-guide.md` — end-to-end recovery guide (image/device through verification).
@@ -84,6 +84,8 @@ These rules apply to all current and future scripts, regardless of language.
 - `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
 - `tests/enacom_mcp/` — tests for the ENACOM tracker reader/writer.
 - `.github/pull_request_template.md` — default PR checklist/template.
+- `.beads/` — Beads issue tracker metadata and hooks.
+- `.claude/settings.json` — Claude Code hook configuration for Beads context.
 - `AGENTS.md` — guidance for coding agents working in this repository.
 - `LICENSE` — repository license.
 
@@ -124,33 +126,28 @@ These rules apply to all current and future scripts, regardless of language.
   optional JSONL debug logging so you can see when Claude actually delegated
   to the local backend. See
   [`docs/scripts/local_llm_mcp.md`](./docs/scripts/local_llm_mcp.md).
-- [`lmstudio_claude_bridge/`](./lmstudio_claude_bridge/): small Node bridge for
-  running Anthropic-style Claude clients against a local LM Studio or OMLX server
-  through `/v1/messages`. It supports both `Claude Code` and Claude Desktop /
-  Cowork 3P `gateway` mode, serves gateway model IDs from live local model
-  discovery, rewrites configured routes to local model ids, can route
-  tool-heavy requests to a more reliable local tool-calling model, surfaces
-  dropped upstream streams as
-  structured Anthropic-style errors instead of opaque socket closes, and can be
-  kept alive through `launchd` for Desktop use. The docs also cover the exact
-  LaunchAgent/provider files we validated, Anthropic 3P hardening knobs such as
-  `deploymentOrganizationUuid` and `coworkEgressAllowedHosts`, recommended
-  local models for this hardware, backend selection between `lmstudio` and
-  `omlx`, a concrete OMLX migration plan, and
+- [`claude_local_bridge/`](./claude_local_bridge/): provider-neutral Node
+  bridge for running Anthropic-style Claude clients against local OMLX or
+  LM Studio backends through `/v1/messages`. It supports Claude Code and
+  Claude Desktop/Cowork 3P `gateway` profiles, filters live local model
+  discovery into conversation-safe gateway IDs, routes tool-heavy requests to
+  the configured local tool model, surfaces dropped upstream streams as
+  structured Anthropic-style errors, and can be kept alive through `launchd`.
+  The docs cover profile-aware setup with Claude `--user-data-dir`, the
+  generic LaunchAgent/provider files, Anthropic 3P config details such as
+  `deploymentOrganizationUuid` and `coworkEgressAllowedHosts`, backend
+  selection between `omlx` and `lmstudio`, and
   `refresh_omlx_cowork_models.py` for regenerating Cowork routes from live
-  OMLX model discovery. The
-  current Desktop/Cowork setup still uses bridge-backed local models only in
-  the 3P picker; it does not merge hosted Claude models into the same
-  dropdown, and plugin availability is a separate organization/marketplace
-  system. See
-  [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
+  OMLX discovery. See
+  [`docs/scripts/claude_local_bridge.md`](./docs/scripts/claude_local_bridge.md).
 - [`omlx_auto_router/`](./omlx_auto_router/): local OpenAI-compatible proxy
   that routes `auto`, `auto-chat`, and `auto-agent` aliases to suitable live
   OMLX models for chat, coding, agent, embedding, reranking, and vision flows.
   See [`docs/scripts/omlx_auto_router.md`](./docs/scripts/omlx_auto_router.md).
 - [`claude_multi_launcher/`](./claude_multi_launcher/): notes for creating
   multiple isolated Claude Desktop instances on macOS with color-coded,
-  focus-or-launch wrappers. See
+  focus-or-launch wrappers. This folder is the local reference for the
+  Claude profile gist workflow used by `claude_local_bridge`. See
   [`docs/scripts/claude_multi_launcher.md`](./docs/scripts/claude_multi_launcher.md).
 - [`scripts/run_openhands_with_lmstudio.sh`](./scripts/run_openhands_with_lmstudio.sh):
   launcher for running OpenHands against LM Studio's local OpenAI-compatible
@@ -213,3 +210,23 @@ export PATH="$HOME/bin:$PATH"
 ```
 
 See `scripts/README.md` for full installer options.
+
+## Issue Tracking With Beads
+
+This repository uses `bd` / Beads for local issue tracking.
+
+Useful commands:
+
+```bash
+bd prime
+bd ready
+bd list
+bd show <issue-id>
+bd create "Describe the work"
+bd close <issue-id>
+```
+
+The repo is initialized with prefix `tools`, so issue IDs look like
+`tools-<hash>`. Beads hooks are installed through `core.hooksPath=.beads/hooks`.
+Run `bd status` to inspect the local database, and use `bd dolt push` only when
+you explicitly want to sync Beads data to the configured Dolt remote.

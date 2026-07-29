@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.borland.claude-local-bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_BIN__</string>
+    <string>__BRIDGE_DIR__/bridge.mjs</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CLAUDE_LOCAL_INFERENCE_BACKEND</key>
+    <string>omlx</string>
+    <key>OMLX_BASE_URL</key>
+    <string>http://127.0.0.1:8005</string>
+    <key>CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME</key>
+    <string>x-api-key</string>
+    <key>CLAUDE_LOCAL_INFERENCE_API_KEY</key>
+    <string>local-bridge</string>
+    <key>CLAUDE_LOCAL_BRIDGE_HOST</key>
+    <string>127.0.0.1</string>
+    <key>CLAUDE_LOCAL_BRIDGE_PORT</key>
+    <string>1245</string>
+    <key>CLAUDE_LOCAL_MAIN_MODEL</key>
+    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+    <key>CLAUDE_LOCAL_SMALL_MODEL</key>
+    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+    <key>CLAUDE_LOCAL_TOOL_MODEL</key>
+    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>WorkingDirectory</key>
+  <string>__BRIDGE_DIR__</string>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/claude-local-bridge.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/claude-local-bridge.log</string>
+</dict>
+</plist>

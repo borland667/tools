@@ -10,7 +10,7 @@ LLM as the primary response engine for most ordinary requests.
 
 If you want Claude Desktop / Claude Cowork to treat a local backend as the
 primary inference provider through 3P `gateway` mode, use
-[`lmstudio_claude_bridge`](./lmstudio_claude_bridge.md)
+[`claude_local_bridge`](./claude_local_bridge.md)
 instead. This package is the delegation path, not the provider-replacement
 path.
 
@@ -263,12 +263,12 @@ Output:
 - This package does not populate the Claude Cowork / Desktop 3P gateway picker.
 - This package does not control Cowork/Desktop plugin availability.
 
-## Relationship to `lmstudio_claude_bridge`
+## Relationship to `claude_local_bridge`
 
 - `local_llm_mcp` keeps hosted Claude as the main app model and adds optional
   local tool calls.
-- `lmstudio_claude_bridge` points Anthropic-style clients at LM Studio through
-  an Anthropic-compatible local HTTP bridge.
+- `claude_local_bridge` points Anthropic-style clients at OMLX or LM Studio
+  through an Anthropic-compatible local HTTP bridge.
 - If your goal is "use Qwen from Cowork's 3P provider picker", you want the
   bridge, not this MCP package.
 

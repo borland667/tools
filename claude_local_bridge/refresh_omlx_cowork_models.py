@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh Claude Desktop/Cowork bridge routes from live OMLX models."""
+"""Refresh Claude Desktop/Cowork local bridge routes from live OMLX models."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from pathlib import Path
 DEFAULT_OMLX_BASE_URL = "http://127.0.0.1:8005"
 DEFAULT_BRIDGE_BASE_URL = "http://127.0.0.1:1245"
 DEFAULT_PROVIDER_AUTH_SCHEME = "x-api-key"
-DEFAULT_PROVIDER_API_KEY = "lmstudio"
-DEFAULT_AGENT_LABEL = "com.borland.lmstudio-claude-bridge"
+DEFAULT_PROVIDER_API_KEY = "local-bridge"
+DEFAULT_AGENT_LABEL = "com.borland.claude-local-bridge"
 
 NON_CONVERSATION_RE = re.compile(
     r"(embedding|reranker|hidream|image|visualquality)", re.IGNORECASE
@@ -40,7 +40,7 @@ def main() -> int:
     route_map = build_route_map(conversation_models)
     default_model = choose_default_model(conversation_models)
     provider_models = [
-        {"name": route, "labelOverride": f"{label_for_model(model)} via OMLX Bridge"}
+        {"name": route, "labelOverride": f"{label_for_model(model)} via Local Bridge"}
         for route, model in route_map.items()
     ]
 
@@ -57,7 +57,7 @@ def main() -> int:
         print("dry run only; rerun with --apply to update Claude/LaunchAgent files")
         return 0
 
-    provider_path = active_provider_path(args.config_lib)
+    provider_path = active_provider_path(resolve_config_lib(args))
     update_provider_config(
         provider_path=provider_path,
         bridge_base_url=args.bridge_base_url.rstrip("/"),
@@ -90,7 +90,7 @@ def main() -> int:
 def parse_args() -> argparse.Namespace:
     home = Path.home()
     parser = argparse.ArgumentParser(
-        description="Refresh Claude Desktop/Cowork bridge routes from live OMLX models."
+        description="Refresh Claude Desktop/Cowork local bridge routes from live OMLX models."
     )
     parser.add_argument("--omlx-base-url", default=DEFAULT_OMLX_BASE_URL)
     parser.add_argument("--bridge-base-url", default=DEFAULT_BRIDGE_BASE_URL)
@@ -101,12 +101,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config-lib",
         type=Path,
-        default=home / "Library/Application Support/Claude-3p/configLibrary",
+        default=None,
+        help="explicit Claude Desktop/Cowork configLibrary path",
+    )
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Claude profile name under ~/.claude-instances; use default for stock profile",
+    )
+    parser.add_argument(
+        "--profile-dir",
+        type=Path,
+        default=None,
+        help="explicit Claude profile user-data directory",
     )
     parser.add_argument(
         "--launch-agent",
         type=Path,
-        default=home / "Library/LaunchAgents/com.borland.lmstudio-claude-bridge.plist",
+        default=home / "Library/LaunchAgents/com.borland.claude-local-bridge.plist",
     )
     parser.add_argument("--agent-label", default=DEFAULT_AGENT_LABEL)
     parser.add_argument(
@@ -275,6 +287,17 @@ def active_provider_path(config_lib: Path) -> Path:
     return provider_path
 
 
+def resolve_config_lib(args: argparse.Namespace) -> Path:
+    home = Path.home()
+    if args.config_lib:
+        return args.config_lib
+    if args.profile_dir:
+        return args.profile_dir / "configLibrary"
+    if args.profile and args.profile != "default":
+        return home / ".claude-instances" / args.profile / "configLibrary"
+    return home / "Library/Application Support/Claude-3p/configLibrary"
+
+
 def update_provider_config(
     provider_path: Path,
     bridge_base_url: str,
@@ -321,10 +344,10 @@ def update_launch_agent(
             "CLAUDE_LOCAL_INFERENCE_BACKEND": "omlx",
             "OMLX_BASE_URL": omlx_base_url,
             "CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME": auth_scheme,
-            "CLAUDE_LMSTUDIO_MAIN_MODEL": default_model,
-            "CLAUDE_LMSTUDIO_SMALL_MODEL": default_model,
-            "CLAUDE_LMSTUDIO_TOOL_MODEL": default_model,
-            "CLAUDE_LMSTUDIO_MODEL_MAP": json.dumps(route_map, separators=(",", ":")),
+            "CLAUDE_LOCAL_MAIN_MODEL": default_model,
+            "CLAUDE_LOCAL_SMALL_MODEL": default_model,
+            "CLAUDE_LOCAL_TOOL_MODEL": default_model,
+            "CLAUDE_LOCAL_MODEL_MAP": json.dumps(route_map, separators=(",", ":")),
         }
     )
     if upstream_api_key:

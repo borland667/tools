@@ -4,7 +4,7 @@ Small MCP server that keeps `Claude Desktop` running as normal hosted Claude, wh
 
 If you want Claude Desktop / Claude Cowork to send its primary inference
 traffic to a local backend through 3P `gateway` mode, use
-[`lmstudio_claude_bridge`](../lmstudio_claude_bridge/README.md)
+[`claude_local_bridge`](../claude_local_bridge/README.md)
 instead. This MCP package is for hosted Claude plus optional local delegation.
 
 ## What it does
@@ -184,11 +184,12 @@ Use list_local_llm_models and tell me which local models are currently available
 python -m pytest tests/local_llm_mcp/
 ```
 
-## When to choose this vs the LM Studio bridge
+## When to choose this vs the local bridge
 
 - Choose `local_llm_mcp` when you want normal hosted Claude plus optional local
   tool delegation.
-- Choose `lmstudio_claude_bridge` when you want Claude Code or Claude Desktop /
-  Cowork 3P `gateway` mode to route primary inference through LM Studio.
+- Choose `claude_local_bridge` when you want Claude Code or Claude Desktop /
+  Cowork 3P `gateway` mode to route primary inference through OMLX or
+  LM Studio.
 - Do not expect `local_llm_mcp` to make Cowork/Desktop's 3P model picker show
   local models. That is a different integration path.
