@@ -125,22 +125,33 @@ These rules apply to all current and future scripts, regardless of language.
   to the local backend. See
   [`docs/scripts/local_llm_mcp.md`](./docs/scripts/local_llm_mcp.md).
 - [`lmstudio_claude_bridge/`](./lmstudio_claude_bridge/): small Node bridge for
-  running Anthropic-style Claude clients against a local LM Studio server
+  running Anthropic-style Claude clients against a local LM Studio or OMLX server
   through `/v1/messages`. It supports both `Claude Code` and Claude Desktop /
-  Cowork 3P `gateway` mode, rewrites provider-facing Anthropic model aliases to
-  local LM Studio model ids, can route tool-heavy requests to a more reliable
-  local tool-calling model, surfaces dropped upstream LM Studio streams as
+  Cowork 3P `gateway` mode, serves gateway model IDs from live local model
+  discovery, rewrites configured routes to local model ids, can route
+  tool-heavy requests to a more reliable local tool-calling model, surfaces
+  dropped upstream streams as
   structured Anthropic-style errors instead of opaque socket closes, and can be
   kept alive through `launchd` for Desktop use. The docs also cover the exact
   LaunchAgent/provider files we validated, Anthropic 3P hardening knobs such as
   `deploymentOrganizationUuid` and `coworkEgressAllowedHosts`, recommended
   local models for this hardware, backend selection between `lmstudio` and
-  `omlx`, and a concrete OMLX migration plan. The
+  `omlx`, a concrete OMLX migration plan, and
+  `refresh_omlx_cowork_models.py` for regenerating Cowork routes from live
+  OMLX model discovery. The
   current Desktop/Cowork setup still uses bridge-backed local models only in
   the 3P picker; it does not merge hosted Claude models into the same
   dropdown, and plugin availability is a separate organization/marketplace
   system. See
   [`docs/scripts/lmstudio_claude_bridge.md`](./docs/scripts/lmstudio_claude_bridge.md).
+- [`omlx_auto_router/`](./omlx_auto_router/): local OpenAI-compatible proxy
+  that routes `auto`, `auto-chat`, and `auto-agent` aliases to suitable live
+  OMLX models for chat, coding, agent, embedding, reranking, and vision flows.
+  See [`docs/scripts/omlx_auto_router.md`](./docs/scripts/omlx_auto_router.md).
+- [`claude_multi_launcher/`](./claude_multi_launcher/): notes for creating
+  multiple isolated Claude Desktop instances on macOS with color-coded,
+  focus-or-launch wrappers. See
+  [`docs/scripts/claude_multi_launcher.md`](./docs/scripts/claude_multi_launcher.md).
 - [`scripts/run_openhands_with_lmstudio.sh`](./scripts/run_openhands_with_lmstudio.sh):
   launcher for running OpenHands against LM Studio's local OpenAI-compatible
   API. It verifies `/v1/models`, exports the required `LLM_*` variables, and
