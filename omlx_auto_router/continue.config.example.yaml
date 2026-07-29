@@ -1,0 +1,109 @@
+name: oMLX Auto Router
+version: 1.0.0
+schema: v1
+
+models:
+  - name: oMLX Auto Chat
+    provider: openai
+    model: auto-chat
+    apiBase: http://127.0.0.1:8010/v1
+    apiKey: sk-local
+    useResponsesApi: false
+    roles:
+      - chat
+      - summarize
+    defaultCompletionOptions:
+      contextLength: 262144
+      maxTokens: 16384
+      temperature: 0.1
+      topP: 0.9
+    requestOptions:
+      timeout: 600000
+
+  - name: oMLX Auto Agent
+    provider: openai
+    model: auto-agent
+    apiBase: http://127.0.0.1:8010/v1
+    apiKey: sk-local
+    useResponsesApi: false
+    roles:
+      - chat
+      - edit
+      - apply
+      - summarize
+    chatOptions:
+      baseAgentSystemMessage: |
+        Tool-calling contract:
+        - Only call a tool when every required argument is known, concrete, and valid.
+        - Before calling any tool, validate the tool name, required arguments, argument types, and argument values.
+        - Tool arguments must always be valid JSON.
+        - Tool arguments must be JSON-encoded correctly.
+        - Never emit partial or malformed JSON.
+        - Never leave or omit a required argument.
+        - Never use empty, null, undefined, placeholder, or whitespace-only values unless the tool schema explicitly permits them.
+        - If any required argument is missing, ambiguous, invalid, unknown, or would require guessing, do not call the tool. Ask for the missing information instead.
+    defaultCompletionOptions:
+      contextLength: 262144
+      maxTokens: 16384
+      temperature: 0.1
+      topP: 0.9
+    requestOptions:
+      timeout: 600000
+
+  - name: oMLX Qwen Sushi Coder Autocomplete
+    provider: openai
+    model: Qwen3.5-9b-Sushi-Coder-RL-MLX
+    apiBase: http://127.0.0.1:8005/v1
+    apiKey: sk-local
+    useResponsesApi: false
+    roles:
+      - autocomplete
+    defaultCompletionOptions:
+      contextLength: 32768
+      maxTokens: 256
+      temperature: 0.05
+      topP: 0.95
+    autocompleteOptions:
+      debounceDelay: 350
+      maxPromptTokens: 2048
+      modelTimeout: 3000
+      onlyMyCode: true
+      useCache: true
+      useImports: true
+      useRecentlyEdited: true
+      useRecentlyOpened: true
+    requestOptions:
+      timeout: 10000
+
+  - name: oMLX Qwen3 Embedding
+    provider: openai
+    model: Qwen3-Embedding-0.6B-4bit-DWQ
+    apiBase: http://127.0.0.1:8005/v1
+    apiKey: sk-local
+    useResponsesApi: false
+    roles:
+      - embed
+    embedOptions:
+      maxChunkSize: 512
+      maxBatchSize: 16
+    requestOptions:
+      timeout: 120000
+
+  - name: oMLX Qwen3 Reranker
+    provider: openai
+    model: Qwen3-Reranker-0.6B-4bit
+    apiBase: http://127.0.0.1:8005/v1
+    apiKey: sk-local
+    useResponsesApi: false
+    roles:
+      - rerank
+    requestOptions:
+      timeout: 120000
+
+context:
+  - provider: code
+  - provider: diff
+  - provider: terminal
+  - provider: problems
+  - provider: folder
+  - provider: codebase

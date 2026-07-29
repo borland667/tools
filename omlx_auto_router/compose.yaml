@@ -1,0 +1,13 @@
+services:
+  router:
+    build: .
+    ports:
+      - "127.0.0.1:8010:8010"
+    environment:
+      OMLX_BASE_URL: http://host.docker.internal:8005/v1
+      OMLX_API_KEY: ${OMLX_API_KEY:-sk-local}
+      ROUTER_HOST: 0.0.0.0
+      ROUTER_PORT: "8010"
+      CLASSIFIER_MODEL: ${CLASSIFIER_MODEL:-gemma-4-e4b-it-4bit}
+      ALLOW_HEAVY_MODELS: ${ALLOW_HEAVY_MODELS:-true}
+    restart: unless-stopped

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.omlx.auto-router</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>__PROJECT_DIR__/.venv/bin/python</string>
+      <string>__PROJECT_DIR__/omlx_auto_router.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>OMLX_BASE_URL</key>
+      <string>http://127.0.0.1:8005/v1</string>
+      <key>OMLX_API_KEY</key>
+      <string>sk-local</string>
+      <key>ROUTER_HOST</key>
+      <string>127.0.0.1</string>
+      <key>ROUTER_PORT</key>
+      <string>8010</string>
+      <key>LOG_LEVEL</key>
+      <string>INFO</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/omlx-auto-router.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/omlx-auto-router.error.log</string>
+  </dict>
+</plist>
