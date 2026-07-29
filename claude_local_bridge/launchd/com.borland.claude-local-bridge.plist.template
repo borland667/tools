@@ -16,6 +16,8 @@
     <string>omlx</string>
     <key>OMLX_BASE_URL</key>
     <string>http://127.0.0.1:8005</string>
+    <key>CLAUDE_LOCAL_PROVIDERS_FILE</key>
+    <string>__BRIDGE_DIR__/providers.local.json</string>
     <key>CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME</key>
     <string>x-api-key</string>
     <key>CLAUDE_LOCAL_INFERENCE_API_KEY</key>
@@ -25,11 +27,11 @@
     <key>CLAUDE_LOCAL_BRIDGE_PORT</key>
     <string>1245</string>
     <key>CLAUDE_LOCAL_MAIN_MODEL</key>
-    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+    <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
     <key>CLAUDE_LOCAL_SMALL_MODEL</key>
-    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+    <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
     <key>CLAUDE_LOCAL_TOOL_MODEL</key>
-    <string>Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
+    <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

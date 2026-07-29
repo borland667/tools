@@ -1,0 +1,39 @@
+{
+  "providers": [
+    {
+      "id": "omlx",
+      "type": "anthropic",
+      "baseUrl": "http://127.0.0.1:8005",
+      "authScheme": "x-api-key",
+      "apiKeyEnv": "OMLX_API_KEY",
+      "label": "OMLX"
+    },
+    {
+      "id": "lmstudio",
+      "type": "openai",
+      "baseUrl": "http://127.0.0.1:1234",
+      "authScheme": "x-api-key",
+      "apiKeyEnv": "LMSTUDIO_API_KEY",
+      "label": "LM Studio"
+    },
+    {
+      "id": "openai",
+      "type": "openai",
+      "baseUrl": "https://api.openai.com",
+      "authScheme": "bearer",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "label": "OpenAI",
+      "enabled": false
+    },
+    {
+      "id": "anthropic",
+      "type": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "authScheme": "x-api-key",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "anthropicVersion": "2023-06-01",
+      "label": "Anthropic",
+      "enabled": false
+    }
+  ]
+}

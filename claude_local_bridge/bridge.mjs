@@ -8,17 +8,6 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
-const BACKEND_KIND = normalizeBackendKind(
-  process.env.CLAUDE_LOCAL_INFERENCE_BACKEND ??
-    (process.env.OMLX_BASE_URL ? 'omlx' : 'lmstudio'),
-)
-const BACKEND_DISPLAY_NAME = BACKEND_KIND === 'omlx' ? 'oMLX' : 'LM Studio'
-const UPSTREAM_BASE_URL = stripTrailingSlash(
-  process.env.CLAUDE_LOCAL_INFERENCE_BASE_URL ??
-    (BACKEND_KIND === 'omlx'
-      ? process.env.OMLX_BASE_URL ?? 'http://127.0.0.1:8000'
-      : process.env.LMSTUDIO_BASE_URL ?? 'http://127.0.0.1:1234'),
-)
 const BRIDGE_HOST =
   process.env.CLAUDE_LOCAL_BRIDGE_HOST ?? '127.0.0.1'
 const BRIDGE_PORT = Number(
@@ -31,17 +20,6 @@ const REQUEST_TIMEOUT_MS = Number(
   process.env.CLAUDE_LOCAL_REQUEST_TIMEOUT_MS ?? '600000',
 )
 const TOOL_MODEL_OVERRIDE = process.env.CLAUDE_LOCAL_TOOL_MODEL ?? ''
-const MODELS_FIXTURE_FILE =
-  process.env.CLAUDE_LOCAL_INFERENCE_MODELS_FILE ??
-  process.env.LMSTUDIO_MODELS_FILE
-const UPSTREAM_API_KEY =
-  process.env.CLAUDE_LOCAL_INFERENCE_API_KEY ??
-  (BACKEND_KIND === 'omlx'
-    ? process.env.OMLX_API_KEY ?? ''
-    : process.env.LMSTUDIO_API_KEY ?? '')
-const UPSTREAM_AUTH_SCHEME = normalizeAuthScheme(
-  process.env.CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME ?? 'auto',
-)
 
 const ANTHROPIC_FAMILY_PATTERNS = [
   'claude-',
@@ -51,7 +29,11 @@ const ANTHROPIC_FAMILY_PATTERNS = [
   'capybara',
 ]
 
+let providers = []
+let lastProviderConfigSignature = ''
 let lastSyncedOptions = []
+let modelRoutes = new Map()
+let providerStatuses = []
 let modelSelection = {
   mainModel: null,
   smallModel: null,
@@ -63,6 +45,7 @@ main().catch(error => {
 })
 
 async function main() {
+  await reloadProviders({ force: true })
   const command = process.argv[2] ?? 'serve'
 
   switch (command) {
@@ -117,11 +100,13 @@ Usage:
   node bridge.mjs print-env
 
 Environment:
-  CLAUDE_LOCAL_INFERENCE_BACKEND          Upstream backend: lmstudio or omlx (default: ${BACKEND_KIND})
-  CLAUDE_LOCAL_INFERENCE_BASE_URL         Generic upstream base URL override
-  CLAUDE_LOCAL_INFERENCE_API_KEY          Generic upstream API key override
+  CLAUDE_LOCAL_PROVIDERS                  JSON array of provider definitions
+  CLAUDE_LOCAL_PROVIDERS_FILE             JSON file to auto-reload provider definitions
+  CLAUDE_LOCAL_INFERENCE_BACKEND          Single-provider fallback: lmstudio, omlx, openai, anthropic
+  CLAUDE_LOCAL_INFERENCE_BASE_URL         Single-provider upstream base URL override
+  CLAUDE_LOCAL_INFERENCE_API_KEY          Single-provider upstream API key override
   CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME      Upstream auth: auto, none, bearer, x-api-key, both
-  CLAUDE_LOCAL_INFERENCE_MODELS_FILE      Local JSON fixture for testing model sync
+  CLAUDE_LOCAL_INFERENCE_MODELS_FILE      Local JSON fixture for testing single-provider sync
   LMSTUDIO_BASE_URL                       LM Studio base URL (default: http://127.0.0.1:1234)
   LMSTUDIO_API_KEY                        Optional LM Studio API key to inject upstream
   OMLX_BASE_URL                           oMLX base URL (default: http://127.0.0.1:8000)
@@ -144,7 +129,7 @@ function printEnvBlock(bridgeBaseUrl) {
   const token =
     process.env.ANTHROPIC_API_KEY ||
     process.env.ANTHROPIC_AUTH_TOKEN ||
-    'lmstudio'
+    'local-bridge'
   console.log(`export ANTHROPIC_BASE_URL=${bridgeBaseUrl}`)
   console.log(`export ANTHROPIC_API_KEY=${token}`)
   console.log(`export ANTHROPIC_AUTH_TOKEN=${token}`)
@@ -180,7 +165,7 @@ async function startServer() {
   })
 
   console.log(
-    `[bridge] listening on http://${BRIDGE_HOST}:${BRIDGE_PORT} -> ${BACKEND_DISPLAY_NAME} ${UPSTREAM_BASE_URL}`,
+    `[bridge] listening on http://${BRIDGE_HOST}:${BRIDGE_PORT} -> ${providers.length} provider(s)`,
   )
   printEnvBlock(`http://${BRIDGE_HOST}:${BRIDGE_PORT}`)
 
@@ -199,8 +184,10 @@ async function routeRequest(req, res) {
     await syncModelOptions()
     return writeJson(res, 200, {
       ok: true,
-      backend: BACKEND_KIND,
-      upstream: UPSTREAM_BASE_URL,
+      providers: providerStatuses,
+      providerCount: providers.length,
+      providerConfigSource: providerConfigSource(),
+      providerConfigReloadable: Boolean(process.env.CLAUDE_LOCAL_PROVIDERS_FILE),
       models: lastSyncedOptions.length,
       mainModel: modelSelection.mainModel,
       smallModel: modelSelection.smallModel,
@@ -254,19 +241,23 @@ async function routeRequest(req, res) {
 }
 
 async function proxyToUpstream(req, res, url) {
-  const upstreamUrl = new URL(url.pathname + url.search, UPSTREAM_BASE_URL)
+  let provider = providers[0]
+  let upstreamPath = url.pathname
   const headers = copyIncomingHeaders(req.headers)
   let expectsStreamingResponse = false
 
   let body
   if (req.method && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
     const rawBody = await readRequestBody(req)
-    const prepared = await maybeRewriteRequestBody(url.pathname, rawBody)
+    const prepared = await prepareRequestForProvider(url.pathname, rawBody)
     body = prepared.body
+    provider = prepared.provider ?? provider
+    upstreamPath = prepared.upstreamPath ?? upstreamPath
     expectsStreamingResponse = prepared.expectsStreamingResponse
   }
 
-  applyUpstreamAuthHeaders(headers)
+  const upstreamUrl = new URL(upstreamPath + url.search, provider.baseUrl)
+  applyUpstreamAuthHeaders(headers, provider)
 
   let upstream
   try {
@@ -278,17 +269,27 @@ async function proxyToUpstream(req, res, url) {
     })
   } catch (error) {
     console.error(
-      `[bridge] upstream request failed for ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
+      `[bridge] upstream request failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
     )
     if (expectsStreamingResponse) {
       writeAnthropicSseError(
         res,
         502,
-        `${BACKEND_DISPLAY_NAME} upstream request failed: ${formatError(error)}`,
+        `${provider.label} upstream request failed: ${formatError(error)}`,
       )
       return
     }
     throw error
+  }
+
+  if (
+    provider.type === 'openai' &&
+    url.pathname === '/v1/messages'
+  ) {
+    if (expectsStreamingResponse) {
+      return writeOpenAiChatAsAnthropicSse(upstream, res, provider)
+    }
+    return writeOpenAiChatAsAnthropic(upstream, res, provider)
   }
 
   res.statusCode = upstream.status
@@ -313,13 +314,13 @@ async function proxyToUpstream(req, res, url) {
     await pipeline(Readable.fromWeb(upstream.body), res)
   } catch (error) {
     console.error(
-      `[bridge] upstream stream failed for ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
+      `[bridge] upstream stream failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
     )
     if (isSseResponse) {
       writeAnthropicSseError(
         res,
         upstream.status || 502,
-        `${BACKEND_DISPLAY_NAME} stream closed unexpectedly: ${formatError(error)}`,
+        `${provider.label} stream closed unexpectedly: ${formatError(error)}`,
       )
       return
     }
@@ -327,7 +328,7 @@ async function proxyToUpstream(req, res, url) {
   }
 }
 
-async function maybeRewriteRequestBody(pathname, rawBody) {
+async function prepareRequestForProvider(pathname, rawBody) {
   if (pathname !== '/v1/messages' || rawBody.length === 0) {
     return {
       body: rawBody,
@@ -362,34 +363,47 @@ async function maybeRewriteRequestBody(pathname, rawBody) {
     }
   }
 
-  const rewrittenModel = mapRequestedModel(payload.model, payload)
-  if (rewrittenModel === payload.model) {
+  const route = resolveModelRoute(payload.model, payload)
+  if (!route) {
+    throw new Error(`unknown model route "${payload.model}"`)
+  }
+
+  if (payload.model !== route.upstreamModelId) {
+    console.log(
+      `[bridge] route model "${payload.model}" -> ${route.provider.id}/${route.upstreamModelId}`,
+    )
+  }
+
+  payload.model = route.upstreamModelId
+  if (route.provider.type === 'openai') {
     return {
-      body: rawBody,
+      provider: route.provider,
+      upstreamPath: '/v1/chat/completions',
+      body: Buffer.from(JSON.stringify(toOpenAiChatCompletion(payload)), 'utf8'),
       expectsStreamingResponse,
     }
   }
 
-  console.log(`[bridge] rewrite model "${payload.model}" -> "${rewrittenModel}"`)
-  payload.model = rewrittenModel
   return {
+    provider: route.provider,
+    upstreamPath: '/v1/messages',
     body: Buffer.from(JSON.stringify(payload), 'utf8'),
     expectsStreamingResponse,
   }
 }
 
-function mapRequestedModel(requestedModel, payload = null) {
+function resolveModelRoute(requestedModel, payload = null) {
   const normalized = requestedModel.toLowerCase()
-  const exact = lastSyncedOptions.find(option => option.value === requestedModel)
+  const exact = modelRoutes.get(requestedModel)
   if (exact) {
-    return exact.value
+    return exact
   }
 
-  const exactCaseInsensitive = lastSyncedOptions.find(
-    option => option.value.toLowerCase() === normalized,
+  const exactCaseInsensitive = [...modelRoutes.entries()].find(
+    ([routeId]) => routeId.toLowerCase() === normalized,
   )
   if (exactCaseInsensitive) {
-    return exactCaseInsensitive.value
+    return exactCaseInsensitive[1]
   }
 
   const preferredToolModel = pickToolAwareModel(payload, normalized)
@@ -399,18 +413,18 @@ function mapRequestedModel(requestedModel, payload = null) {
 
   const explicitMap = parseExplicitModelMap()
   if (explicitMap.has(requestedModel)) {
-    return explicitMap.get(requestedModel)
+    return routeForTargetModel(explicitMap.get(requestedModel))
   }
 
   const caseInsensitiveMatch = [...explicitMap.entries()].find(
     ([key]) => key.toLowerCase() === normalized,
   )
   if (caseInsensitiveMatch) {
-    return caseInsensitiveMatch[1]
+    return routeForTargetModel(caseInsensitiveMatch[1])
   }
 
   if (normalized.includes('haiku')) {
-    return modelSelection.smallModel ?? modelSelection.mainModel ?? requestedModel
+    return routeForTargetModel(modelSelection.smallModel ?? modelSelection.mainModel)
   }
 
   if (
@@ -418,10 +432,10 @@ function mapRequestedModel(requestedModel, payload = null) {
     normalized === 'best' ||
     ANTHROPIC_FAMILY_PATTERNS.some(pattern => normalized.includes(pattern))
   ) {
-    return modelSelection.mainModel ?? requestedModel
+    return routeForTargetModel(modelSelection.mainModel)
   }
 
-  return requestedModel
+  return null
 }
 
 function pickToolAwareModel(payload, normalizedRequestedModel) {
@@ -433,16 +447,11 @@ function pickToolAwareModel(payload, normalizedRequestedModel) {
     return null
   }
 
-  const configuredToolModel =
+  return (
     pickConfiguredModelId(TOOL_MODEL_OVERRIDE) ??
-    modelSelection.smallModel ??
+    routeForTargetModel(modelSelection.smallModel) ??
     null
-
-  if (!configuredToolModel) {
-    return null
-  }
-
-  return configuredToolModel
+  )
 }
 
 function payloadHasTools(payload) {
@@ -469,20 +478,285 @@ function pickConfiguredModelId(candidate) {
     return null
   }
 
-  const exact = lastSyncedOptions.find(option => option.value === candidate)
+  const exact = modelRoutes.get(candidate)
   if (exact) {
-    return exact.value
+    return exact
   }
 
   const normalized = candidate.toLowerCase()
-  const caseInsensitive = lastSyncedOptions.find(
-    option => option.value.toLowerCase() === normalized,
+  const caseInsensitive = [...modelRoutes.entries()].find(
+    ([routeId]) => routeId.toLowerCase() === normalized,
   )
   if (caseInsensitive) {
-    return caseInsensitive.value
+    return caseInsensitive[1]
   }
 
   return null
+}
+
+function routeForTargetModel(candidate) {
+  if (!candidate) {
+    return null
+  }
+  const exact = modelRoutes.get(candidate)
+  if (exact) {
+    return exact
+  }
+
+  const caseInsensitive = [...modelRoutes.entries()].find(
+    ([routeId]) => routeId.toLowerCase() === candidate.toLowerCase(),
+  )
+  if (caseInsensitive) {
+    return caseInsensitive[1]
+  }
+
+  const upstreamMatch = [...modelRoutes.values()].find(
+    route => route.upstreamModelId === candidate,
+  )
+  if (upstreamMatch) {
+    return upstreamMatch
+  }
+
+  const upstreamCaseInsensitive = [...modelRoutes.values()].find(
+    route => route.upstreamModelId.toLowerCase() === candidate.toLowerCase(),
+  )
+  return upstreamCaseInsensitive ?? null
+}
+
+function toOpenAiChatCompletion(payload) {
+  const messages = []
+  const systemText = anthropicTextFromContent(payload.system)
+  if (systemText) {
+    messages.push({ role: 'system', content: systemText })
+  }
+
+  for (const message of Array.isArray(payload.messages) ? payload.messages : []) {
+    const role = message?.role === 'assistant' ? 'assistant' : 'user'
+    messages.push({
+      role,
+      content: anthropicTextFromContent(message?.content),
+    })
+  }
+
+  const next = {
+    model: payload.model,
+    messages,
+    stream: false,
+  }
+
+  if (typeof payload.max_tokens === 'number') {
+    next.max_tokens = payload.max_tokens
+  }
+  if (typeof payload.temperature === 'number') {
+    next.temperature = payload.temperature
+  }
+  if (typeof payload.top_p === 'number') {
+    next.top_p = payload.top_p
+  }
+  if (Array.isArray(payload.stop_sequences)) {
+    next.stop = payload.stop_sequences
+  }
+  if (Array.isArray(payload.tools) && payload.tools.length > 0) {
+    next.tools = payload.tools.map(toOpenAiTool).filter(Boolean)
+  }
+  if (payload.tool_choice) {
+    next.tool_choice = toOpenAiToolChoice(payload.tool_choice)
+  }
+
+  return next
+}
+
+function anthropicTextFromContent(content) {
+  if (typeof content === 'string') {
+    return content
+  }
+  if (!Array.isArray(content)) {
+    return ''
+  }
+
+  return content
+    .map(part => {
+      if (typeof part === 'string') {
+        return part
+      }
+      if (part?.type === 'text' && typeof part.text === 'string') {
+        return part.text
+      }
+      if (part?.type === 'tool_result') {
+        return anthropicTextFromContent(part.content)
+      }
+      return ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function toOpenAiTool(tool) {
+  if (!tool || typeof tool !== 'object' || typeof tool.name !== 'string') {
+    return null
+  }
+  return {
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: typeof tool.description === 'string' ? tool.description : '',
+      parameters: tool.input_schema ?? { type: 'object', properties: {} },
+    },
+  }
+}
+
+function toOpenAiToolChoice(choice) {
+  if (choice === 'auto' || choice?.type === 'auto') {
+    return 'auto'
+  }
+  if (choice === 'any' || choice?.type === 'any') {
+    return 'required'
+  }
+  if (choice?.type === 'tool' && typeof choice.name === 'string') {
+    return {
+      type: 'function',
+      function: { name: choice.name },
+    }
+  }
+  return choice
+}
+
+async function writeOpenAiChatAsAnthropic(upstream, res, provider) {
+  const text = await upstream.text()
+  let payload
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    res.writeHead(upstream.status, {
+      'content-type': upstream.headers.get('content-type') ?? 'text/plain',
+    })
+    res.end(text)
+    return
+  }
+
+  if (!upstream.ok) {
+    return writeJson(res, upstream.status, payload)
+  }
+
+  return writeJson(res, 200, openAiChatToAnthropicMessage(payload, provider))
+}
+
+async function writeOpenAiChatAsAnthropicSse(upstream, res, provider) {
+  const text = await upstream.text()
+  let payload
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    writeAnthropicSseError(res, upstream.status, `${provider.label} returned non-JSON OpenAI response`)
+    return
+  }
+
+  if (!upstream.ok) {
+    writeAnthropicSseError(
+      res,
+      upstream.status,
+      payload?.error?.message ?? `${provider.label} OpenAI request failed`,
+    )
+    return
+  }
+
+  const message = openAiChatToAnthropicMessage(payload, provider)
+  if (!res.headersSent) {
+    res.statusCode = 200
+    res.setHeader('content-type', 'text/event-stream; charset=utf-8')
+    res.setHeader('cache-control', 'no-cache')
+  }
+
+  res.write(`event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message })}\n\n`)
+  for (const [index, block] of message.content.entries()) {
+    res.write(
+      `event: content_block_start\ndata: ${JSON.stringify({
+        type: 'content_block_start',
+        index,
+        content_block: block.type === 'text' ? { type: 'text', text: '' } : block,
+      })}\n\n`,
+    )
+    if (block.type === 'text') {
+      res.write(
+        `event: content_block_delta\ndata: ${JSON.stringify({
+          type: 'content_block_delta',
+          index,
+          delta: { type: 'text_delta', text: block.text },
+        })}\n\n`,
+      )
+    }
+    res.write(`event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index })}\n\n`)
+  }
+  res.write(
+    `event: message_delta\ndata: ${JSON.stringify({
+      type: 'message_delta',
+      delta: { stop_reason: message.stop_reason, stop_sequence: null },
+      usage: { output_tokens: message.usage.output_tokens },
+    })}\n\n`,
+  )
+  res.write(`event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`)
+  res.end()
+}
+
+function openAiChatToAnthropicMessage(payload, provider) {
+  const choice = payload.choices?.[0] ?? {}
+  const message = choice.message ?? {}
+  const content = []
+  if (typeof message.content === 'string' && message.content.length > 0) {
+    content.push({ type: 'text', text: message.content })
+  }
+  if (Array.isArray(message.tool_calls)) {
+    for (const toolCall of message.tool_calls) {
+      const fn = toolCall.function ?? {}
+      content.push({
+        type: 'tool_use',
+        id: toolCall.id ?? `toolu_${Math.random().toString(36).slice(2)}`,
+        name: fn.name ?? 'tool',
+        input: parseJsonObject(fn.arguments),
+      })
+    }
+  }
+
+  return {
+    id: payload.id ?? `msg_${Date.now()}`,
+    type: 'message',
+    role: 'assistant',
+    model: message.model ?? payload.model ?? provider.id,
+    content,
+    stop_reason: openAiFinishReasonToAnthropic(choice.finish_reason),
+    stop_sequence: null,
+    usage: {
+      input_tokens: payload.usage?.prompt_tokens ?? 0,
+      output_tokens: payload.usage?.completion_tokens ?? 0,
+    },
+  }
+}
+
+function openAiFinishReasonToAnthropic(reason) {
+  if (reason === 'tool_calls') {
+    return 'tool_use'
+  }
+  if (reason === 'length') {
+    return 'max_tokens'
+  }
+  if (reason === 'stop') {
+    return 'end_turn'
+  }
+  return reason ?? 'end_turn'
+}
+
+function parseJsonObject(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 function parseExplicitModelMap() {
@@ -513,47 +787,86 @@ function parseExplicitModelMap() {
 }
 
 async function buildGatewayModelList() {
-  const explicitMap = parseExplicitModelMap()
-  if (explicitMap.size === 0) {
-    return null
-  }
-
   await syncModelOptions()
-  const availableModels = new Set(lastSyncedOptions.map(option => option.value))
-  const data = []
-  const seenRoutes = new Set()
-
-  for (const [route, target] of explicitMap.entries()) {
-    if (seenRoutes.has(route)) {
-      continue
-    }
-    if (!availableModels.has(target)) {
-      continue
-    }
-    data.push({
-      id: route,
-      object: 'model',
-      created: 0,
-      owned_by: BACKEND_KIND,
-    })
-    seenRoutes.add(route)
-  }
-
   return {
     object: 'list',
-    data,
+    data: lastSyncedOptions.map(option => ({
+      id: option.value,
+      object: 'model',
+      created: 0,
+      owned_by: option.providerId ?? 'local',
+    })),
   }
 }
 
 async function syncModelOptions() {
-  const payload = await fetchModelsPayload()
-  const options = normalizeModelOptions(payload)
+  await reloadProviders()
+  const results = await Promise.all(
+    providers.filter(provider => provider.enabled).map(async provider => {
+      try {
+        return {
+          ok: true,
+          provider,
+          payload: await fetchProviderModelsPayload(provider),
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          provider,
+          error,
+        }
+      }
+    }),
+  )
+
+  const nextStatuses = []
+  const optionsById = new Map()
+  const routesById = new Map()
+
+  for (const result of results) {
+    if (!result.ok) {
+      nextStatuses.push({
+        ok: false,
+        id: result.provider.id,
+        type: result.provider.type,
+        baseUrl: result.provider.baseUrl,
+        error: formatError(result.error),
+      })
+      continue
+    }
+
+    const { provider, payload } = result
+    const options = normalizeModelOptions(payload, provider)
+    nextStatuses.push({
+      ok: true,
+      id: provider.id,
+      type: provider.type,
+      baseUrl: provider.baseUrl,
+      models: options.length,
+    })
+
+    for (const option of options) {
+      optionsById.set(option.value, option)
+      routesById.set(option.value, {
+        routeId: option.value,
+        upstreamModelId: option.upstreamModelId,
+        provider,
+      })
+    }
+  }
+
+  const options = [...optionsById.values()].sort((a, b) => {
+    return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
+  })
   if (options.length === 0) {
-    throw new Error(`${BACKEND_DISPLAY_NAME} did not return any usable LLM models`)
+    providerStatuses = nextStatuses
+    throw new Error('no configured provider returned any usable LLM models')
   }
 
   lastSyncedOptions = options
-  modelSelection = chooseDefaultModels(payload, options)
+  modelRoutes = routesById
+  providerStatuses = nextStatuses
+  modelSelection = chooseDefaultModels(options)
 
   const configPath = await getClaudeGlobalConfigPath()
   const config = await readJsonObject(configPath)
@@ -579,18 +892,25 @@ async function syncModelOptions() {
 }
 
 async function fetchModelsPayload() {
-  if (MODELS_FIXTURE_FILE) {
-    const fixture = await readFile(MODELS_FIXTURE_FILE, 'utf8')
+  return fetchProviderModelsPayload(providers[0])
+}
+
+async function fetchProviderModelsPayload(provider) {
+  if (provider.modelsFile) {
+    const fixture = await readFile(provider.modelsFile, 'utf8')
     return JSON.parse(fixture)
   }
 
-  const candidates = ['/api/v1/models', '/v1/models']
+  const candidates =
+    provider.type === 'openai'
+      ? ['/v1/models', '/api/v1/models']
+      : ['/api/v1/models', '/v1/models']
   let lastError
 
   for (const candidate of candidates) {
     try {
-      const response = await fetch(new URL(candidate, UPSTREAM_BASE_URL), {
-        headers: buildUpstreamHeaders(),
+      const response = await fetch(new URL(candidate, provider.baseUrl), {
+        headers: buildUpstreamHeaders(provider),
         signal: AbortSignal.timeout(5000),
       })
 
@@ -604,15 +924,15 @@ async function fetchModelsPayload() {
     }
   }
 
-  throw lastError ?? new Error(`failed to fetch models from ${BACKEND_DISPLAY_NAME}`)
+  throw lastError ?? new Error(`failed to fetch models from ${provider.label}`)
 }
 
-function normalizeModelOptions(payload) {
+function normalizeModelOptions(payload, provider = providers[0]) {
   const models = coerceModelsArray(payload)
   const optionsById = new Map()
 
   for (const model of models) {
-    const option = normalizeModelOption(model)
+    const option = normalizeModelOption(model, provider)
     if (!option) {
       continue
     }
@@ -624,7 +944,7 @@ function normalizeModelOptions(payload) {
   })
 }
 
-function normalizeModelOption(model) {
+function normalizeModelOption(model, provider = providers[0]) {
   const type = String(model?.type ?? '').toLowerCase()
   if (type && type !== 'llm' && type !== 'model') {
     return null
@@ -645,9 +965,12 @@ function normalizeModelOption(model) {
     return null
   }
 
-  const label =
+  const baseLabel =
     firstString(model?.displayName, model?.display_name, model?.name) ??
     prettifyModelId(id)
+  const label = provider.labelPrefix
+    ? `${provider.labelPrefix}${baseLabel}`
+    : `${provider.label}: ${baseLabel}`
 
   const descriptionParts = []
   const paramsString = firstString(model?.paramsString, model?.params_string)
@@ -693,17 +1016,19 @@ function normalizeModelOption(model) {
   const description =
     descriptionParts.length > 0
       ? descriptionParts.join(' · ')
-      : `${BACKEND_DISPLAY_NAME} model (${id})`
+      : `${provider.label} model (${id})`
 
+  const routeId = buildModelRouteId(provider, id)
   return {
-    value: id,
+    value: routeId,
+    providerId: provider.id,
+    upstreamModelId: id,
     label,
     description,
   }
 }
 
-function chooseDefaultModels(payload, options) {
-  const models = coerceModelsArray(payload)
+function chooseDefaultModels(options) {
   const byId = new Map(options.map(option => [option.value, option]))
 
   const envMain = process.env.CLAUDE_LOCAL_MAIN_MODEL
@@ -711,13 +1036,13 @@ function chooseDefaultModels(payload, options) {
 
   const mainModel =
     (envMain && byId.has(envMain) && envMain) ||
-    chooseBestModelId(models, { preferSmall: false }) ||
+    chooseBestModelId(options, { preferSmall: false }) ||
     options[0]?.value ||
     null
 
   const smallModel =
     (envSmall && byId.has(envSmall) && envSmall) ||
-    chooseBestModelId(models, { preferSmall: true }) ||
+    chooseBestModelId(options, { preferSmall: true }) ||
     mainModel
 
   return {
@@ -730,6 +1055,7 @@ function chooseBestModelId(models, { preferSmall }) {
   const candidates = models
     .map(model => ({
       id: firstString(
+        model?.value,
         model?.id,
         model?.key,
         model?.model,
@@ -746,7 +1072,7 @@ function chooseBestModelId(models, { preferSmall }) {
         model?.trainedForToolUse === true ||
         model?.capabilities?.trained_for_tool_use === true,
       hint:
-        firstString(model?.displayName, model?.display_name, model?.name) ?? '',
+        firstString(model?.label, model?.displayName, model?.display_name, model?.name) ?? '',
       params:
         parseParamsString(
           firstString(model?.paramsString, model?.params_string),
@@ -761,6 +1087,7 @@ function chooseBestModelId(models, { preferSmall }) {
             model?.name,
             model?.displayName,
             model?.display_name,
+            model?.label,
           ) ?? '',
         ),
     }))
@@ -880,6 +1207,210 @@ function coerceModelsArray(payload) {
   return []
 }
 
+async function reloadProviders({ force = false } = {}) {
+  const nextProviders = await loadProviders()
+  const nextSignature = stableJson(
+    nextProviders.map(provider => ({
+      id: provider.id,
+      type: provider.type,
+      backend: provider.backend,
+      baseUrl: provider.baseUrl,
+      authScheme: provider.authScheme,
+      modelsFile: provider.modelsFile,
+      enabled: provider.enabled,
+    })),
+  )
+
+  if (!force && nextSignature === lastProviderConfigSignature) {
+    return false
+  }
+
+  providers = nextProviders
+  lastProviderConfigSignature = nextSignature
+  lastSyncedOptions = []
+  modelRoutes = new Map()
+  modelSelection = {
+    mainModel: null,
+    smallModel: null,
+  }
+  console.log(`[bridge] loaded ${providers.length} provider(s)`)
+  return true
+}
+
+async function loadProviders() {
+  const configured = await parseProvidersConfig()
+  const providers = configured.length > 0 ? configured : [singleProviderFromEnv()]
+  return providers.map(normalizeProvider).filter(provider => provider.enabled)
+}
+
+async function parseProvidersConfig() {
+  const fromFile = await parseProvidersFromFile()
+  if (fromFile.length > 0) {
+    return fromFile
+  }
+  return parseProvidersFromEnv()
+}
+
+async function parseProvidersFromFile() {
+  const filePath = process.env.CLAUDE_LOCAL_PROVIDERS_FILE
+  if (!filePath) {
+    return []
+  }
+
+  try {
+    const content = await readFile(filePath, 'utf8')
+    return parseProvidersJson(content, `CLAUDE_LOCAL_PROVIDERS_FILE ${filePath}`)
+  } catch (error) {
+    console.error(`[bridge] ignoring unreadable CLAUDE_LOCAL_PROVIDERS_FILE ${filePath}: ${formatError(error)}`)
+    return []
+  }
+}
+
+function parseProvidersFromEnv() {
+  const raw = process.env.CLAUDE_LOCAL_PROVIDERS
+  if (!raw) {
+    return []
+  }
+
+  return parseProvidersJson(raw, 'CLAUDE_LOCAL_PROVIDERS')
+}
+
+function parseProvidersJson(raw, sourceName) {
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed
+    }
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.providers)) {
+      return parsed.providers
+    }
+  } catch (error) {
+    console.error(`[bridge] ignoring invalid ${sourceName} JSON: ${formatError(error)}`)
+  }
+  return []
+}
+
+function singleProviderFromEnv() {
+  const backend = normalizeBackendKind(
+    process.env.CLAUDE_LOCAL_INFERENCE_BACKEND ??
+      (process.env.OMLX_BASE_URL ? 'omlx' : 'lmstudio'),
+  )
+  const baseUrl = stripTrailingSlash(
+    process.env.CLAUDE_LOCAL_INFERENCE_BASE_URL ??
+      (backend === 'omlx'
+        ? process.env.OMLX_BASE_URL ?? 'http://127.0.0.1:8000'
+        : backend === 'openai'
+          ? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com'
+          : backend === 'anthropic' || backend === 'claude'
+            ? process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com'
+            : process.env.LMSTUDIO_BASE_URL ?? 'http://127.0.0.1:1234'),
+  )
+  return {
+    id: backend,
+    type: backend === 'openai' ? 'openai' : 'anthropic',
+    baseUrl,
+    apiKey:
+      process.env.CLAUDE_LOCAL_INFERENCE_API_KEY ??
+      (backend === 'omlx'
+        ? process.env.OMLX_API_KEY ?? ''
+        : backend === 'openai'
+          ? process.env.OPENAI_API_KEY ?? ''
+          : backend === 'anthropic' || backend === 'claude'
+            ? process.env.ANTHROPIC_API_KEY ?? ''
+            : process.env.LMSTUDIO_API_KEY ?? ''),
+    authScheme: process.env.CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME ?? 'auto',
+    modelsFile:
+      process.env.CLAUDE_LOCAL_INFERENCE_MODELS_FILE ??
+      process.env.LMSTUDIO_MODELS_FILE,
+  }
+}
+
+function normalizeProvider(provider, index) {
+  const id = sanitizeProviderId(
+    firstString(provider?.id, provider?.name) ?? `provider${index + 1}`,
+  )
+  const backend = normalizeBackendKind(provider?.backend ?? provider?.kind ?? id)
+  const type = normalizeProviderType(provider?.type ?? backend)
+  const baseUrl = stripTrailingSlash(
+    firstString(provider?.baseUrl, provider?.base_url, provider?.url) ??
+      (backend === 'omlx'
+        ? 'http://127.0.0.1:8000'
+        : backend === 'openai'
+          ? 'https://api.openai.com'
+          : backend === 'anthropic' || backend === 'claude'
+            ? 'https://api.anthropic.com'
+            : 'http://127.0.0.1:1234'),
+  )
+  return {
+    id,
+    label: firstString(provider?.label, provider?.displayName) ?? id,
+    labelPrefix: firstString(provider?.labelPrefix, provider?.label_prefix),
+    type,
+    backend,
+    baseUrl,
+    apiKey: firstString(provider?.apiKey, provider?.api_key) ?? envValue(provider?.apiKeyEnv ?? provider?.api_key_env) ?? '',
+    authScheme: normalizeAuthScheme(provider?.authScheme ?? provider?.auth_scheme ?? 'auto'),
+    anthropicVersion: firstString(provider?.anthropicVersion, provider?.anthropic_version),
+    modelsFile: firstString(provider?.modelsFile, provider?.models_file),
+    enabled: provider?.enabled !== false,
+  }
+}
+
+function sanitizeProviderId(value) {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'provider'
+}
+
+function normalizeProviderType(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+  if (['openai', 'chat-completions', 'chat_completions'].includes(normalized)) {
+    return 'openai'
+  }
+  return 'anthropic'
+}
+
+function envValue(name) {
+  if (typeof name !== 'string' || !name.trim()) {
+    return ''
+  }
+  return process.env[name.trim()] ?? ''
+}
+
+function providerConfigSource() {
+  if (process.env.CLAUDE_LOCAL_PROVIDERS_FILE) {
+    return process.env.CLAUDE_LOCAL_PROVIDERS_FILE
+  }
+  if (process.env.CLAUDE_LOCAL_PROVIDERS) {
+    return 'CLAUDE_LOCAL_PROVIDERS'
+  }
+  return 'single-provider-env'
+}
+
+function stableJson(value) {
+  return JSON.stringify(value, (_key, nestedValue) => {
+    if (!nestedValue || typeof nestedValue !== 'object' || Array.isArray(nestedValue)) {
+      return nestedValue
+    }
+    return Object.fromEntries(
+      Object.entries(nestedValue).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    )
+  })
+}
+
+function buildModelRouteId(provider, upstreamModelId) {
+  if (!process.env.CLAUDE_LOCAL_PROVIDERS && !process.env.CLAUDE_LOCAL_PROVIDERS_FILE && providers.length === 1) {
+    return upstreamModelId
+  }
+  return `${provider.id}/${upstreamModelId}`
+}
+
 function copyIncomingHeaders(headers) {
   const copied = new Headers()
 
@@ -905,30 +1436,37 @@ function copyIncomingHeaders(headers) {
   return copied
 }
 
-function buildUpstreamHeaders() {
+function buildUpstreamHeaders(provider = providers[0]) {
   const headers = new Headers()
-  applyUpstreamAuthHeaders(headers)
+  applyUpstreamAuthHeaders(headers, provider)
+  if (provider.type === 'anthropic' && (provider.backend === 'anthropic' || provider.backend === 'claude')) {
+    headers.set('anthropic-version', provider.anthropicVersion ?? '2023-06-01')
+  }
   return headers
 }
 
-function applyUpstreamAuthHeaders(headers) {
-  if (!UPSTREAM_API_KEY || UPSTREAM_AUTH_SCHEME === 'none') {
+function applyUpstreamAuthHeaders(headers, provider = providers[0]) {
+  if (!provider?.apiKey || provider.authScheme === 'none') {
     return
   }
 
   const authScheme =
-    UPSTREAM_AUTH_SCHEME === 'auto'
-      ? BACKEND_KIND === 'omlx'
+    provider.authScheme === 'auto'
+      ? provider.type === 'openai'
         ? 'bearer'
-        : 'x-api-key'
-      : UPSTREAM_AUTH_SCHEME
+        : provider.backend === 'lmstudio'
+          ? 'x-api-key'
+          : provider.backend === 'anthropic' || provider.backend === 'claude'
+            ? 'x-api-key'
+            : 'bearer'
+      : provider.authScheme
 
   if (authScheme === 'x-api-key' || authScheme === 'both') {
-    headers.set('x-api-key', UPSTREAM_API_KEY)
+    headers.set('x-api-key', provider.apiKey)
   }
 
   if (authScheme === 'bearer' || authScheme === 'both') {
-    headers.set('authorization', `Bearer ${UPSTREAM_API_KEY}`)
+    headers.set('authorization', `Bearer ${provider.apiKey}`)
   }
 }
 
@@ -1081,7 +1619,10 @@ function normalizeBackendKind(value) {
   const normalized = String(value ?? '')
     .trim()
     .toLowerCase()
-  return normalized === 'omlx' ? 'omlx' : 'lmstudio'
+  if (['omlx', 'lmstudio', 'openai', 'anthropic', 'claude'].includes(normalized)) {
+    return normalized
+  }
+  return 'lmstudio'
 }
 
 function normalizeAuthScheme(value) {

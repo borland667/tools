@@ -3,15 +3,18 @@
 ## Purpose
 
 Generic local API bridge for Claude Code and Claude Desktop/Cowork 3P profiles.
-It proxies Anthropic-compatible `/v1/*` requests to local backends such as OMLX
-or LM Studio, exposes Claude-safe model discovery, and supports profile-aware
-Desktop/Cowork provider configuration.
+It proxies Anthropic-compatible `/v1/*` requests to local Claude-compatible
+backends, adapts OpenAI-compatible `/v1/chat/completions` providers when
+needed, exposes Claude-safe aggregate model discovery, and supports
+profile-aware Desktop/Cowork provider configuration.
 
 Use this when:
 
 - You want Claude Desktop/Cowork 3P mode to use a local `gateway` provider.
 - You want Claude Code to run against a local Anthropic-compatible endpoint.
 - You want one bridge that can switch between `omlx` and `lmstudio`.
+- You want one bridge to aggregate multiple OMLX, LM Studio, OpenAI-compatible,
+  and Claude-compatible providers at the same time.
 - You use multiple Claude Desktop profiles launched with `--user-data-dir`.
 
 Do not use this when:
@@ -117,7 +120,12 @@ Toggle bridge config for one profile:
 
 ## Key Environment Variables
 
-- `CLAUDE_LOCAL_INFERENCE_BACKEND`: `omlx` or `lmstudio`.
+- `CLAUDE_LOCAL_PROVIDERS_FILE`: JSON file for auto-reloaded provider
+  definitions.
+- `CLAUDE_LOCAL_PROVIDERS`: static JSON array of provider definitions for
+  simultaneous multi-provider mode.
+- `CLAUDE_LOCAL_INFERENCE_BACKEND`: single-provider fallback, such as `omlx`,
+  `lmstudio`, `openai`, or `anthropic`.
 - `CLAUDE_LOCAL_INFERENCE_BASE_URL`: generic upstream URL override.
 - `OMLX_BASE_URL`: OMLX upstream URL.
 - `LMSTUDIO_BASE_URL`: LM Studio upstream URL.
@@ -128,12 +136,80 @@ Toggle bridge config for one profile:
 - `CLAUDE_LOCAL_MAIN_MODEL`: default local model.
 - `CLAUDE_LOCAL_SMALL_MODEL`: Haiku/helper model.
 - `CLAUDE_LOCAL_TOOL_MODEL`: tool-heavy request model.
-- `CLAUDE_LOCAL_MODEL_MAP`: JSON route-to-upstream model map.
+- `CLAUDE_LOCAL_MODEL_MAP`: JSON alias-to-route model map.
 - `CLAUDE_PROFILE_NAME`: profile under `~/.claude-instances`.
 - `CLAUDE_PROFILE_DIR`: explicit profile user-data directory.
 
 Backend-specific `LMSTUDIO_*` and `OMLX_*` names are accepted for upstream
 selection; bridge-specific settings use `CLAUDE_LOCAL_*`.
+
+## Multi-Provider Mode
+
+Use `CLAUDE_LOCAL_PROVIDERS_FILE` when more than one upstream should be visible
+through the same local bridge and you want runtime reloads:
+
+```bash
+cp /Users/borland/tools/claude_local_bridge/providers.example.json \
+  /Users/borland/tools/claude_local_bridge/providers.local.json
+export CLAUDE_LOCAL_PROVIDERS_FILE=/Users/borland/tools/claude_local_bridge/providers.local.json
+```
+
+The bridge re-reads that file on each model sync interval and whenever
+`/sync-models` is called.
+
+`providers.local.json` is ignored by git. Keep `providers.example.json` as the
+tracked template, then customize the local copy with enabled providers and
+`apiKeyEnv` names for each machine.
+
+`CLAUDE_LOCAL_PROVIDERS` is also supported for static env-only configuration:
+
+```bash
+export CLAUDE_LOCAL_PROVIDERS='[
+  {"id":"omlx","type":"anthropic","baseUrl":"http://127.0.0.1:8005","authScheme":"x-api-key","apiKeyEnv":"OMLX_API_KEY","label":"OMLX"},
+  {"id":"lmstudio","type":"openai","baseUrl":"http://127.0.0.1:1234","authScheme":"x-api-key","apiKeyEnv":"LMSTUDIO_API_KEY","label":"LM Studio"},
+  {"id":"openai","type":"openai","baseUrl":"https://api.openai.com","authScheme":"bearer","apiKeyEnv":"OPENAI_API_KEY","label":"OpenAI"},
+  {"id":"anthropic","type":"anthropic","baseUrl":"https://api.anthropic.com","authScheme":"x-api-key","apiKeyEnv":"ANTHROPIC_API_KEY","anthropicVersion":"2023-06-01","label":"Anthropic"}
+]'
+```
+
+Every exposed model ID is provider-qualified:
+
+```text
+omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
+lmstudio/qwen/qwen3-coder-30b
+openai/gpt-4.1-mini
+anthropic/claude-sonnet-4-5
+```
+
+Claude Desktop/Cowork `inferenceModels[].name` must use those exact route IDs.
+The bridge uses the route prefix to select the right provider, then sends the
+raw upstream model ID to that provider.
+
+Legacy single-provider mode without `CLAUDE_LOCAL_PROVIDERS_FILE` or
+`CLAUDE_LOCAL_PROVIDERS` still exposes raw upstream model IDs for compatibility
+with the existing local Cowork setup. Explicit multi-provider mode always uses
+provider-qualified IDs.
+
+## Auto-Reload
+
+Auto-reload is file-based. Edit the file referenced by
+`CLAUDE_LOCAL_PROVIDERS_FILE`, then either wait for
+`CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS` or call:
+
+```bash
+curl http://127.0.0.1:1245/sync-models
+```
+
+Use `/healthz` to confirm the active source:
+
+```bash
+curl http://127.0.0.1:1245/healthz
+```
+
+For `type: "openai"` providers, the bridge adapts Anthropic `/v1/messages`
+requests to OpenAI `/v1/chat/completions`. Streaming requests are returned as
+Anthropic-shaped SSE after the upstream non-streaming response completes, so
+they are client-compatible but not token-by-token.
 
 ## Safety Notes
 

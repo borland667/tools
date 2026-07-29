@@ -23,6 +23,7 @@ Icon?
 .env.*
 !.env.example
 *.local
+claude_local_bridge/providers.local.json
 
 # -------------------------------
 # Python

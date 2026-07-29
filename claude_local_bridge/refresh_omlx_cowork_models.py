@@ -38,7 +38,7 @@ def main() -> int:
         return 2
 
     route_map = build_route_map(conversation_models)
-    default_model = choose_default_model(conversation_models)
+    default_model = f"omlx/{choose_default_model(conversation_models)}"
     provider_models = [
         {"name": route, "labelOverride": f"{label_for_model(model)} via Local Bridge"}
         for route, model in route_map.items()
@@ -163,7 +163,7 @@ def build_route_map(models: list[dict]) -> dict[str, str]:
     default_model = choose_default_model(models)
     remaining = [model["id"] for model in sort_models_for_routes(models) if model["id"] != default_model]
     ordered_targets = [default_model, *remaining]
-    return {model_id: model_id for model_id in ordered_targets}
+    return {f"omlx/{model_id}": model_id for model_id in ordered_targets}
 
 
 def choose_default_model(models: list[dict]) -> str:
@@ -343,6 +343,19 @@ def update_launch_agent(
         {
             "CLAUDE_LOCAL_INFERENCE_BACKEND": "omlx",
             "OMLX_BASE_URL": omlx_base_url,
+            "CLAUDE_LOCAL_PROVIDERS": json.dumps(
+                [
+                    {
+                        "id": "omlx",
+                        "type": "anthropic",
+                        "baseUrl": omlx_base_url,
+                        "authScheme": auth_scheme,
+                        "apiKeyEnv": "CLAUDE_LOCAL_INFERENCE_API_KEY",
+                        "label": "OMLX",
+                    }
+                ],
+                separators=(",", ":"),
+            ),
             "CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME": auth_scheme,
             "CLAUDE_LOCAL_MAIN_MODEL": default_model,
             "CLAUDE_LOCAL_SMALL_MODEL": default_model,
