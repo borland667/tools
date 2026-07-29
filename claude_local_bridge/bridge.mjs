@@ -8,8 +8,7 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
-const BRIDGE_HOST =
-  process.env.CLAUDE_LOCAL_BRIDGE_HOST ?? '127.0.0.1'
+const BRIDGE_HOST = normalizeBridgeHost(process.env.CLAUDE_LOCAL_BRIDGE_HOST)
 const BRIDGE_PORT = Number(
   process.env.CLAUDE_LOCAL_BRIDGE_PORT ?? '1245',
 )
@@ -111,7 +110,7 @@ Environment:
   LMSTUDIO_API_KEY                        Optional LM Studio API key to inject upstream
   OMLX_BASE_URL                           oMLX base URL (default: http://127.0.0.1:8000)
   OMLX_API_KEY                            Optional oMLX API key to inject upstream
-  CLAUDE_LOCAL_BRIDGE_HOST                Bridge listen host (default: 127.0.0.1)
+  CLAUDE_LOCAL_BRIDGE_HOST                Loopback listen host only: 127.0.0.1, localhost, or ::1
   CLAUDE_LOCAL_BRIDGE_PORT                Bridge listen port (default: 1245)
   CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS     Model sync interval in ms (default: 30000)
   CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
@@ -1402,6 +1401,18 @@ function stableJson(value) {
       ),
     )
   })
+}
+
+function normalizeBridgeHost(value) {
+  const host = String(value ?? '127.0.0.1').trim() || '127.0.0.1'
+  if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
+    return host
+  }
+
+  console.warn(
+    `[bridge] refusing non-loopback CLAUDE_LOCAL_BRIDGE_HOST="${host}"; binding to 127.0.0.1`,
+  )
+  return '127.0.0.1'
 }
 
 function buildModelRouteId(provider, upstreamModelId) {

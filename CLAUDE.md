@@ -3,6 +3,9 @@
 Claude should read and follow [`AGENTS.md`](./AGENTS.md) before making changes
 in this repository.
 
+Repository-specific reminder: once a requested task is completed and validated,
+commit the completed changes unless the user explicitly asks not to commit.
+
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker

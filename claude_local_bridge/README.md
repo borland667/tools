@@ -328,6 +328,9 @@ Generic variables:
 
 - `CLAUDE_LOCAL_INFERENCE_BACKEND`: `omlx` or `lmstudio`
 - `CLAUDE_LOCAL_PROVIDERS_FILE`: reloadable provider JSON file
+- `CLAUDE_LOCAL_BRIDGE_HOST`: loopback-only bridge listen host. Allowed values
+  are `127.0.0.1`, `localhost`, and `::1`; unsafe values such as `0.0.0.0`
+  are ignored and coerced to `127.0.0.1`.
 - `CLAUDE_LOCAL_INFERENCE_BASE_URL`: overrides backend-specific URLs
 - `CLAUDE_LOCAL_INFERENCE_API_KEY`: optional upstream API key
 - `CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME`: `auto`, `none`, `bearer`, `x-api-key`,
@@ -568,6 +571,9 @@ tail -f "$HOME/Library/Logs/claude-local-bridge.log"
 
 - Do not commit real API keys, tokens, profile databases, or `.env` files.
 - Use placeholder local tokens such as `local-bridge` for localhost auth.
+- The bridge API intentionally binds to loopback only. Keep
+  `CLAUDE_LOCAL_BRIDGE_HOST` as `127.0.0.1`, `localhost`, or `::1`; the bridge
+  refuses wildcard/external bind hosts.
 - Back up provider JSON before hand-editing it.
 - Restart the exact Claude profile you changed; other profiles have separate
   config and may continue using their old provider state.

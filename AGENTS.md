@@ -21,6 +21,8 @@ This repository is a personal collection of scripts/tools. It currently includes
 - Prefer the simplest implementation that satisfies requirements.
 - Never perform destructive operations against source media in recovery flows.
 - Committing directly to `main` is allowed in this repository.
+- Once a requested task is completed and validated, commit the completed
+  changes unless the user explicitly asks not to commit.
 - Before committing or pushing, audit the staged/tracked changes for secrets
   and credentials. Do not commit real API keys, tokens, passwords, private
   keys, `.env` files, or machine-local credentials. Placeholders such as

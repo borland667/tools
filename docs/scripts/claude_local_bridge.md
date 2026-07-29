@@ -131,7 +131,9 @@ Toggle bridge config for one profile:
 - `LMSTUDIO_BASE_URL`: LM Studio upstream URL.
 - `CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME`: `auto`, `none`, `bearer`,
   `x-api-key`, or `both`.
-- `CLAUDE_LOCAL_BRIDGE_HOST`: bridge host, default `127.0.0.1`.
+- `CLAUDE_LOCAL_BRIDGE_HOST`: loopback-only bridge host. Allowed values are
+  `127.0.0.1`, `localhost`, and `::1`; unsafe values such as `0.0.0.0` are
+  ignored and coerced to `127.0.0.1`.
 - `CLAUDE_LOCAL_BRIDGE_PORT`: bridge port, default `1245`.
 - `CLAUDE_LOCAL_MAIN_MODEL`: default local model.
 - `CLAUDE_LOCAL_SMALL_MODEL`: Haiku/helper model.
@@ -215,6 +217,8 @@ they are client-compatible but not token-by-token.
 
 - Use placeholder local tokens such as `local-bridge`; do not commit real
   credentials.
+- The bridge API is intentionally localhost-only. Do not expose it on
+  `0.0.0.0` or an external interface; the runtime refuses those bind hosts.
 - Back up provider JSON before manual edits.
 - Restart the exact Claude profile whose config changed.
 - Keep `coworkEgressAllowedHosts` profile-specific; `["*"]` is convenient but
