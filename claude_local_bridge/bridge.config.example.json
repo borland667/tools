@@ -18,6 +18,7 @@
       "target": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
       "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
       "anthropicFamilyTier": "sonnet",
+      "toolCapable": true,
       "isFamilyDefault": true
     },
     {
@@ -39,6 +40,7 @@
       "target": "omlx/Qwen3.6-27B-Heretic-MLX-bf16",
       "labelOverride": "Qwen3.6 27B Heretic bf16 via Local Bridge",
       "anthropicFamilyTier": "sonnet",
+      "toolCapable": true,
       "visionCapable": true,
       "isFamilyDefault": false
     },

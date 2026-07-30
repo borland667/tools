@@ -205,6 +205,70 @@ test('routes Anthropic-family tool requests to configured tool model', async t =
   )
 })
 
+test('keeps tool requests on the selected route when it is tool capable', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [
+      model('Qwen3.5-9b-Sushi-Coder-RL-MLX'),
+      model('Qwen3.6-27B-Heretic-MLX-bf16'),
+    ],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      await postJson(`${bridge.baseUrl}/v1/messages`, {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 16,
+        tools: [
+          {
+            name: 'lookup',
+            description: 'look something up',
+            input_schema: { type: 'object', properties: {} },
+          },
+        ],
+        messages: [{ role: 'user', content: 'use a tool' }],
+      })
+
+      assert.equal(anthropic.requests.messages.length, 1)
+      assert.equal(
+        anthropic.requests.messages[0].model,
+        'Qwen3.6-27B-Heretic-MLX-bf16',
+      )
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'claude-sonnet-4-5'),
+        models: {
+          main: 'claude-sonnet-4-5',
+          small: 'claude-sonnet-4-5',
+          tool: 'claude-sonnet-4-5',
+        },
+        claudeDesktopModels: [
+          {
+            name: 'claude-sonnet-4-5',
+            target: 'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX',
+            labelOverride: 'Fallback tool alias',
+            toolCapable: true,
+          },
+          {
+            name: 'claude-sonnet-4-6',
+            target: 'omlx/Qwen3.6-27B-Heretic-MLX-bf16',
+            labelOverride: 'Selected tool-capable alias',
+            toolCapable: true,
+          },
+        ],
+      }),
+    },
+  )
+})
+
 test('routes Anthropic-family image requests to configured vision model', async t => {
   const upstreams = []
   t.after(async () => {

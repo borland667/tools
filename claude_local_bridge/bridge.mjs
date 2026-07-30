@@ -457,14 +457,9 @@ async function prepareRequestForProvider(pathname, rawBody) {
 function resolveModelRoute(requestedModel, payload = null) {
   const normalized = requestedModel.toLowerCase()
 
-  const preferredToolModel = pickToolAwareModel(payload, normalized)
-  if (preferredToolModel) {
-    return preferredToolModel
-  }
-
   const exact = modelRoutes.get(requestedModel)
   if (exact) {
-    return pickVisionAwareModel(payload, normalized, exact) ?? exact
+    return pickCapabilityAwareModel(payload, normalized, exact) ?? exact
   }
 
   const exactCaseInsensitive = [...modelRoutes.entries()].find(
@@ -472,13 +467,13 @@ function resolveModelRoute(requestedModel, payload = null) {
   )
   if (exactCaseInsensitive) {
     const route = exactCaseInsensitive[1]
-    return pickVisionAwareModel(payload, normalized, route) ?? route
+    return pickCapabilityAwareModel(payload, normalized, route) ?? route
   }
 
   const explicitMap = parseExplicitModelMap()
   if (explicitMap.has(requestedModel)) {
     const route = routeForTargetModel(explicitMap.get(requestedModel))
-    return pickVisionAwareModel(payload, normalized, route) ?? route
+    return pickCapabilityAwareModel(payload, normalized, route) ?? route
   }
 
   const caseInsensitiveMatch = [...explicitMap.entries()].find(
@@ -486,12 +481,12 @@ function resolveModelRoute(requestedModel, payload = null) {
   )
   if (caseInsensitiveMatch) {
     const route = routeForTargetModel(caseInsensitiveMatch[1])
-    return pickVisionAwareModel(payload, normalized, route) ?? route
+    return pickCapabilityAwareModel(payload, normalized, route) ?? route
   }
 
   if (normalized.includes('haiku')) {
     const route = routeForTargetModel(modelSelection.smallModel ?? modelSelection.mainModel)
-    return pickVisionAwareModel(payload, normalized, route) ?? route
+    return pickCapabilityAwareModel(payload, normalized, route) ?? route
   }
 
   if (
@@ -500,10 +495,18 @@ function resolveModelRoute(requestedModel, payload = null) {
     ANTHROPIC_FAMILY_PATTERNS.some(pattern => normalized.includes(pattern))
   ) {
     const route = routeForTargetModel(modelSelection.mainModel)
-    return pickVisionAwareModel(payload, normalized, route) ?? route
+    return pickCapabilityAwareModel(payload, normalized, route) ?? route
   }
 
   return null
+}
+
+function pickCapabilityAwareModel(payload, normalizedRequestedModel, selectedRoute = null) {
+  return (
+    pickToolAwareModel(payload, normalizedRequestedModel, selectedRoute) ??
+    pickVisionAwareModel(payload, normalizedRequestedModel, selectedRoute) ??
+    null
+  )
 }
 
 function pickVisionAwareModel(payload, normalizedRequestedModel, selectedRoute = null) {
@@ -526,12 +529,16 @@ function pickVisionAwareModel(payload, normalizedRequestedModel, selectedRoute =
   )
 }
 
-function pickToolAwareModel(payload, normalizedRequestedModel) {
+function pickToolAwareModel(payload, normalizedRequestedModel, selectedRoute = null) {
   if (!payloadHasTools(payload)) {
     return null
   }
 
   if (!looksLikeAnthropicAlias(normalizedRequestedModel)) {
+    return null
+  }
+
+  if (selectedRoute && isToolCapableRoute(selectedRoute)) {
     return null
   }
 
@@ -628,6 +635,10 @@ function pickDetectedVisionModel() {
 
 function isVisionCapableRoute(route) {
   return Boolean(route?.visionCapable || isStrongVisionModelId(route))
+}
+
+function isToolCapableRoute(route) {
+  return Boolean(route?.toolCapable)
 }
 
 function isStrongVisionModelId(route) {
@@ -1036,6 +1047,7 @@ async function syncModelOptions() {
         routeId: option.value,
         upstreamModelId: option.upstreamModelId,
         provider,
+        toolCapable: option.toolCapable,
         visionCapable: option.visionCapable,
       })
     }
@@ -1124,6 +1136,7 @@ function normalizeClaudeDesktopModels(routesById) {
       upstreamModelId: route.upstreamModelId,
       label,
       description,
+      toolCapable: alias.toolCapable === true || route.toolCapable === true,
       visionCapable: alias.visionCapable === true || route.visionCapable === true,
     }
     Object.defineProperty(option, 'route', {
@@ -1132,6 +1145,7 @@ function normalizeClaudeDesktopModels(routesById) {
         routeId: name,
         upstreamModelId: route.upstreamModelId,
         provider: route.provider,
+        toolCapable: alias.toolCapable === true || route.toolCapable === true,
         visionCapable: alias.visionCapable === true || route.visionCapable === true,
       },
     })
@@ -1284,8 +1298,7 @@ function normalizeModelOption(model, provider = providers[0]) {
     descriptionParts.push(isLoaded ? 'loaded' : 'not loaded')
   }
   if (
-    model?.trainedForToolUse === true ||
-    model?.capabilities?.trained_for_tool_use === true
+    isToolCapableModel(model)
   ) {
     descriptionParts.push('tool use')
   }
@@ -1307,8 +1320,18 @@ function normalizeModelOption(model, provider = providers[0]) {
     upstreamModelId: id,
     label,
     description,
+    toolCapable: isToolCapableModel(model),
     visionCapable: isVisionCapableModel(model, id),
   }
+}
+
+function isToolCapableModel(model) {
+  return Boolean(
+    model?.trainedForToolUse === true ||
+      model?.capabilities?.trained_for_tool_use === true ||
+      model?.toolCapable === true ||
+      model?.capabilities?.tool_use === true,
+  )
 }
 
 function isVisionCapableModel(model, id) {

@@ -329,14 +329,16 @@ model. The bridge therefore treats tools and images as request capabilities,
 not just picker labels.
 
 When a request includes tools and the requested model looks like an Anthropic
-alias, `models.tool` or `CLAUDE_LOCAL_TOOL_MODEL` can force a more reliable
+alias, the bridge first checks whether the selected route is tool-capable. If
+it is, the tool-shaped request stays on that selected model. If it is not,
+`models.tool` or `CLAUDE_LOCAL_TOOL_MODEL` can force a more reliable
 tool-calling model. When a request includes Anthropic image content blocks and
-the requested model looks like an Anthropic alias, the bridge first checks
-whether the selected route is vision-capable. If it is, the image request stays
-on that selected model. If it is not, `models.vision` or
-`CLAUDE_LOCAL_VISION_MODEL` can force a known-working vision model. Exact
-provider-qualified model IDs, such as `omlx/Qwen3-VL-4B-Instruct-4bit`, are
-left alone because they are not Anthropic aliases.
+the requested model looks like an Anthropic alias, the bridge applies the same
+pattern for vision: selected vision-capable routes stay selected, and
+non-vision routes fall back to `models.vision` or
+`CLAUDE_LOCAL_VISION_MODEL`. Exact provider-qualified model IDs, such as
+`omlx/Qwen3-VL-4B-Instruct-4bit`, are left alone because they are not
+Anthropic aliases.
 
 For the current OMLX setup, keep:
 
@@ -359,6 +361,9 @@ Models that are tested and known to handle images, such as
 `Qwen3.6-27B-Heretic-MLX-bf16`, can set `visionCapable: true` on their
 Claude-facing alias so image requests selected from that alias are not
 redirected to the fallback vision route.
+Models that should keep tool-shaped Claude requests, even when
+`models.tool` points elsewhere, can set `toolCapable: true` on their
+Claude-facing alias.
 
 ## Auto-Reload
 
@@ -651,6 +656,9 @@ For Claude Desktop/Cowork 3P, prefer `claudeDesktopModels[]` in
 - `target`: provider-qualified local route ID or raw upstream model ID.
 - `labelOverride`: local model label shown in Claude's picker.
 - `anthropicFamilyTier`: optional Claude tier mapping for alias resolution.
+- `toolCapable`: optional boolean; when true, tool-shaped requests selected
+  through this alias stay on this route instead of falling back to
+  `models.tool`.
 - `visionCapable`: optional boolean; when true, image requests selected through
   this alias stay on this route instead of falling back to `models.vision`.
 - `isFamilyDefault`: optional winner when several entries share a tier.
@@ -690,6 +698,7 @@ export CLAUDE_LOCAL_MODEL_MAP='{"default":"omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX","
 When a request includes tools or image content and the requested model looks
 like an Anthropic alias, `CLAUDE_LOCAL_TOOL_MODEL` and
 `CLAUDE_LOCAL_VISION_MODEL` can force more reliable capability-specific models.
+Tool fallback is skipped when the selected route is marked `toolCapable: true`.
 Vision fallback is skipped when the selected route is already marked or
 detected as vision-capable. This is bridge behavior, not an Anthropic provider
 config key.
