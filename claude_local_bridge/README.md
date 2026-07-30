@@ -720,7 +720,15 @@ Logs:
 
 ```bash
 tail -f "$HOME/Library/Logs/claude-local-bridge.log"
+tail -f "$HOME/.omlx/logs/server.log"
 ```
+
+The bridge log shows local routing decisions, such as
+`claude-opus-4-8 -> omlx/Qwen3-VL-4B-Instruct-4bit`. The OMLX server log is the
+source of truth for upstream model load failures, token generation timings, and
+image parser errors. The OMLX dashboard log viewer at
+`http://127.0.0.1:8005/admin/dashboard?tab=logs` reads from the same log
+directory and rotates daily files like `server.log.2026-07-29`.
 
 ## Files
 
