@@ -24,6 +24,7 @@ Icon?
 !.env.example
 *.local
 claude_local_bridge/providers.local.json
+claude_local_bridge/bridge.local.json
 
 # -------------------------------
 # Python

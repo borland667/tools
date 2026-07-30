@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import plistlib
 import re
 import shutil
 import subprocess
@@ -68,15 +67,15 @@ def main() -> int:
     sync_bridge_on_snapshot(provider_path)
     print(f"updated provider config: {provider_path}")
 
-    update_launch_agent(
-        launch_agent=args.launch_agent,
+    update_bridge_config(
+        bridge_config=args.bridge_config,
         omlx_base_url=omlx_base_url,
         auth_scheme=args.upstream_auth_scheme,
         default_model=default_model,
         route_map=route_map,
         upstream_api_key=args.api_key,
     )
-    print(f"updated LaunchAgent: {args.launch_agent}")
+    print(f"updated bridge config: {args.bridge_config}")
 
     if args.restart_agent:
         restart_launch_agent(args.launch_agent, args.agent_label)
@@ -119,6 +118,11 @@ def parse_args() -> argparse.Namespace:
         "--launch-agent",
         type=Path,
         default=home / "Library/LaunchAgents/com.borland.claude-local-bridge.plist",
+    )
+    parser.add_argument(
+        "--bridge-config",
+        type=Path,
+        default=Path(__file__).with_name("bridge.local.json"),
     )
     parser.add_argument("--agent-label", default=DEFAULT_AGENT_LABEL)
     parser.add_argument(
@@ -327,49 +331,57 @@ def sync_bridge_on_snapshot(provider_path: Path) -> None:
         shutil.copy2(provider_path, snapshot)
 
 
-def update_launch_agent(
-    launch_agent: Path,
+def update_bridge_config(
+    bridge_config: Path,
     omlx_base_url: str,
     auth_scheme: str,
     default_model: str,
     route_map: dict[str, str],
     upstream_api_key: str | None,
 ) -> None:
-    with launch_agent.open("rb") as handle:
-        plist = plistlib.load(handle)
-    backup_path(launch_agent)
-    env = dict(plist.get("EnvironmentVariables") or {})
-    env.update(
+    if bridge_config.exists():
+        with bridge_config.open("r", encoding="utf-8") as handle:
+            config = json.load(handle)
+        backup_path(bridge_config)
+    else:
+        config = {}
+    env = dict(config.get("env") or {})
+    env.update({"OMLX_API_KEY": upstream_api_key or env.get("OMLX_API_KEY") or DEFAULT_PROVIDER_API_KEY})
+    config.update(
         {
-            "CLAUDE_LOCAL_INFERENCE_BACKEND": "omlx",
-            "OMLX_BASE_URL": omlx_base_url,
-            "CLAUDE_LOCAL_PROVIDERS": json.dumps(
-                [
-                    {
-                        "id": "omlx",
-                        "type": "anthropic",
-                        "baseUrl": omlx_base_url,
-                        "authScheme": auth_scheme,
-                        "apiKeyEnv": "CLAUDE_LOCAL_INFERENCE_API_KEY",
-                        "label": "OMLX",
-                    }
-                ],
-                separators=(",", ":"),
-            ),
-            "CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME": auth_scheme,
-            "CLAUDE_LOCAL_MAIN_MODEL": default_model,
-            "CLAUDE_LOCAL_SMALL_MODEL": default_model,
-            "CLAUDE_LOCAL_TOOL_MODEL": default_model,
-            "CLAUDE_LOCAL_MODEL_MAP": json.dumps(route_map, separators=(",", ":")),
+            "bridge": config.get("bridge") or {"host": "127.0.0.1", "port": 1245},
+            "providersFile": config.get("providersFile") or "providers.local.json",
+            "models": {
+                **dict(config.get("models") or {}),
+                "main": default_model,
+                "small": default_model,
+                "tool": default_model,
+            },
+            "modelMap": route_map,
+            "env": env,
         }
     )
+    providers_path = bridge_config.with_name(str(config["providersFile"]))
+    if not providers_path.is_absolute():
+        providers_path = bridge_config.parent / providers_path
+    providers_payload = {
+        "providers": [
+            {
+                "id": "omlx",
+                "type": "anthropic",
+                "baseUrl": omlx_base_url,
+                "authScheme": auth_scheme,
+                "apiKeyEnv": "OMLX_API_KEY",
+                "label": "OMLX",
+            }
+        ]
+    }
+    if providers_path.exists():
+        backup_path(providers_path)
+    write_json(providers_path, providers_payload)
     if upstream_api_key:
-        env["CLAUDE_LOCAL_INFERENCE_API_KEY"] = upstream_api_key
-    elif "CLAUDE_LOCAL_INFERENCE_API_KEY" not in env:
-        env["CLAUDE_LOCAL_INFERENCE_API_KEY"] = DEFAULT_PROVIDER_API_KEY
-    plist["EnvironmentVariables"] = env
-    with launch_agent.open("wb") as handle:
-        plistlib.dump(plist, handle, sort_keys=False)
+        env["OMLX_API_KEY"] = upstream_api_key
+    write_json(bridge_config, config)
 
 
 def restart_launch_agent(launch_agent: Path, label: str) -> None:

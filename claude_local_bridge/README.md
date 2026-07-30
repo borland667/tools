@@ -137,20 +137,23 @@ Use an explicit directory when your launcher stores profiles somewhere else:
 ## LaunchAgent
 
 Install the generic bridge API as a user LaunchAgent so Claude Desktop/Cowork
-can reach it whenever a profile starts. The LaunchAgent uses reloadable
-provider-file mode, binds only to `127.0.0.1`, and does not embed cloud API
-keys.
+can reach it whenever a profile starts. The LaunchAgent plist stays minimal:
+it only runs `bridge.mjs serve` from this directory. Runtime settings live in
+`bridge.local.json`, so normal changes do not require editing XML.
 
-Prepare the ignored local provider file first:
+Prepare the ignored local config files first:
 
 ```bash
 cd /Users/borland/tools/claude_local_bridge
+cp bridge.config.example.json bridge.local.json
 cp providers.example.json providers.local.json
 ```
 
-Keep local providers such as OMLX and LM Studio on loopback. If you enable
-cloud providers in `providers.local.json`, keep `apiKeyEnv` references and set
-those secrets outside git; do not write real keys into the plist.
+`bridge.local.json` is loaded from the LaunchAgent `WorkingDirectory`, which is
+`/Users/borland/tools/claude_local_bridge`. It points at `providers.local.json`
+by default. Keep local providers such as OMLX and LM Studio on loopback. If you
+enable cloud providers, keep `apiKeyEnv` references and set those secrets
+outside git; do not write real keys into the plist.
 
 Copy and fill the template:
 
@@ -165,11 +168,10 @@ Replace placeholders:
 - `__BRIDGE_DIR__`: `/Users/borland/tools/claude_local_bridge`
 - `__HOME__`: `/Users/borland`
 
-The template sets `CLAUDE_LOCAL_PROVIDERS_FILE` to
-`providers.local.json`, `CLAUDE_LOCAL_BRIDGE_HOST=127.0.0.1`, and placeholder
-local provider keys (`OMLX_API_KEY` / `LMSTUDIO_API_KEY`) with value
-`local-bridge`. Those placeholders are fine for local providers that only need
-a non-empty key; replace them only if the upstream requires a specific token.
+The template keeps an empty `EnvironmentVariables` dict on purpose. The bridge
+defaults to `bridge.local.json` in the working directory. That JSON file sets
+the bridge host/port, model defaults, provider file, sync interval, request
+timeout, and placeholder local provider keys.
 
 Validate and load:
 
@@ -197,6 +199,16 @@ curl http://127.0.0.1:1245/healthz
 ```
 
 ## Environment
+
+For launchd, prefer `bridge.local.json` in the bridge working directory:
+
+```bash
+cp bridge.config.example.json bridge.local.json
+```
+
+Environment variables are still supported as overrides for tests and one-off
+runs, but the installed LaunchAgent intentionally avoids bridge settings in the
+plist.
 
 For one provider, generic names are enough:
 
@@ -554,6 +566,7 @@ node --check bridge.mjs
 bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
+jq . bridge.config.example.json providers.example.json claude-3p-provider.example.json >/dev/null
 node --test ../tests/claude_local_bridge/bridge.test.mjs
 ```
 
@@ -588,6 +601,7 @@ tail -f "$HOME/Library/Logs/claude-local-bridge.log"
 - `run_claude_with_local_bridge.sh`: Claude Code launcher
 - `toggle_claude_local_bridge.sh`: Desktop/Cowork profile toggle
 - `refresh_omlx_cowork_models.py`: live OMLX model refresh helper
+- `bridge.config.example.json`: tracked bridge runtime config template
 - `claude-3p-provider.example.json`: editable provider example
 - `launchd/com.borland.claude-local-bridge.plist.template`: LaunchAgent template
 ## Safety Notes

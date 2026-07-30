@@ -1,0 +1,18 @@
+{
+  "bridge": {
+    "host": "127.0.0.1",
+    "port": 1245
+  },
+  "providersFile": "providers.local.json",
+  "modelSyncIntervalMs": 30000,
+  "requestTimeoutMs": 600000,
+  "models": {
+    "main": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+    "small": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+    "tool": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX"
+  },
+  "env": {
+    "OMLX_API_KEY": "local-bridge",
+    "LMSTUDIO_API_KEY": "local-bridge"
+  }
+}

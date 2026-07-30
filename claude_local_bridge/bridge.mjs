@@ -1,24 +1,22 @@
 #!/usr/bin/env node
 
 import http from 'node:http'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
-const BRIDGE_HOST = normalizeBridgeHost(process.env.CLAUDE_LOCAL_BRIDGE_HOST)
+const CONFIG_FILE =
+  process.env.CLAUDE_LOCAL_CONFIG_FILE ??
+  path.resolve(process.cwd(), 'bridge.local.json')
+let BRIDGE_CONFIG = loadBridgeConfig(CONFIG_FILE)
+
+const BRIDGE_HOST = normalizeBridgeHost(configValue('bridge.host', process.env.CLAUDE_LOCAL_BRIDGE_HOST))
 const BRIDGE_PORT = Number(
-  process.env.CLAUDE_LOCAL_BRIDGE_PORT ?? '1245',
+  configValue('bridge.port', process.env.CLAUDE_LOCAL_BRIDGE_PORT) ?? '1245',
 )
-const MODEL_SYNC_INTERVAL_MS = Number(
-  process.env.CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS ?? '30000',
-)
-const REQUEST_TIMEOUT_MS = Number(
-  process.env.CLAUDE_LOCAL_REQUEST_TIMEOUT_MS ?? '600000',
-)
-const TOOL_MODEL_OVERRIDE = process.env.CLAUDE_LOCAL_TOOL_MODEL ?? ''
 
 const ANTHROPIC_FAMILY_PATTERNS = [
   'claude-',
@@ -99,6 +97,7 @@ Usage:
   node bridge.mjs print-env
 
 Environment:
+  CLAUDE_LOCAL_CONFIG_FILE                JSON bridge config file
   CLAUDE_LOCAL_PROVIDERS                  JSON array of provider definitions
   CLAUDE_LOCAL_PROVIDERS_FILE             JSON file to auto-reload provider definitions
   CLAUDE_LOCAL_INFERENCE_BACKEND          Single-provider fallback: lmstudio, omlx, openai, anthropic
@@ -122,6 +121,44 @@ Environment:
   CLAUDE_GLOBAL_CONFIG_FILE               Override Claude global config path
   CLAUDE_CONFIG_DIR                       Alternate Claude config root
   LMSTUDIO_MODELS_FILE                    LM Studio-specific fixture alias`)
+}
+
+function loadBridgeConfig(filePath) {
+  if (!filePath || !existsSync(filePath)) {
+    if (process.env.CLAUDE_LOCAL_CONFIG_FILE) {
+      console.error(`[bridge] config file not found: ${filePath}`)
+    }
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, 'utf8'))
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed
+    }
+    console.error(`[bridge] ignoring ${filePath}: top-level config must be an object`)
+  } catch (error) {
+    console.error(`[bridge] ignoring invalid config ${filePath}: ${formatError(error)}`)
+  }
+  return {}
+}
+
+function reloadBridgeConfig() {
+  BRIDGE_CONFIG = loadBridgeConfig(CONFIG_FILE)
+}
+
+function configValue(pathExpression, envValueOverride) {
+  if (envValueOverride !== undefined) {
+    return envValueOverride
+  }
+
+  const value = pathExpression
+    .split('.')
+    .reduce((current, key) => current?.[key], BRIDGE_CONFIG)
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+  return value
 }
 
 function printEnvBlock(bridgeBaseUrl) {
@@ -168,12 +205,18 @@ async function startServer() {
   )
   printEnvBlock(`http://${BRIDGE_HOST}:${BRIDGE_PORT}`)
 
-  const interval = setInterval(() => {
+  scheduleModelSync()
+}
+
+function scheduleModelSync() {
+  const timeout = setTimeout(() => {
     syncModelOptions().catch(error => {
       console.error(`[bridge] model sync failed: ${formatError(error)}`)
+    }).finally(() => {
+      scheduleModelSync()
     })
-  }, MODEL_SYNC_INTERVAL_MS)
-  interval.unref()
+  }, getModelSyncIntervalMs())
+  timeout.unref()
 }
 
 async function routeRequest(req, res) {
@@ -186,7 +229,8 @@ async function routeRequest(req, res) {
       providers: providerStatuses,
       providerCount: providers.length,
       providerConfigSource: providerConfigSource(),
-      providerConfigReloadable: Boolean(process.env.CLAUDE_LOCAL_PROVIDERS_FILE),
+      providerConfigReloadable: Boolean(getProvidersFile() || CONFIG_FILE),
+      bridgeConfigSource: CONFIG_FILE,
       models: lastSyncedOptions.length,
       mainModel: modelSelection.mainModel,
       smallModel: modelSelection.smallModel,
@@ -264,7 +308,7 @@ async function proxyToUpstream(req, res, url) {
       method: req.method,
       headers,
       body,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(getRequestTimeoutMs()),
     })
   } catch (error) {
     console.error(
@@ -447,7 +491,7 @@ function pickToolAwareModel(payload, normalizedRequestedModel) {
   }
 
   return (
-    pickConfiguredModelId(TOOL_MODEL_OVERRIDE) ??
+    pickConfiguredModelId(getToolModelOverride()) ??
     routeForTargetModel(modelSelection.smallModel) ??
     null
   )
@@ -759,13 +803,13 @@ function parseJsonObject(value) {
 }
 
 function parseExplicitModelMap() {
-  const raw = process.env.CLAUDE_LOCAL_MODEL_MAP
+  const raw = configValue('modelMap', process.env.CLAUDE_LOCAL_MODEL_MAP)
   if (!raw) {
     return new Map()
   }
 
   try {
-    const parsed = JSON.parse(raw)
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return new Map()
     }
@@ -1030,8 +1074,8 @@ function normalizeModelOption(model, provider = providers[0]) {
 function chooseDefaultModels(options) {
   const byId = new Map(options.map(option => [option.value, option]))
 
-  const envMain = process.env.CLAUDE_LOCAL_MAIN_MODEL
-  const envSmall = process.env.CLAUDE_LOCAL_SMALL_MODEL
+  const envMain = configValue('models.main', process.env.CLAUDE_LOCAL_MAIN_MODEL)
+  const envSmall = configValue('models.small', process.env.CLAUDE_LOCAL_SMALL_MODEL)
 
   const mainModel =
     (envMain && byId.has(envMain) && envMain) ||
@@ -1207,6 +1251,7 @@ function coerceModelsArray(payload) {
 }
 
 async function reloadProviders({ force = false } = {}) {
+  reloadBridgeConfig()
   const nextProviders = await loadProviders()
   const nextSignature = stableJson(
     nextProviders.map(provider => ({
@@ -1251,7 +1296,7 @@ async function parseProvidersConfig() {
 }
 
 async function parseProvidersFromFile() {
-  const filePath = process.env.CLAUDE_LOCAL_PROVIDERS_FILE
+  const filePath = getProvidersFile()
   if (!filePath) {
     return []
   }
@@ -1266,11 +1311,14 @@ async function parseProvidersFromFile() {
 }
 
 function parseProvidersFromEnv() {
-  const raw = process.env.CLAUDE_LOCAL_PROVIDERS
+  const raw = configValue('providers', process.env.CLAUDE_LOCAL_PROVIDERS)
   if (!raw) {
     return []
   }
 
+  if (Array.isArray(raw) || (raw && typeof raw === 'object')) {
+    return parseProvidersJson(JSON.stringify(raw), 'bridge config providers')
+  }
   return parseProvidersJson(raw, 'CLAUDE_LOCAL_PROVIDERS')
 }
 
@@ -1291,36 +1339,36 @@ function parseProvidersJson(raw, sourceName) {
 
 function singleProviderFromEnv() {
   const backend = normalizeBackendKind(
-    process.env.CLAUDE_LOCAL_INFERENCE_BACKEND ??
-      (process.env.OMLX_BASE_URL ? 'omlx' : 'lmstudio'),
+    configValue('singleProvider.backend', process.env.CLAUDE_LOCAL_INFERENCE_BACKEND) ??
+      (configEnvValue('OMLX_BASE_URL') ? 'omlx' : 'lmstudio'),
   )
   const baseUrl = stripTrailingSlash(
-    process.env.CLAUDE_LOCAL_INFERENCE_BASE_URL ??
+    configValue('singleProvider.baseUrl', process.env.CLAUDE_LOCAL_INFERENCE_BASE_URL) ??
       (backend === 'omlx'
-        ? process.env.OMLX_BASE_URL ?? 'http://127.0.0.1:8000'
+        ? configEnvValue('OMLX_BASE_URL') ?? 'http://127.0.0.1:8000'
         : backend === 'openai'
-          ? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com'
+          ? configEnvValue('OPENAI_BASE_URL') ?? 'https://api.openai.com'
           : backend === 'anthropic' || backend === 'claude'
-            ? process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com'
-            : process.env.LMSTUDIO_BASE_URL ?? 'http://127.0.0.1:1234'),
+            ? configEnvValue('ANTHROPIC_BASE_URL') ?? 'https://api.anthropic.com'
+            : configEnvValue('LMSTUDIO_BASE_URL') ?? 'http://127.0.0.1:1234'),
   )
   return {
     id: backend,
     type: backend === 'openai' ? 'openai' : 'anthropic',
     baseUrl,
     apiKey:
-      process.env.CLAUDE_LOCAL_INFERENCE_API_KEY ??
+      configValue('singleProvider.apiKey', process.env.CLAUDE_LOCAL_INFERENCE_API_KEY) ??
       (backend === 'omlx'
-        ? process.env.OMLX_API_KEY ?? ''
+        ? configEnvValue('OMLX_API_KEY') ?? ''
         : backend === 'openai'
-          ? process.env.OPENAI_API_KEY ?? ''
+          ? configEnvValue('OPENAI_API_KEY') ?? ''
           : backend === 'anthropic' || backend === 'claude'
-            ? process.env.ANTHROPIC_API_KEY ?? ''
-            : process.env.LMSTUDIO_API_KEY ?? ''),
-    authScheme: process.env.CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME ?? 'auto',
+            ? configEnvValue('ANTHROPIC_API_KEY') ?? ''
+            : configEnvValue('LMSTUDIO_API_KEY') ?? ''),
+    authScheme: configValue('singleProvider.authScheme', process.env.CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME) ?? 'auto',
     modelsFile:
-      process.env.CLAUDE_LOCAL_INFERENCE_MODELS_FILE ??
-      process.env.LMSTUDIO_MODELS_FILE,
+      configValue('singleProvider.modelsFile', process.env.CLAUDE_LOCAL_INFERENCE_MODELS_FILE) ??
+      configEnvValue('LMSTUDIO_MODELS_FILE'),
   }
 }
 
@@ -1377,14 +1425,41 @@ function envValue(name) {
   if (typeof name !== 'string' || !name.trim()) {
     return ''
   }
-  return process.env[name.trim()] ?? ''
+  return configEnvValue(name.trim()) ?? ''
+}
+
+function configEnvValue(name) {
+  return process.env[name] ?? BRIDGE_CONFIG.env?.[name]
+}
+
+function getProvidersFile() {
+  return configValue('providersFile', process.env.CLAUDE_LOCAL_PROVIDERS_FILE)
+}
+
+function getToolModelOverride() {
+  return configValue('models.tool', process.env.CLAUDE_LOCAL_TOOL_MODEL) ?? ''
+}
+
+function getModelSyncIntervalMs() {
+  return Number(
+    configValue('modelSyncIntervalMs', process.env.CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS) ??
+      '30000',
+  )
+}
+
+function getRequestTimeoutMs() {
+  return Number(
+    configValue('requestTimeoutMs', process.env.CLAUDE_LOCAL_REQUEST_TIMEOUT_MS) ??
+      '600000',
+  )
 }
 
 function providerConfigSource() {
-  if (process.env.CLAUDE_LOCAL_PROVIDERS_FILE) {
-    return process.env.CLAUDE_LOCAL_PROVIDERS_FILE
+  const providersFile = getProvidersFile()
+  if (providersFile) {
+    return providersFile
   }
-  if (process.env.CLAUDE_LOCAL_PROVIDERS) {
+  if (process.env.CLAUDE_LOCAL_PROVIDERS || BRIDGE_CONFIG.providers) {
     return 'CLAUDE_LOCAL_PROVIDERS'
   }
   return 'single-provider-env'
@@ -1416,7 +1491,7 @@ function normalizeBridgeHost(value) {
 }
 
 function buildModelRouteId(provider, upstreamModelId) {
-  if (!process.env.CLAUDE_LOCAL_PROVIDERS && !process.env.CLAUDE_LOCAL_PROVIDERS_FILE && providers.length === 1) {
+  if (!process.env.CLAUDE_LOCAL_PROVIDERS && !getProvidersFile() && !BRIDGE_CONFIG.providers && providers.length === 1) {
     return upstreamModelId
   }
   return `${provider.id}/${upstreamModelId}`

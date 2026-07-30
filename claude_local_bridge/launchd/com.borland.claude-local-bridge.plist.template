@@ -11,26 +11,7 @@
     <string>serve</string>
   </array>
   <key>EnvironmentVariables</key>
-  <dict>
-    <key>CLAUDE_LOCAL_PROVIDERS_FILE</key>
-    <string>__BRIDGE_DIR__/providers.local.json</string>
-    <key>OMLX_API_KEY</key>
-    <string>local-bridge</string>
-    <key>LMSTUDIO_API_KEY</key>
-    <string>local-bridge</string>
-    <key>CLAUDE_LOCAL_BRIDGE_HOST</key>
-    <string>127.0.0.1</string>
-    <key>CLAUDE_LOCAL_BRIDGE_PORT</key>
-    <string>1245</string>
-    <key>CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS</key>
-    <string>30000</string>
-    <key>CLAUDE_LOCAL_MAIN_MODEL</key>
-    <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
-    <key>CLAUDE_LOCAL_SMALL_MODEL</key>
-    <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
-    <key>CLAUDE_LOCAL_TOOL_MODEL</key>
-    <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
-  </dict>
+  <dict/>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

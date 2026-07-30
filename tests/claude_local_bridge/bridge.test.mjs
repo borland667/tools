@@ -189,6 +189,56 @@ test('isolates failed providers while keeping healthy provider models available'
   )
 })
 
+test('loads and reloads bridge JSON config from the working directory', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [model('first-chat'), model('second-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      let health = await getJson(`${bridge.baseUrl}/healthz`)
+      assert.equal(health.mainModel, 'omlx/first-chat')
+      assert.equal(health.bridgeConfigSource, bridge.bridgeConfigFile)
+
+      await writeFile(
+        bridge.bridgeConfigFile,
+        JSON.stringify(bridgeConfig(bridge.providersFile, 'omlx/second-chat')),
+        'utf8',
+      )
+
+      await getJson(`${bridge.baseUrl}/sync-models`)
+      health = await getJson(`${bridge.baseUrl}/healthz`)
+      assert.equal(health.mainModel, 'omlx/second-chat')
+    },
+    {
+      bridgeConfig: providersFile => bridgeConfig(providersFile, 'omlx/first-chat'),
+    },
+  )
+})
+
+function bridgeConfig(providersFile, mainModel) {
+  return {
+    bridge: { host: '127.0.0.1' },
+    providersFile,
+    models: {
+      main: mainModel,
+      small: mainModel,
+      tool: mainModel,
+    },
+    env: {
+      OMLX_API_KEY: 'local-bridge',
+    },
+  }
+}
+
 function model(id) {
   return {
     id,
@@ -212,11 +262,19 @@ async function withBridge(t, providers, callback, options = {}) {
   const port = await getFreePort()
   const workDir = await mkdtemp(path.join(tmpdir(), 'claude-local-bridge-test-'))
   const providersFile = path.join(workDir, 'providers.json')
+  const bridgeConfigFile = path.join(workDir, 'bridge.local.json')
   const configFile = path.join(workDir, 'claude.json')
   const stdout = []
   const stderr = []
 
   await writeFile(providersFile, JSON.stringify({ providers }), 'utf8')
+  if (options.bridgeConfig) {
+    await writeFile(
+      bridgeConfigFile,
+      JSON.stringify(options.bridgeConfig(providersFile)),
+      'utf8',
+    )
+  }
 
   const child = spawn(process.execPath, [BRIDGE_SCRIPT, 'serve'], {
     cwd: ROOT_DIR,
@@ -225,7 +283,9 @@ async function withBridge(t, providers, callback, options = {}) {
       ...options.env,
       CLAUDE_LOCAL_BRIDGE_HOST: '127.0.0.1',
       CLAUDE_LOCAL_BRIDGE_PORT: String(port),
-      CLAUDE_LOCAL_PROVIDERS_FILE: providersFile,
+      ...(options.bridgeConfig
+        ? { CLAUDE_LOCAL_CONFIG_FILE: bridgeConfigFile }
+        : { CLAUDE_LOCAL_PROVIDERS_FILE: providersFile }),
       CLAUDE_GLOBAL_CONFIG_FILE: configFile,
       CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS: '60000',
     },
@@ -246,6 +306,8 @@ async function withBridge(t, providers, callback, options = {}) {
     await callback({
       baseUrl: `http://127.0.0.1:${port}`,
       configFile,
+      bridgeConfigFile,
+      providersFile,
       get logs() {
         return stdout.join('') + stderr.join('')
       },

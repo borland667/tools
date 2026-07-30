@@ -40,6 +40,7 @@ Do not use this when:
 - `/Users/borland/tools/claude_local_bridge/run_claude_with_local_bridge.sh`
 - `/Users/borland/tools/claude_local_bridge/toggle_claude_local_bridge.sh`
 - `/Users/borland/tools/claude_local_bridge/refresh_omlx_cowork_models.py`
+- `/Users/borland/tools/claude_local_bridge/bridge.config.example.json`
 - `/Users/borland/tools/claude_local_bridge/claude-3p-provider.example.json`
 - `/Users/borland/tools/claude_local_bridge/launchd/com.borland.claude-local-bridge.plist.template`
 
@@ -49,15 +50,16 @@ The LaunchAgent template runs the generic bridge API in reloadable
 multi-provider mode:
 
 - Program: `/Users/borland/tools/claude_local_bridge/bridge.mjs serve`
-- Bind host: `127.0.0.1` only
-- Port: `1245`
-- Provider config: `/Users/borland/tools/claude_local_bridge/providers.local.json`
+- Working directory: `/Users/borland/tools/claude_local_bridge`
+- Runtime config: `bridge.local.json` in the working directory
+- Provider config: `providers.local.json` from `bridge.local.json`
 - Logs: `$HOME/Library/Logs/claude-local-bridge.log`
 
-Prepare the ignored local provider file before loading launchd:
+Prepare the ignored local config files before loading launchd:
 
 ```bash
 cd /Users/borland/tools/claude_local_bridge
+cp bridge.config.example.json bridge.local.json
 cp providers.example.json providers.local.json
 ```
 
@@ -65,10 +67,12 @@ Then copy the plist template into `$HOME/Library/LaunchAgents`, replace
 `__NODE_BIN__`, `__BRIDGE_DIR__`, and `__HOME__`, validate with `plutil -lint`,
 and load with `launchctl bootstrap gui/$(id -u) ...`.
 
-The template includes placeholder `OMLX_API_KEY` and `LMSTUDIO_API_KEY` values
-of `local-bridge` for local providers that only require a non-empty API key.
-Do not put real cloud provider secrets in the plist; keep cloud providers
-disabled or reference secrets through a machine-local mechanism.
+The plist intentionally keeps `EnvironmentVariables` empty. Edit
+`bridge.local.json` for bridge host/port, model defaults, sync interval,
+request timeout, provider file path, and placeholder local API-key values. The
+bridge re-reads `bridge.local.json` on `/sync-models` and periodic syncs;
+host/port changes still require a LaunchAgent restart because the socket is
+already bound.
 
 ## Claude Profile Model
 
@@ -261,7 +265,7 @@ node --check bridge.mjs
 bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
-jq . claude-3p-provider.example.json >/dev/null
+jq . bridge.config.example.json providers.example.json claude-3p-provider.example.json >/dev/null
 node --test ../tests/claude_local_bridge/bridge.test.mjs
 ```
 
