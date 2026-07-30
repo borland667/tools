@@ -42,6 +42,8 @@ The bridge is intentionally small:
 - `GET /api/claude_cli/bootstrap` returns additional model picker options for
   Claude Code builds that read that bootstrap endpoint.
 - `GET /sync-models` refreshes the local model cache.
+- `generate_claude_3p_config.py` generates Claude Desktop/Cowork
+  `configLibrary` entries for isolated 3P profiles.
 
 The bridge does not implement inference itself. Anthropic-compatible providers
 must serve `/v1/messages`; OpenAI-compatible providers must serve
@@ -460,9 +462,8 @@ The refresh helper:
 - drops non-conversation models
 - chooses a default/tool model by local heuristics
 - writes `inferenceModels` with Claude-compatible gateway alias IDs
-- updates `CLAUDE_LOCAL_MODEL_MAP` in the bridge LaunchAgent for compatibility
-  aliases
-- backs up changed provider/plist files before writing
+- updates `bridge.local.json` and `providers.local.json`
+- backs up changed provider/config files before writing
 - optionally restarts the LaunchAgent
 
 ## Claude Desktop / Cowork 3P Provider
@@ -473,6 +474,15 @@ its Anthropic model catalog. Do not expose raw local IDs such as
 `claudeDesktopModels[]` in `bridge.local.json` so `/v1/models` returns
 Claude-compatible aliases, and set `inferenceModels[].name` to those aliases.
 `labelOverride` is display-only and should carry the real local model label.
+
+The generator follows Anthropic's Claude Desktop 3P configuration reference:
+local user configs live under `configLibrary`, `_meta.json` selects the active
+entry, gateway configs use `inferenceGatewayBaseUrl`,
+`inferenceGatewayApiKey`, and `inferenceGatewayAuthScheme`, and
+`inferenceModels[].name` must be the exact model ID returned by the gateway.
+The official reference also notes that managed macOS/Windows policy stores
+encode array/object keys as JSON strings, while local `configLibrary` files use
+normal JSON values.
 
 Minimum provider fields:
 
@@ -508,6 +518,70 @@ Important behavior:
 - Hosted Claude models do not merge into the same 3P gateway picker. Use
   separate profiles if you want one profile on hosted Claude and another on
   local bridge-backed models.
+
+### Generate A Profile Config
+
+Use `generate_claude_3p_config.py` when you want to reproduce or repair the
+Claude Desktop/Cowork 3P provider entry itself. It uses the working
+`~/.claude-instances/local-3p/configLibrary` profile as the default base, keeps
+the local bridge fields aligned with the official 3P `gateway` shape, and is
+dry-run by default.
+
+Dry run against the local-3p profile and print the generated config with
+sensitive fields redacted:
+
+```bash
+cd /Users/borland/tools/claude_local_bridge
+./generate_claude_3p_config.py \
+  --profile local-3p \
+  --spec claude-3p-generator.example.json \
+  --print-json
+```
+
+Apply the generated config to the same profile:
+
+```bash
+./generate_claude_3p_config.py \
+  --profile local-3p \
+  --spec claude-3p-generator.example.json \
+  --apply
+```
+
+Generate a separate profile from the local-3p base:
+
+```bash
+./generate_claude_3p_config.py \
+  --base-profile local-3p \
+  --profile cowork-omlx \
+  --name "Local OMLX Bridge" \
+  --config-id "$(uuidgen)" \
+  --apply
+```
+
+Model sources:
+
+- `bridge-config`: default; reads `claudeDesktopModels[]` from
+  `bridge.local.json`.
+- `bridge-live`: fetches `GET /v1/models` from the bridge.
+- `base`: reuses `inferenceModels` from the base config.
+- `file`: reads a JSON file containing `inferenceModels`, `data`, `models`, or
+  `items`.
+
+Gateway extras supported by the spec:
+
+- `gateway.customHeaders`: writes `inferenceCustomHeaders`.
+- `gateway.oidc`: writes `inferenceGatewayOidc`.
+- `gateway.sessionLifetimeSec`: writes `inferenceSessionLifetimeSec`.
+- Model entries preserve `supports1m`, `prefer1m`,
+  `anthropicFamilyTier`, and `isFamilyDefault` when present.
+
+Secret handling:
+
+- By default, generated configs use placeholder localhost auth such as
+  `local-bridge` instead of preserving copied secret fields.
+- Pass `--preserve-secret-values` only for private local profile generation.
+- Do not commit generated profile configs containing real keys, custom
+  inference headers, or profile account state.
 
 ### If Claude Shows "Gateway Returned No Usable Models"
 
@@ -712,8 +786,10 @@ node --check bridge.mjs
 bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
-jq . bridge.config.example.json providers.example.json claude-3p-provider.example.json >/dev/null
+python3 -m py_compile generate_claude_3p_config.py
+jq . bridge.config.example.json providers.example.json claude-3p-provider.example.json claude-3p-generator.example.json >/dev/null
 node --test ../tests/claude_local_bridge/bridge.test.mjs
+pytest ../tests/claude_local_bridge/generate_claude_3p_config.test.py
 ```
 
 The Node test suite starts loopback-only stub providers and a loopback bridge

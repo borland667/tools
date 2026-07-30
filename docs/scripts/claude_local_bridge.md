@@ -40,8 +40,10 @@ Do not use this when:
 - `/Users/borland/tools/claude_local_bridge/run_claude_with_local_bridge.sh`
 - `/Users/borland/tools/claude_local_bridge/toggle_claude_local_bridge.sh`
 - `/Users/borland/tools/claude_local_bridge/refresh_omlx_cowork_models.py`
+- `/Users/borland/tools/claude_local_bridge/generate_claude_3p_config.py`
 - `/Users/borland/tools/claude_local_bridge/bridge.config.example.json`
 - `/Users/borland/tools/claude_local_bridge/claude-3p-provider.example.json`
+- `/Users/borland/tools/claude_local_bridge/claude-3p-generator.example.json`
 - `/Users/borland/tools/claude_local_bridge/launchd/com.borland.claude-local-bridge.plist.template`
 
 ## LaunchAgent Setup
@@ -140,6 +142,28 @@ cd /Users/borland/tools/claude_local_bridge
   --apply \
   --restart-agent
 ```
+
+Generate or repair the Claude 3P profile config from the working local-3p
+base:
+
+```bash
+cd /Users/borland/tools/claude_local_bridge
+./generate_claude_3p_config.py \
+  --profile local-3p \
+  --spec claude-3p-generator.example.json \
+  --print-json
+
+./generate_claude_3p_config.py \
+  --profile local-3p \
+  --spec claude-3p-generator.example.json \
+  --apply
+```
+
+The generator emits local `configLibrary` JSON, not MDM plist/registry policy.
+It understands gateway fields such as `inferenceCustomHeaders`,
+`inferenceGatewayOidc`, static credentials, fixed `inferenceModels`, and
+Claude model metadata such as `supports1m`, `prefer1m`,
+`anthropicFamilyTier`, and `isFamilyDefault`.
 
 Toggle bridge config for one profile:
 
@@ -338,8 +362,10 @@ node --check bridge.mjs
 bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
-jq . bridge.config.example.json providers.example.json claude-3p-provider.example.json >/dev/null
+python3 -m py_compile generate_claude_3p_config.py
+jq . bridge.config.example.json providers.example.json claude-3p-provider.example.json claude-3p-generator.example.json >/dev/null
 node --test ../tests/claude_local_bridge/bridge.test.mjs
+pytest ../tests/claude_local_bridge/generate_claude_3p_config.test.py
 ```
 
 The Node test suite starts loopback-only stub providers and a loopback bridge

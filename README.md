@@ -138,8 +138,10 @@ These rules apply to all current and future scripts, regardless of language.
   The docs cover profile-aware setup with Claude `--user-data-dir`, the
   generic LaunchAgent/provider files, Anthropic 3P config details such as
   `deploymentOrganizationUuid` and `coworkEgressAllowedHosts`, backend
-  selection between `omlx` and `lmstudio`, and
-  `refresh_omlx_cowork_models.py` for regenerating Cowork routes from live
+  selection between `omlx` and `lmstudio`,
+  `generate_claude_3p_config.py` for producing profile `configLibrary`
+  entries from the working local-3p template, and
+  `refresh_omlx_cowork_models.py` for regenerating bridge aliases from live
   OMLX discovery. See
   [`docs/scripts/claude_local_bridge.md`](./docs/scripts/claude_local_bridge.md).
 - [`omlx_auto_router/`](./omlx_auto_router/): local OpenAI-compatible proxy

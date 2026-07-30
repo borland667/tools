@@ -1,0 +1,35 @@
+{
+  "name": "Local Claude Bridge API",
+  "configId": "77c828b7-41d1-4aad-8e95-9e169f209ff1",
+  "modelsSource": "bridge-config",
+  "gateway": {
+    "baseUrl": "http://127.0.0.1:1245",
+    "apiKey": "local-bridge",
+    "authScheme": "x-api-key",
+    "credentialKind": "static",
+    "customHeaders": null,
+    "oidc": null,
+    "sessionLifetimeSec": null
+  },
+  "inferenceProvider": "gateway",
+  "modelDiscoveryEnabled": false,
+  "coworkEgressAllowedHosts": [
+    "*"
+  ],
+  "features": {
+    "desktopExtensionsEnabled": true,
+    "chatTabEnabled": true,
+    "chatAdvancedFileAnalysisEnabled": true,
+    "autoModeEnabled": true,
+    "toolSearchEnabled": true
+  },
+  "telemetry": {
+    "disableEssential": true,
+    "disableNonessential": true
+  },
+  "source": {
+    "deploymentOrganizationUuid": null,
+    "disableDeploymentModeChooser": null
+  },
+  "extra": {}
+}
