@@ -2004,6 +2004,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
   let progressClosed = false
   let sawVisibleOutput = false
   let progressUpdateInFlight = false
+  let lastProgressKey = ''
   const skippedThinkingIndexes = new Set()
 
   const progressDelayMs = getVisibleStreamProgressDelayMs()
@@ -2022,21 +2023,29 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
 
     progressUpdateInFlight = true
     try {
-      const text = await buildVisibleProgressText({
+      const progress = await buildVisibleProgressText({
         provider: options.provider,
         upstreamModelId: options.upstreamModelId,
         elapsedMs: Date.now() - startedAt,
         initial,
       })
-      if (!text || progressClosed || sawVisibleOutput || res.writableEnded || res.destroyed) {
+      if (
+        !progress?.text ||
+        progress.key === lastProgressKey ||
+        progressClosed ||
+        sawVisibleOutput ||
+        res.writableEnded ||
+        res.destroyed
+      ) {
         return
       }
+      lastProgressKey = progress.key
       writeAnthropicSseEvent(res, 'content_block_delta', {
         type: 'content_block_delta',
         index: 0,
         delta: {
           type: 'text_delta',
-          text,
+          text: progress.text,
         },
       })
     } finally {
@@ -2150,16 +2159,67 @@ async function buildVisibleProgressText({
   const providerLabel = provider?.label ?? provider?.id ?? 'local provider'
   const modelLabel = displayModelName(upstreamModelId)
   const elapsed = formatDuration(Math.max(0, elapsedMs / 1000))
-  const prefix = initial
-    ? `Working locally with ${modelLabel} via ${providerLabel}.`
-    : `\n${providerLabel} is still working with ${modelLabel}.`
-
   const providerStatus = await getProviderProgressStatus(provider, upstreamModelId)
   if (providerStatus) {
-    return `${prefix} ${providerStatus}`
+    return {
+      key: providerStatus.key,
+      text: initial
+        ? formatInitialProgressBlock({
+            providerLabel,
+            modelLabel,
+            elapsed,
+            status: providerStatus,
+          })
+        : formatProgressUpdate({ elapsed, status: providerStatus }),
+    }
   }
 
-  return `${prefix} Waiting ${elapsed} for visible model output.`
+  const key = `generic:${Math.floor(elapsedMs / 30000)}`
+  return {
+    key,
+    text: initial
+      ? formatInitialProgressBlock({
+          providerLabel,
+          modelLabel,
+          elapsed,
+          status: {
+            title: 'Waiting for visible output',
+            lines: [`Elapsed: ${elapsed}`, 'The provider is connected but has not emitted answer text yet.'],
+            summary: `waiting ${elapsed} for visible model output`,
+          },
+        })
+      : formatProgressUpdate({
+          elapsed,
+          status: {
+            title: 'Still waiting for visible output',
+            lines: [],
+            summary: `waiting ${elapsed} for visible model output`,
+          },
+        }),
+  }
+}
+
+function formatInitialProgressBlock({
+  providerLabel,
+  modelLabel,
+  elapsed,
+  status,
+}) {
+  const lines = [
+    '',
+    '',
+    '**Local model status**',
+    `- Model: ${modelLabel}`,
+    `- Provider: ${providerLabel}`,
+    `- State: ${status.title}`,
+    `- Elapsed: ${elapsed}`,
+    ...status.lines.map(line => `- ${line}`),
+  ]
+  return lines.join('\n')
+}
+
+function formatProgressUpdate({ elapsed, status }) {
+  return `\n\n_Status update after ${elapsed}:_ ${status.summary}.`
 }
 
 async function getProviderProgressStatus(provider, upstreamModelId) {
@@ -2194,26 +2254,48 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
   if (!model) {
     const active = Number(activeModels.total_active_requests ?? 0)
     const waiting = Number(activeModels.total_waiting_requests ?? 0)
-    return compactSentence([
+    const lines = [
       active > 0 ? `${active} active request${active === 1 ? '' : 's'}` : null,
       waiting > 0 ? `${waiting} waiting` : null,
       pressure,
       'waiting for model-specific activity',
-    ])
+    ].filter(Boolean)
+    return progressStatus({
+      phase: 'activity',
+      bucket: `${active}:${waiting}`,
+      title: 'Waiting for model activity',
+      lines,
+      summary: lines.join(', '),
+    })
   }
 
   if (model.is_loading) {
-    return compactSentence([
-      'OMLX is loading the model',
+    const elapsed = model.loading_elapsed_seconds != null
+      ? formatDuration(model.loading_elapsed_seconds)
+      : null
+    const remaining = model.loading_remaining_seconds_estimate != null
+      ? formatDuration(model.loading_remaining_seconds_estimate)
+      : null
+    return progressStatus({
+      phase: 'loading',
+      bucket: bucketNumber(model.loading_elapsed_seconds, 10),
+      title: 'OMLX is loading the model',
+      lines: [
       model.loading_elapsed_seconds != null
-        ? `${formatDuration(model.loading_elapsed_seconds)} elapsed`
+        ? `Loading time: ${elapsed} elapsed`
         : null,
       model.loading_remaining_seconds_estimate != null
-        ? `about ${formatDuration(model.loading_remaining_seconds_estimate)} left`
+        ? `ETA: about ${remaining} left`
         : null,
-      model.estimated_size_formatted ? `estimated ${model.estimated_size_formatted}` : null,
+      model.estimated_size_formatted ? `Estimated size: ${model.estimated_size_formatted}` : null,
       pressure,
-    ])
+      ].filter(Boolean),
+      summary: compactPhrase([
+        'loading model',
+        elapsed ? `${elapsed} elapsed` : null,
+        remaining ? `about ${remaining} left` : null,
+      ]),
+    })
   }
 
   const prefilling = Array.isArray(model.prefilling) ? model.prefilling : []
@@ -2225,46 +2307,88 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
     const processed = Number(current.processed ?? 0)
     const total = Number(current.total ?? 0)
     const percent = total > 0 ? Math.floor((processed / total) * 100) : null
-    return compactSentence([
-      `OMLX is prefilling ${formatTokenCount(processed)}${total > 0 ? `/${formatTokenCount(total)}` : ''} tokens`,
-      percent != null ? `${percent}%` : null,
-      current.speed ? `${formatNumber(current.speed, 1)} tok/s` : null,
-      current.eta ? `about ${formatDuration(current.eta)} left` : null,
-      model.active_requests > 1 ? `${model.active_requests} active requests` : null,
+    const progress = `${formatTokenCount(processed)}${total > 0 ? ` / ${formatTokenCount(total)}` : ''} tokens`
+    const speed = current.speed ? `${formatNumber(current.speed, 1)} tok/s` : null
+    const eta = current.eta ? `about ${formatDuration(current.eta)} left` : null
+    return progressStatus({
+      phase: 'prefill',
+      bucket: total > 0 ? Math.floor((processed / total) * 10) : bucketNumber(processed, 1000),
+      title: 'OMLX is prefilling the prompt',
+      lines: [
+      `Prompt progress: ${progress}${percent != null ? ` (${percent}%)` : ''}`,
+      speed ? `Speed: ${speed}` : null,
+      eta ? `ETA: ${eta}` : null,
+      model.active_requests > 1 ? `Load: ${model.active_requests} active requests` : null,
       pressure,
-    ])
+      ].filter(Boolean),
+      summary: compactPhrase([
+        `prefill ${progress}${percent != null ? ` (${percent}%)` : ''}`,
+        speed,
+        eta,
+      ]),
+    })
   }
 
   if (generating.length > 0) {
     const current = generating[0]
-    return compactSentence([
-      `OMLX is generating ${formatTokenCount(current.generated_tokens ?? 0)} tokens so far`,
-      current.tokens_per_second != null
-        ? `${formatNumber(current.tokens_per_second, 2)} tok/s`
-        : null,
-      current.last_activity_age_seconds != null
-        ? `last token ${formatDuration(current.last_activity_age_seconds)} ago`
-        : null,
-      current.max_tokens ? `limit ${formatTokenCount(current.max_tokens)} tokens` : null,
+    const generated = formatTokenCount(current.generated_tokens ?? 0)
+    const speed = current.tokens_per_second != null
+      ? `${formatNumber(current.tokens_per_second, 2)} tok/s`
+      : null
+    const lastToken = current.last_activity_age_seconds != null
+      ? `${formatDuration(current.last_activity_age_seconds)} ago`
+      : null
+    return progressStatus({
+      phase: 'generate',
+      bucket: `${bucketNumber(current.generated_tokens, 10)}:${bucketNumber(current.last_activity_age_seconds, 15)}`,
+      title: 'OMLX is generating',
+      lines: [
+      `Generated: ${generated} tokens`,
+      speed ? `Speed: ${speed}` : null,
+      lastToken ? `Last token: ${lastToken}` : null,
+      current.max_tokens ? `Limit: ${formatTokenCount(current.max_tokens)} tokens` : null,
       pressure,
-    ])
+      ].filter(Boolean),
+      summary: compactPhrase([
+        `generating, ${generated} tokens so far`,
+        speed,
+        lastToken ? `last token ${lastToken}` : null,
+      ]),
+    })
   }
 
   if (waiting.length > 0 || Number(model.waiting_requests ?? 0) > 0) {
     const position = waiting[0]?.queue_position
-    return compactSentence([
-      'OMLX has this model queued',
-      position ? `queue position ${position}` : null,
-      model.waiting_requests ? `${model.waiting_requests} waiting` : null,
+    return progressStatus({
+      phase: 'queued',
+      bucket: `${position ?? 'unknown'}:${model.waiting_requests ?? 0}`,
+      title: 'OMLX queued this request',
+      lines: [
+      position ? `Queue position: ${position}` : null,
+      model.waiting_requests ? `Waiting requests: ${model.waiting_requests}` : null,
       pressure,
-    ])
+      ].filter(Boolean),
+      summary: compactPhrase([
+        'queued',
+        position ? `position ${position}` : null,
+        model.waiting_requests ? `${model.waiting_requests} waiting` : null,
+      ]),
+    })
   }
 
-  return compactSentence([
-    'OMLX reports the model loaded, but no visible tokens yet',
-    model.actual_size_formatted ? `loaded size ${model.actual_size_formatted}` : null,
+  return progressStatus({
+    phase: 'loaded-waiting',
+    bucket: bucketNumber(activeModels.model_memory_used, 5 * 1024 ** 3),
+    title: 'Model loaded, waiting for answer text',
+    lines: [
+    model.actual_size_formatted ? `Loaded size: ${model.actual_size_formatted}` : null,
     pressure,
-  ])
+    ].filter(Boolean),
+    summary: compactPhrase([
+      'model loaded, no visible tokens yet',
+      model.actual_size_formatted ? `${model.actual_size_formatted} loaded` : null,
+    ]),
+  })
 }
 
 async function fetchJsonBestEffort(url, provider, timeoutMs) {
@@ -2297,11 +2421,28 @@ function formatMemoryPressure(memoryPressure) {
   const level = memoryPressure.pressure_level && memoryPressure.pressure_level !== 'ok'
     ? `, pressure ${memoryPressure.pressure_level}`
     : ''
-  return `memory ${current}/${soft} soft/${hard} hard${level}`
+  return `Memory: ${current} / ${soft} soft / ${hard} hard${level}`
 }
 
-function compactSentence(parts) {
-  return `${parts.filter(Boolean).join('; ')}.`
+function progressStatus({ phase, bucket, title, lines, summary }) {
+  return {
+    key: `${phase}:${bucket}`,
+    title,
+    lines,
+    summary,
+  }
+}
+
+function bucketNumber(value, bucketSize) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return 'unknown'
+  }
+  return Math.floor(number / bucketSize)
+}
+
+function compactPhrase(parts) {
+  return parts.filter(Boolean).join(', ')
 }
 
 function displayModelName(modelId) {

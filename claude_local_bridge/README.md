@@ -890,20 +890,39 @@ slow models usable, the local config enables a visible stream timeout guard:
 When enabled, the bridge applies this to every Anthropic-compatible streaming
 model, not just the known slow aliases. It waits `delayMs` for upstream visible
 text or tool output. If none arrives, the request is considered at risk of
-Claude's stream idle timeout: the bridge opens a small text block such as
-`Working locally with Qwen3.6 27B Heretic MLX bf16 via OMLX...` and appends
-periodic progress lines until the real upstream text/tool output begins.
+Claude's stream idle timeout: the bridge opens a compact Markdown status block
+and appends short italic updates until the real upstream text/tool output
+begins.
+
+Example:
+
+```markdown
+**Local model status**
+- Model: Qwen3.6 27B Heretic MLX bf16
+- Provider: OMLX
+- State: OMLX is prefilling the prompt
+- Elapsed: 12s
+- Prompt progress: 22.5k / 29.8k tokens (75%)
+- Speed: 47.8 tok/s
+- ETA: about 2m 33s left
+- Load: 2 active requests
+- Memory: 74.2GB / 94.9GB soft / 100.2GB hard
+
+_Status update after 42s:_ prefill 24.1k / 29.8k tokens (80%), 48.2 tok/s, about 1m 58s left.
+```
 
 For OMLX providers, `providerStatusEnabled` lets the bridge fetch
 `/admin/api/activity` while waiting. When available, progress lines include
 status like model loading, prefill token progress, generation speed, last token
 age, queue state, active request count, and memory pressure. The status fetch is
 best-effort and bounded by `providerStatusTimeoutMs`, so it cannot block or fail
-the model stream. This intentionally trades a small visible preamble for
-reliable long-running local inference. Set `CLAUDE_LOCAL_STREAM_PROGRESS=false`
-or `"streamingProgress": {"enabled": false}` to disable the visible timeout
-guard; set `"providerStatusEnabled": false` to keep the guard but use generic
-messages. If the error still appears:
+the model stream. Repeated updates are deduplicated by provider phase and
+progress bucket, so Claude does not render a long wall of near-identical status
+lines. This intentionally trades a small visible preamble for reliable
+long-running local inference. Set `CLAUDE_LOCAL_STREAM_PROGRESS=false` or
+`"streamingProgress": {"enabled": false}` to disable the visible timeout guard;
+set `"providerStatusEnabled": false` to keep the guard but use generic messages.
+If the error still appears:
 
 ```bash
 curl http://127.0.0.1:1245/healthz

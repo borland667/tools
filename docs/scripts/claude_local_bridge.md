@@ -372,15 +372,15 @@ local inference. The local config enables:
 
 The guard applies to every Anthropic-compatible streaming model. If upstream
 sends only hidden thinking or takes longer than `delayMs` to produce visible
-text/tool output, the bridge emits a small visible text block like `Working
-locally with Qwen3.6 27B Heretic MLX bf16 via OMLX...` and periodic progress
-lines until real output arrives. For OMLX, the bridge also samples
+text/tool output, the bridge emits a compact Markdown status block and concise
+italic updates until real output arrives. For OMLX, the bridge also samples
 `/admin/api/activity` to report loading, prefill progress, generation speed,
-queue state, and memory pressure when available. This keeps Claude Desktop's
-stream watchdog from treating long local prefill as an idle connection, without
-adding progress text to normal fast responses. Disable with
-`CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting `streamingProgress.enabled`
-to `false`; disable provider status only with
+queue state, and memory pressure when available. Updates are deduplicated by
+provider phase and progress bucket so the UI does not fill with repeated
+near-identical lines. This keeps Claude Desktop's stream watchdog from treating
+long local prefill as an idle connection, without adding progress text to normal
+fast responses. Disable with `CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting
+`streamingProgress.enabled` to `false`; disable provider status only with
 `streamingProgress.providerStatusEnabled=false`.
 
 ## Safety Notes

@@ -592,9 +592,12 @@ test('emits visible progress while upstream only sends thinking deltas', async t
       })
 
       assert.equal(response.ok, true)
-      const text = await readChunksUntil(response, /Working locally with slow thinking chat via omlx/)
+      const text = await readChunksUntil(response, /\*\*Local model status\*\*/)
       assert.match(text, /event: content_block_start/)
-      assert.match(text, /Working locally with slow thinking chat via omlx/)
+      assert.match(text, /\*\*Local model status\*\*/)
+      assert.match(text, /- Model: slow thinking chat/)
+      assert.match(text, /- Provider: omlx/)
+      assert.match(text, /- State: Waiting for visible output/)
       assert.doesNotMatch(text, /thinking_delta/)
     },
     {
@@ -639,7 +642,8 @@ test('keeps visible output indices contiguous after suppressing thinking', async
       assert.equal(response.ok, true)
       const text = await response.text()
       assert.match(text, /"index":0/)
-      assert.match(text, /Working locally with slow thinking text chat via omlx/)
+      assert.match(text, /\*\*Local model status\*\*/)
+      assert.match(text, /- Model: slow thinking text chat/)
       assert.match(text, /"index":1/)
       assert.match(text, /final answer/)
       assert.doesNotMatch(text, /"index":2/)
@@ -666,6 +670,7 @@ test('includes OMLX provider activity in visible progress', async t => {
 
   const anthropic = await startThinkingOnlyAnthropicStreamingProvider({
     models: [model('Qwen3.6-27B-Heretic-MLX-bf16')],
+    endDelayMs: 1500,
     activity: {
       active_models: {
         models: [
@@ -718,13 +723,15 @@ test('includes OMLX provider activity in visible progress', async t => {
       })
 
       assert.equal(response.ok, true)
-      const text = await readChunksUntil(response, /OMLX is prefilling/)
-      assert.match(text, /OMLX is prefilling 8\.2k\/32\.8k tokens/)
+      const text = await readChunksUntil(response, /OMLX is prefilling the prompt/)
+      assert.match(text, /\*\*Local model status\*\*/)
+      assert.match(text, /- State: OMLX is prefilling the prompt/)
+      assert.match(text, /- Prompt progress: 8\.2k \/ 32\.8k tokens \(25%\)/)
       assert.match(text, /25%/)
-      assert.match(text, /64\.4 tok\/s/)
-      assert.match(text, /about 6m 22s left/)
-      assert.match(text, /2 active requests/)
-      assert.match(text, /memory 70\.0GB\/96\.0GB soft\/101\.0GB hard/)
+      assert.match(text, /- Speed: 64\.4 tok\/s/)
+      assert.match(text, /- ETA: about 6m 22s left/)
+      assert.match(text, /- Load: 2 active requests/)
+      assert.match(text, /- Memory: 70\.0GB \/ 96\.0GB soft \/ 101\.0GB hard/)
     },
     {
       bridgeConfig: providersFile => ({
@@ -937,7 +944,11 @@ async function startSlowAnthropicStreamingProvider({ models, headerDelayMs }) {
   return { server, baseUrl, requests }
 }
 
-async function startThinkingOnlyAnthropicStreamingProvider({ models, activity = null }) {
+async function startThinkingOnlyAnthropicStreamingProvider({
+  models,
+  activity = null,
+  endDelayMs = 250,
+}) {
   const requests = { messages: [] }
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && ['/api/v1/models', '/v1/models'].includes(req.url)) {
@@ -988,7 +999,7 @@ async function startThinkingOnlyAnthropicStreamingProvider({ models, activity = 
         res.end(
           `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
         )
-      }, 250)
+      }, endDelayMs)
       return
     }
 
