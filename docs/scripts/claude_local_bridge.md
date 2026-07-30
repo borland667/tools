@@ -239,6 +239,38 @@ Use `/healthz` to confirm the active source:
 curl http://127.0.0.1:1245/healthz
 ```
 
+### Claude Profile Model Discovery Troubleshooting
+
+If Claude's 3P settings screen says model discovery found 0 models, first check
+the bridge directly:
+
+```bash
+curl http://127.0.0.1:1245/v1/models
+```
+
+If that returns provider-qualified IDs such as
+`omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX`, the bridge is serving models correctly.
+Set the active Claude profile to a fixed list instead of discovery:
+
+```json
+{
+  "modelDiscoveryEnabled": false,
+  "inferenceModels": [
+    {
+      "name": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge"
+    }
+  ]
+}
+```
+
+`inferenceModels[].name` must match the exact bridge route ID returned from
+`/v1/models`; `labelOverride` only changes what Claude displays. Fully quit and
+reopen the affected Claude profile after editing because Claude reads 3P config
+once at launch. If the settings dialog was open before the manual edit, discard
+the stale dialog changes before relaunching so it does not remove the fixed
+model list.
+
 For `type: "openai"` providers, the bridge adapts Anthropic `/v1/messages`
 requests to OpenAI `/v1/chat/completions`. Streaming requests are returned as
 Anthropic-shaped SSE after the upstream non-streaming response completes, so

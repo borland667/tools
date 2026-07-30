@@ -449,6 +449,36 @@ Important behavior:
   separate profiles if you want one profile on hosted Claude and another on
   local bridge-backed models.
 
+### If Claude Shows "Gateway Returned No Usable Models"
+
+When `curl http://127.0.0.1:1245/v1/models` returns models but the Claude 3P
+settings screen reports "found 0 models" or "Gateway returned no usable
+models", the bridge is usually operational and the profile is relying on model
+discovery without a static fallback list.
+
+Fix the active profile config by setting:
+
+```json
+{
+  "modelDiscoveryEnabled": false,
+  "inferenceModels": [
+    {
+      "name": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge"
+    }
+  ]
+}
+```
+
+Use route IDs copied exactly from the bridge `/v1/models` response. In
+multi-provider mode these IDs include the provider prefix, such as `omlx/`.
+
+After editing the config file, fully quit and reopen the exact Claude profile.
+Claude reads the 3P config once at launch. If the in-app settings dialog was
+already open, choose `Discard Changes` before relaunching; applying a stale
+dialog can overwrite the static `inferenceModels` list and put the profile back
+into discovery-only mode.
+
 ## Toggle Per Profile
 
 The toggle script switches one profile's active provider config between two
