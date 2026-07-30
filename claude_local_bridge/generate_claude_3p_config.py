@@ -257,7 +257,6 @@ def build_config(
                 "disabledBuiltinTools": [],
                 "disableBundledSkills": False,
                 "builtinToolPolicy": {"*": "allow"},
-                "requireCoworkFullVmSandbox": False,
                 "isDesktopExtensionEnabled": True,
                 "isDesktopExtensionSignatureRequired": False,
                 "managedMcpServers": [],
@@ -275,10 +274,10 @@ def build_config(
         )
 
     config["coworkEgressAllowedHosts"] = resolve_egress_hosts(args, spec, config)
+    config.pop("requireCoworkFullVmSandbox", None)
 
     assign_if_present(config, "builtinToolPolicy", workspace.get("builtinToolPolicy"))
     assign_if_present(config, "allowedWorkspaceFolders", workspace.get("allowedWorkspaceFolders"))
-    assign_if_present(config, "requireCoworkFullVmSandbox", workspace.get("requireCoworkFullVmSandbox"))
     assign_if_present(config, "disableDeepLinkRegistration", workspace.get("disableDeepLinkRegistration"))
     assign_bool_if_present(config, "disableBundledSkills", workspace.get("disableBundledSkills"))
     assign_if_present(config, "disabledBuiltinTools", workspace.get("disabledBuiltinTools"))
@@ -477,7 +476,6 @@ def order_config(config: dict[str, Any]) -> dict[str, Any]:
         "disabledBuiltinTools",
         "disableBundledSkills",
         "builtinToolPolicy",
-        "requireCoworkFullVmSandbox",
         "isDesktopExtensionEnabled",
         "isDesktopExtensionSignatureRequired",
         "microsoftAuthBroker",

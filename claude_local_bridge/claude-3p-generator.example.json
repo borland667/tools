@@ -29,7 +29,6 @@
     "builtinToolPolicy": {
       "*": "allow"
     },
-    "requireCoworkFullVmSandbox": false,
     "disableDeepLinkRegistration": false
   },
   "features": {
