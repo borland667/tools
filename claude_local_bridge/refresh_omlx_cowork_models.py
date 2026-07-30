@@ -37,10 +37,15 @@ def main() -> int:
         return 2
 
     route_map = build_route_map(conversation_models)
-    default_model = f"omlx/{choose_default_model(conversation_models)}"
+    claude_desktop_models = build_claude_desktop_models(route_map)
+    default_model = claude_desktop_models[0]["name"]
     provider_models = [
-        {"name": route, "labelOverride": f"{label_for_model(model)} via Local Bridge"}
-        for route, model in route_map.items()
+        {
+            key: value
+            for key, value in model.items()
+            if key != "target"
+        }
+        for model in claude_desktop_models
     ]
 
     print_summary(omlx_base_url, conversation_models, route_map, default_model)
@@ -50,7 +55,11 @@ def main() -> int:
         print(f"wrote fixture: {args.fixture_path}")
 
     if args.print_json:
-        print(json.dumps({"routeMap": route_map, "inferenceModels": provider_models}, indent=2))
+        print(json.dumps({
+            "routeMap": route_map,
+            "claudeDesktopModels": claude_desktop_models,
+            "inferenceModels": provider_models,
+        }, indent=2))
 
     if not args.apply:
         print("dry run only; rerun with --apply to update Claude/LaunchAgent files")
@@ -73,6 +82,7 @@ def main() -> int:
         auth_scheme=args.upstream_auth_scheme,
         default_model=default_model,
         route_map=route_map,
+        claude_desktop_models=claude_desktop_models,
         upstream_api_key=args.api_key,
     )
     print(f"updated bridge config: {args.bridge_config}")
@@ -168,6 +178,61 @@ def build_route_map(models: list[dict]) -> dict[str, str]:
     remaining = [model["id"] for model in sort_models_for_routes(models) if model["id"] != default_model]
     ordered_targets = [default_model, *remaining]
     return {f"omlx/{model_id}": model_id for model_id in ordered_targets}
+
+
+def build_claude_desktop_models(route_map: dict[str, str]) -> list[dict]:
+    routes = list(route_map)
+    default_route = routes[0]
+    alias_specs = [
+        ("claude-sonnet-4-5", "sonnet", default_route, "Qwen3.5 Sushi Coder 9B"),
+        ("claude-haiku-4-5", "haiku", default_route, "Qwen3.5 Sushi Coder 9B Small"),
+        (
+            "claude-opus-4-5",
+            "opus",
+            choose_route(routes, [r"qwen3\.6-35b-a3b-mlx-4bit", r"qwen3-next-80b-a3b-instruct"]),
+            None,
+        ),
+        (
+            "claude-fable-5",
+            "fable",
+            choose_route(routes, [r"gemma-4-12b-coder", r"gemma"]),
+            None,
+        ),
+        (
+            "claude-mythos-5",
+            "mythos",
+            choose_route(routes, [r"claude-opus-vl-grafted", r"qwen3\.6-35b"]),
+            None,
+        ),
+    ]
+
+    models = []
+    seen_names: set[str] = set()
+    for name, tier, target, label_hint in alias_specs:
+        if not target or name in seen_names:
+            continue
+        seen_names.add(name)
+        upstream_id = route_map[target]
+        label = label_hint or label_for_model(upstream_id)
+        models.append(
+            {
+                "name": name,
+                "target": target,
+                "labelOverride": f"{label} via Local Bridge",
+                "anthropicFamilyTier": tier,
+                "isFamilyDefault": True,
+            }
+        )
+    return models
+
+
+def choose_route(routes: list[str], patterns: list[str]) -> str | None:
+    for pattern in patterns:
+        regex = re.compile(pattern, re.IGNORECASE)
+        for route in routes:
+            if regex.search(route):
+                return route
+    return None
 
 
 def choose_default_model(models: list[dict]) -> str:
@@ -337,6 +402,7 @@ def update_bridge_config(
     auth_scheme: str,
     default_model: str,
     route_map: dict[str, str],
+    claude_desktop_models: list[dict],
     upstream_api_key: str | None,
 ) -> None:
     if bridge_config.exists():
@@ -354,10 +420,11 @@ def update_bridge_config(
             "models": {
                 **dict(config.get("models") or {}),
                 "main": default_model,
-                "small": default_model,
+                "small": first_alias_name(claude_desktop_models, "haiku") or default_model,
                 "tool": default_model,
             },
             "modelMap": route_map,
+            "claudeDesktopModels": claude_desktop_models,
             "env": env,
         }
     )
@@ -393,6 +460,13 @@ def restart_launch_agent(launch_agent: Path, label: str) -> None:
 
 def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def first_alias_name(models: list[dict], tier: str) -> str | None:
+    for model in models:
+        if model.get("anthropicFamilyTier") == tier:
+            return str(model["name"])
+    return None
 
 
 def backup_path(path: Path) -> None:

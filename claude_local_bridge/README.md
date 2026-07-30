@@ -290,7 +290,7 @@ Provider fields:
 - `label`: human-readable provider label for picker entries and diagnostics.
 - `modelsFile`: optional fixture file for offline tests.
 
-The aggregate catalog uses provider-qualified route IDs, for example:
+Internally, the aggregate catalog uses provider-qualified route IDs, for example:
 
 ```text
 omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
@@ -299,8 +299,11 @@ openai/gpt-4.1-mini
 anthropic/claude-sonnet-4-5
 ```
 
-Those route IDs are what Claude Desktop/Cowork should use in
-`inferenceModels[].name`.
+Claude Code and direct bridge callers can use those route IDs. Claude
+Desktop/Cowork 3P gateway discovery is stricter: expose Claude-compatible model
+IDs with `claudeDesktopModels[]`, then map each alias to the real route ID.
+This lets Claude see `claude-sonnet-4-5` while the bridge sends
+`omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX` upstream.
 
 For backward compatibility, if neither `CLAUDE_LOCAL_PROVIDERS_FILE` nor
 `CLAUDE_LOCAL_PROVIDERS` is set and the bridge is running in legacy
@@ -406,7 +409,7 @@ The refresh helper:
 - fetches live OMLX `/v1/models`
 - drops non-conversation models
 - chooses a default/tool model by local heuristics
-- writes `inferenceModels` with exact gateway model IDs
+- writes `inferenceModels` with Claude-compatible gateway alias IDs
 - updates `CLAUDE_LOCAL_MODEL_MAP` in the bridge LaunchAgent for compatibility
   aliases
 - backs up changed provider/plist files before writing
@@ -414,9 +417,12 @@ The refresh helper:
 
 ## Claude Desktop / Cowork 3P Provider
 
-For Anthropic's `gateway` provider mode, `inferenceModels[].name` must match an
-exact model ID returned by the gateway `/v1/models` endpoint. `labelOverride`
-is display-only.
+For Anthropic's `gateway` provider mode, Claude filters `/v1/models` through
+its Anthropic model catalog. Do not expose raw local IDs such as
+`omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX` directly to Claude Desktop. Configure
+`claudeDesktopModels[]` in `bridge.local.json` so `/v1/models` returns
+Claude-compatible aliases, and set `inferenceModels[].name` to those aliases.
+`labelOverride` is display-only and should carry the real local model label.
 
 Minimum provider fields:
 
@@ -432,8 +438,10 @@ Minimum provider fields:
   "modelDiscoveryEnabled": false,
   "inferenceModels": [
     {
-      "name": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
-      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge"
+      "name": "claude-sonnet-4-5",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
+      "anthropicFamilyTier": "sonnet",
+      "isFamilyDefault": true
     }
   ]
 }
@@ -443,6 +451,8 @@ Important behavior:
 
 - `modelDiscoveryEnabled: false` keeps the explicit list stable.
 - `inferenceModels[0]` is the default picker entry.
+- `inferenceModels[].name` must match the Claude-facing ID returned by the
+  bridge `/v1/models`, not the hidden upstream local model ID.
 - `coworkEgressAllowedHosts: ["*"]` allows Cowork/plugin/network side effects
   broadly; tighten this per profile if you want stricter egress.
 - Hosted Claude models do not merge into the same 3P gateway picker. Use
@@ -453,8 +463,9 @@ Important behavior:
 
 When `curl http://127.0.0.1:1245/v1/models` returns models but the Claude 3P
 settings screen reports "found 0 models" or "Gateway returned no usable
-models", the bridge is usually operational and the profile is relying on model
-discovery without a static fallback list.
+models", check the IDs in the response. If they are raw local/provider IDs such
+as `omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX`, Claude reached the bridge but filtered
+them out because they are not Anthropic catalog IDs.
 
 Fix the active profile config by setting:
 
@@ -463,15 +474,18 @@ Fix the active profile config by setting:
   "modelDiscoveryEnabled": false,
   "inferenceModels": [
     {
-      "name": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
-      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge"
+      "name": "claude-sonnet-4-5",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
+      "anthropicFamilyTier": "sonnet",
+      "isFamilyDefault": true
     }
   ]
 }
 ```
 
-Use route IDs copied exactly from the bridge `/v1/models` response. In
-multi-provider mode these IDs include the provider prefix, such as `omlx/`.
+Use alias IDs copied exactly from the bridge `/v1/models` response. The bridge
+routes those aliases to provider-qualified local targets configured in
+`bridge.local.json`.
 
 After editing the config file, fully quit and reopen the exact Claude profile.
 Claude reads the 3P config once at launch. If the in-app settings dialog was
@@ -570,6 +584,29 @@ Recommended pattern:
 `/v1/models` is built from every configured provider. `CLAUDE_LOCAL_MODEL_MAP`
 is now for aliases such as `default`, `coder`, or Anthropic-style model names
 that should route to one of those provider-qualified model IDs.
+
+For Claude Desktop/Cowork 3P, prefer `claudeDesktopModels[]` in
+`bridge.local.json`:
+
+```json
+{
+  "claudeDesktopModels": [
+    {
+      "name": "claude-sonnet-4-5",
+      "target": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
+      "anthropicFamilyTier": "sonnet",
+      "isFamilyDefault": true
+    }
+  ]
+}
+```
+
+- `name`: Claude-facing model ID returned by `/v1/models`.
+- `target`: provider-qualified local route ID or raw upstream model ID.
+- `labelOverride`: local model label shown in Claude's picker.
+- `anthropicFamilyTier`: optional Claude tier mapping for alias resolution.
+- `isFamilyDefault`: optional winner when several entries share a tier.
 
 Alias mapping can make Claude Code and experiments easier:
 

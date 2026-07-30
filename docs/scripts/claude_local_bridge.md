@@ -205,7 +205,7 @@ export CLAUDE_LOCAL_PROVIDERS='[
 ]'
 ```
 
-Every exposed model ID is provider-qualified:
+By default, bridge route IDs are provider-qualified:
 
 ```text
 omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
@@ -214,9 +214,27 @@ openai/gpt-4.1-mini
 anthropic/claude-sonnet-4-5
 ```
 
-Claude Desktop/Cowork `inferenceModels[].name` must use those exact route IDs.
-The bridge uses the route prefix to select the right provider, then sends the
-raw upstream model ID to that provider.
+Direct bridge callers can use those IDs. Claude Desktop/Cowork 3P gateway
+discovery is stricter and filters model IDs through Anthropic's model catalog.
+For Claude Desktop, configure `claudeDesktopModels[]` in `bridge.local.json` so
+the bridge exposes Claude-compatible aliases such as `claude-sonnet-4-5` and
+routes each alias to the real provider-qualified local target.
+
+Example:
+
+```json
+{
+  "claudeDesktopModels": [
+    {
+      "name": "claude-sonnet-4-5",
+      "target": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
+      "anthropicFamilyTier": "sonnet",
+      "isFamilyDefault": true
+    }
+  ]
+}
+```
 
 Legacy single-provider mode without `CLAUDE_LOCAL_PROVIDERS_FILE` or
 `CLAUDE_LOCAL_PROVIDERS` still exposes raw upstream model IDs for compatibility
@@ -248,23 +266,26 @@ the bridge directly:
 curl http://127.0.0.1:1245/v1/models
 ```
 
-If that returns provider-qualified IDs such as
-`omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX`, the bridge is serving models correctly.
-Set the active Claude profile to a fixed list instead of discovery:
+If that returns raw provider-qualified IDs such as
+`omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX`, the bridge is reachable but Claude will
+filter those IDs out. Add Claude-facing aliases in `bridge.local.json`, then set
+the active Claude profile to a fixed list using those aliases:
 
 ```json
 {
   "modelDiscoveryEnabled": false,
   "inferenceModels": [
     {
-      "name": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
-      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge"
+      "name": "claude-sonnet-4-5",
+      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
+      "anthropicFamilyTier": "sonnet",
+      "isFamilyDefault": true
     }
   ]
 }
 ```
 
-`inferenceModels[].name` must match the exact bridge route ID returned from
+`inferenceModels[].name` must match the exact Claude-facing ID returned from
 `/v1/models`; `labelOverride` only changes what Claude displays. Fully quit and
 reopen the affected Claude profile after editing because Claude reads 3P config
 once at launch. If the settings dialog was open before the manual edit, discard

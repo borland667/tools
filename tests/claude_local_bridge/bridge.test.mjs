@@ -107,6 +107,55 @@ test('routes Anthropic and OpenAI-compatible message requests by provider-qualif
   )
 })
 
+test('exposes Claude Desktop compatible aliases while routing to local models', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [model('Qwen3.5-9b-Sushi-Coder-RL-MLX')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const models = await getJson(`${bridge.baseUrl}/v1/models`)
+      assert.deepEqual(models.data.map(item => item.id), ['claude-sonnet-4-5'])
+      assert.equal(models.data[0].owned_by, 'omlx')
+
+      const response = await postJson(`${bridge.baseUrl}/v1/messages`, {
+        model: 'claude-sonnet-4-5',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'hello alias' }],
+      })
+
+      assert.equal(response.model, 'Qwen3.5-9b-Sushi-Coder-RL-MLX')
+      assert.equal(anthropic.requests.messages.length, 1)
+      assert.equal(
+        anthropic.requests.messages[0].model,
+        'Qwen3.5-9b-Sushi-Coder-RL-MLX',
+      )
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX'),
+        claudeDesktopModels: [
+          {
+            name: 'claude-sonnet-4-5',
+            target: 'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX',
+            labelOverride: 'Qwen3.5 Sushi Coder 9B via Local Bridge',
+            anthropicFamilyTier: 'sonnet',
+            isFamilyDefault: true,
+          },
+        ],
+      }),
+    },
+  )
+})
+
 test('routes Anthropic-family tool requests to configured tool model', async t => {
   const upstreams = []
   t.after(async () => {

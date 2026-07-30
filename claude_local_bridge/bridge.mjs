@@ -116,6 +116,7 @@ Environment:
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
   CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
   CLAUDE_LOCAL_MODEL_MAP                  JSON object of explicit model rewrites
+  claudeDesktopModels                     bridge config array of Claude-facing aliases
   CLAUDE_PROFILE_NAME                     Named Claude profile under ~/.claude-instances
   CLAUDE_PROFILE_DIR                      Explicit Claude profile user-data dir
   CLAUDE_GLOBAL_CONFIG_FILE               Override Claude global config path
@@ -898,12 +899,22 @@ async function syncModelOptions() {
     }
   }
 
-  const options = [...optionsById.values()].sort((a, b) => {
+  const rawOptions = [...optionsById.values()].sort((a, b) => {
     return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
   })
-  if (options.length === 0) {
+  if (rawOptions.length === 0) {
     providerStatuses = nextStatuses
     throw new Error('no configured provider returned any usable LLM models')
+  }
+
+  const claudeDesktopOptions = normalizeClaudeDesktopModels(routesById)
+  const options =
+    claudeDesktopOptions.length > 0
+      ? claudeDesktopOptions
+      : rawOptions
+
+  for (const alias of claudeDesktopOptions) {
+    routesById.set(alias.value, alias.route)
   }
 
   lastSyncedOptions = options
@@ -932,6 +943,91 @@ async function syncModelOptions() {
     mainModel: modelSelection.mainModel,
     smallModel: modelSelection.smallModel,
   }
+}
+
+function normalizeClaudeDesktopModels(routesById) {
+  const aliases = configValue('claudeDesktopModels')
+  if (!Array.isArray(aliases)) {
+    return []
+  }
+
+  const options = []
+  for (const alias of aliases) {
+    if (!alias || typeof alias !== 'object' || Array.isArray(alias)) {
+      continue
+    }
+
+    const name = firstString(alias.name, alias.id, alias.model)
+    const target = firstString(alias.target, alias.route, alias.value)
+    if (!name || !target) {
+      continue
+    }
+
+    const route = routeForTargetModelWithRoutes(routesById, target)
+    if (!route) {
+      console.error(`[bridge] ignoring Claude desktop model alias "${name}": target "${target}" is not available`)
+      continue
+    }
+
+    const label =
+      firstString(alias.labelOverride, alias.label, alias.displayName) ??
+      prettifyModelId(name)
+    const description =
+      firstString(alias.description) ??
+      `${label} -> ${route.provider.id}/${route.upstreamModelId}`
+
+    const option = {
+      value: name,
+      providerId: route.provider.id,
+      upstreamModelId: route.upstreamModelId,
+      label,
+      description,
+    }
+    Object.defineProperty(option, 'route', {
+      enumerable: false,
+      value: {
+        routeId: name,
+        upstreamModelId: route.upstreamModelId,
+        provider: route.provider,
+      },
+    })
+    options.push(option)
+  }
+
+  return options.sort((a, b) => {
+    return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
+  })
+}
+
+function routeForTargetModelWithRoutes(routesById, candidate) {
+  if (!candidate) {
+    return null
+  }
+
+  const exact = routesById.get(candidate)
+  if (exact) {
+    return exact
+  }
+
+  const normalized = candidate.toLowerCase()
+  const caseInsensitive = [...routesById.entries()].find(
+    ([routeId]) => routeId.toLowerCase() === normalized,
+  )
+  if (caseInsensitive) {
+    return caseInsensitive[1]
+  }
+
+  const upstreamMatch = [...routesById.values()].find(
+    route => route.upstreamModelId === candidate,
+  )
+  if (upstreamMatch) {
+    return upstreamMatch
+  }
+
+  const upstreamCaseInsensitive = [...routesById.values()].find(
+    route => route.upstreamModelId.toLowerCase() === normalized,
+  )
+  return upstreamCaseInsensitive ?? null
 }
 
 async function fetchModelsPayload() {
