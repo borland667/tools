@@ -220,6 +220,12 @@ For Claude Desktop, configure `claudeDesktopModels[]` in `bridge.local.json` so
 the bridge exposes Claude-compatible aliases such as `claude-sonnet-4-5` and
 routes each alias to the real provider-qualified local target.
 
+Give every usable local conversation model one unique Claude-facing alias. If
+multiple local models share the same `anthropicFamilyTier`, use different
+version aliases inside that tier, such as `claude-opus-4-5`,
+`claude-opus-4-8`, and `claude-opus-4-1`. The OMLX refresh helper validates
+this before writing config.
+
 Example:
 
 ```json

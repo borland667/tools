@@ -38,6 +38,7 @@ def main() -> int:
 
     route_map = build_route_map(conversation_models)
     claude_desktop_models = build_claude_desktop_models(route_map)
+    validate_claude_desktop_models(claude_desktop_models, route_map)
     default_model = claude_desktop_models[0]["name"]
     provider_models = [
         {
@@ -226,6 +227,56 @@ def build_claude_desktop_models(route_map: dict[str, str]) -> list[dict]:
             }
         )
     return models
+
+
+def validate_claude_desktop_models(
+    models: list[dict],
+    route_map: dict[str, str],
+) -> None:
+    aliases = [str(model.get("name") or "") for model in models]
+    targets = [str(model.get("target") or "") for model in models]
+
+    if len(models) != len(route_map):
+        raise SystemExit(
+            "error: Claude Desktop alias pool did not cover every usable OMLX model "
+            f"({len(models)} aliases for {len(route_map)} routes)"
+        )
+    if len(set(aliases)) != len(aliases):
+        raise SystemExit("error: duplicate Claude Desktop model aliases generated")
+    if len(set(targets)) != len(targets):
+        raise SystemExit("error: duplicate Claude Desktop alias targets generated")
+
+    missing_targets = sorted(set(route_map) - set(targets))
+    if missing_targets:
+        raise SystemExit(
+            "error: Claude Desktop aliases missing OMLX routes: "
+            + ", ".join(missing_targets)
+        )
+
+    aliases_by_tier: dict[str, set[str]] = {}
+    defaults_by_tier: dict[str, int] = {}
+    for model in models:
+        tier = str(model.get("anthropicFamilyTier") or "")
+        alias = str(model.get("name") or "")
+        if not tier:
+            continue
+        aliases_by_tier.setdefault(tier, set()).add(alias)
+        if model.get("isFamilyDefault") is True:
+            defaults_by_tier[tier] = defaults_by_tier.get(tier, 0) + 1
+
+    for tier, aliases_for_tier in aliases_by_tier.items():
+        count_for_tier = sum(
+            1 for model in models if model.get("anthropicFamilyTier") == tier
+        )
+        if len(aliases_for_tier) != count_for_tier:
+            raise SystemExit(
+                f"error: duplicate Claude Desktop version alias generated for {tier}"
+            )
+    for tier, default_count in defaults_by_tier.items():
+        if default_count > 1:
+            raise SystemExit(
+                f"error: multiple Claude Desktop family defaults generated for {tier}"
+            )
 
 
 def choose_unused_route(

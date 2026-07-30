@@ -608,6 +608,12 @@ For Claude Desktop/Cowork 3P, prefer `claudeDesktopModels[]` in
 - `anthropicFamilyTier`: optional Claude tier mapping for alias resolution.
 - `isFamilyDefault`: optional winner when several entries share a tier.
 
+Every usable local conversation model should have exactly one Claude-facing
+alias. When several local models use the same `anthropicFamilyTier`, give each
+one a different Claude model version alias, for example `claude-opus-4-5`,
+`claude-opus-4-8`, and `claude-opus-4-1`. The refresh helper validates this and
+refuses to write a partial or duplicate alias table.
+
 Current local OMLX desktop aliases:
 
 ```text
