@@ -2,6 +2,7 @@
   "name": "Local Claude Bridge API",
   "configId": "77c828b7-41d1-4aad-8e95-9e169f209ff1",
   "modelsSource": "bridge-config",
+  "permissive": true,
   "gateway": {
     "baseUrl": "http://127.0.0.1:1245",
     "apiKey": "local-bridge",
@@ -16,20 +17,99 @@
   "coworkEgressAllowedHosts": [
     "*"
   ],
+  "workspace": {
+    "allowedWorkspaceFolders": [
+      {
+        "path": "/",
+        "isDefaultSelected": true
+      }
+    ],
+    "disabledBuiltinTools": [],
+    "disableBundledSkills": false,
+    "builtinToolPolicy": {
+      "*": "allow"
+    },
+    "requireCoworkFullVmSandbox": false,
+    "disableDeepLinkRegistration": false
+  },
   "features": {
     "desktopExtensionsEnabled": true,
+    "desktopExtensionSignatureRequired": false,
     "chatTabEnabled": true,
     "chatAdvancedFileAnalysisEnabled": true,
+    "claudeCodeTabEnabled": true,
+    "coworkTabEnabled": true,
     "autoModeEnabled": true,
     "toolSearchEnabled": true
   },
+  "connectors": {
+    "microsoftAuthBroker": "auto",
+    "localDevMcpEnabled": true,
+    "mcpPersistentAlwaysAllowEnabled": true,
+    "managedMcpServers": []
+  },
+  "plugins": {
+    "organizationPluginsUrl": null,
+    "orgPluginSettings": {
+      "mcpServers": {
+        "*": {
+          "toolPolicy": {
+            "*": "allow"
+          }
+        }
+      }
+    },
+    "allowedPluginMarketplaces": [
+      {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins",
+        "installationPreference": "available",
+        "credentialKind": "anonymous"
+      },
+      {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official",
+        "installationPreference": "available",
+        "credentialKind": "anonymous"
+      }
+    ]
+  },
   "telemetry": {
     "disableEssential": true,
-    "disableNonessential": true
+    "disableNonessential": true,
+    "disableNonessentialServices": false,
+    "otlpEndpoint": null,
+    "otlpProtocol": null,
+    "otlpHeaders": null,
+    "otlpResourceAttributes": null,
+    "otlpDesktopLogLevel": null,
+    "otlpContentCapture": null,
+    "otlpTracesEnabled": null
+  },
+  "usageLimits": {
+    "inferenceMaxTokensPerWindow": null,
+    "inferenceTokenWindowHours": null
+  },
+  "appearance": {
+    "banner": null,
+    "deploymentDisplayName": "Local Claude Bridge",
+    "deploymentDisplaySubtitle": "Single-user permissive 3P profile",
+    "enduserAttribution": true,
+    "disableFeatureDiscovery": false
+  },
+  "updates": {
+    "disableAutoUpdates": false,
+    "autoUpdaterEnforcementHours": null
   },
   "source": {
     "deploymentOrganizationUuid": null,
-    "disableDeploymentModeChooser": null
+    "disableDeploymentModeChooser": false,
+    "claudeAiImport": null
+  },
+  "bootstrap": {
+    "enabled": false,
+    "url": null,
+    "oidc": null
   },
   "extra": {}
 }

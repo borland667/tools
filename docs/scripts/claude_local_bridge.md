@@ -165,6 +165,14 @@ It understands gateway fields such as `inferenceCustomHeaders`,
 Claude model metadata such as `supports1m`, `prefer1m`,
 `anthropicFamilyTier`, and `isFamilyDefault`.
 
+The tracked example spec is intentionally permissive for a single-user local
+profile: `coworkEgressAllowedHosts: ["*"]`, root workspace access, no disabled
+built-in tools, bundled skills enabled, wildcard tool allow policy, local dev
+MCP enabled, persistent MCP approvals enabled, desktop extensions enabled
+without signature enforcement, and the Anthropic `knowledge-work-plugins` plus
+`claude-plugins-official` marketplaces exposed. Tighten these keys before using
+the generator for a managed or shared machine.
+
 Toggle bridge config for one profile:
 
 ```bash

@@ -567,6 +567,25 @@ Model sources:
 - `file`: reads a JSON file containing `inferenceModels`, `data`, `models`, or
   `items`.
 
+Permissive single-user defaults:
+
+- `permissive: true` is the example-spec default. Pass `--strict-local` or set
+  `permissive: false` when you want a smaller generated config.
+- Public egress is open with `coworkEgressAllowedHosts: ["*"]`.
+- Workspace access is open with `allowedWorkspaceFolders: [{"path": "/"}]`.
+  Leaving this key unset is also unrestricted, but the generator writes it
+  explicitly so the local profile is self-documenting.
+- Built-in tools and bundled skills are enabled with
+  `disabledBuiltinTools: []`, `disableBundledSkills: false`, and
+  `builtinToolPolicy: {"*": "allow"}`.
+- Chat, Code, Cowork, Auto mode, tool search, advanced file analysis, local dev
+  MCP, persistent MCP approvals, and unsigned desktop extensions are enabled.
+- `managedMcpServers` defaults to an empty list, ready for explicit local or
+  remote MCP server entries in the spec.
+- Plugin-delivered MCP tools are pre-approved through `orgPluginSettings`, and
+  the Anthropic `knowledge-work-plugins` and `claude-plugins-official`
+  repositories are exposed through `allowedPluginMarketplaces`.
+
 Gateway extras supported by the spec:
 
 - `gateway.customHeaders`: writes `inferenceCustomHeaders`.
@@ -574,6 +593,9 @@ Gateway extras supported by the spec:
 - `gateway.sessionLifetimeSec`: writes `inferenceSessionLifetimeSec`.
 - Model entries preserve `supports1m`, `prefer1m`,
   `anthropicFamilyTier`, and `isFamilyDefault` when present.
+- `workspace`, `connectors`, `plugins`, `usageLimits`, `appearance`,
+  `updates`, `telemetry`, `bootstrap`, `source`, and `extra` sections map to
+  the same top-level keys used by Claude's 3P configuration reference.
 
 Secret handling:
 

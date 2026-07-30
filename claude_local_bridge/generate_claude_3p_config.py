@@ -20,11 +20,28 @@ DEFAULT_BRIDGE_BASE_URL = "http://127.0.0.1:1245"
 DEFAULT_GATEWAY_API_KEY = "local-bridge"
 DEFAULT_GATEWAY_AUTH_SCHEME = "x-api-key"
 DEFAULT_CONFIG_NAME = "Local Claude Bridge API"
+DEFAULT_PLUGIN_MARKETPLACES = [
+    {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins",
+        "installationPreference": "available",
+        "credentialKind": "anonymous",
+    },
+    {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official",
+        "installationPreference": "available",
+        "credentialKind": "anonymous",
+    },
+]
 SENSITIVE_KEYS = {
     "inferenceGatewayApiKey",
     "inferenceGatewayOidc",
     "inferenceCustomHeaders",
     "customInferenceHeaders",
+    "managedMcpServers",
+    "bootstrapOidc",
+    "otlpHeaders",
 }
 
 
@@ -92,6 +109,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-discovery", choices=["true", "false"], default=None)
     parser.add_argument("--egress-host", action="append", default=None, help="repeatable Cowork egress host; use '*' for all")
     parser.add_argument("--no-egress-wildcard", action="store_true", help="do not default Cowork egress to ['*']")
+    parser.add_argument("--strict-local", action="store_true", help="do not emit permissive local single-user defaults")
     parser.add_argument("--deployment-organization-uuid", default=None)
     parser.add_argument("--disable-deployment-mode-chooser", choices=["true", "false"], default=None)
     parser.add_argument(
@@ -177,8 +195,16 @@ def build_config(
 
     gateway = dict(spec.get("gateway") or {})
     features = dict(spec.get("features") or {})
+    workspace = dict(spec.get("workspace") or {})
+    connectors = dict(spec.get("connectors") or {})
+    plugins = dict(spec.get("plugins") or {})
     telemetry = dict(spec.get("telemetry") or {})
+    usage_limits = dict(spec.get("usageLimits") or {})
+    appearance = dict(spec.get("appearance") or {})
+    updates = dict(spec.get("updates") or {})
+    bootstrap = dict(spec.get("bootstrap") or {})
     source = dict(spec.get("source") or {})
+    permissive = parse_bool(spec.get("permissive", not args.strict_local))
 
     config.update(
         {
@@ -195,17 +221,102 @@ def build_config(
             ),
             "inferenceGatewayAuthScheme": cli_or_spec(args.gateway_auth_scheme, gateway.get("authScheme"), config.get("inferenceGatewayAuthScheme"), DEFAULT_GATEWAY_AUTH_SCHEME),
             "modelDiscoveryEnabled": parse_bool(cli_or_spec(args.model_discovery, spec.get("modelDiscoveryEnabled"), config.get("modelDiscoveryEnabled"), False)),
-            "isDesktopExtensionEnabled": parse_bool(features.get("desktopExtensionsEnabled", config.get("isDesktopExtensionEnabled", True))),
+            "isDesktopExtensionEnabled": parse_bool(features.get("desktopExtensionsEnabled", connectors.get("desktopExtensionsEnabled", config.get("isDesktopExtensionEnabled", True)))),
+            "isDesktopExtensionSignatureRequired": parse_bool(
+                connectors.get(
+                    "desktopExtensionSignatureRequired",
+                    features.get(
+                        "desktopExtensionSignatureRequired",
+                        config.get("isDesktopExtensionSignatureRequired", False),
+                    ),
+                )
+            ),
             "chatTabEnabled": parse_bool(features.get("chatTabEnabled", config.get("chatTabEnabled", True))),
             "chatAdvancedFileAnalysisEnabled": parse_bool(features.get("chatAdvancedFileAnalysisEnabled", config.get("chatAdvancedFileAnalysisEnabled", True))),
+            "isClaudeCodeForDesktopEnabled": parse_bool(features.get("claudeCodeTabEnabled", config.get("isClaudeCodeForDesktopEnabled", True))),
+            "coworkTabEnabled": parse_bool(features.get("coworkTabEnabled", config.get("coworkTabEnabled", True))),
             "autoModeEnabled": parse_bool(features.get("autoModeEnabled", config.get("autoModeEnabled", True))),
             "toolSearchEnabled": parse_bool(features.get("toolSearchEnabled", config.get("toolSearchEnabled", True))),
+            "mcpPersistentAlwaysAllowEnabled": parse_bool(connectors.get("mcpPersistentAlwaysAllowEnabled", config.get("mcpPersistentAlwaysAllowEnabled", True))),
+            "isLocalDevMcpEnabled": parse_bool(connectors.get("localDevMcpEnabled", config.get("isLocalDevMcpEnabled", True))),
             "disableEssentialTelemetry": parse_bool(telemetry.get("disableEssential", config.get("disableEssentialTelemetry", True))),
             "disableNonessentialTelemetry": parse_bool(telemetry.get("disableNonessential", config.get("disableNonessentialTelemetry", True))),
+            "disableNonessentialServices": parse_bool(telemetry.get("disableNonessentialServices", config.get("disableNonessentialServices", False))),
+            "disableBundledSkills": parse_bool(workspace.get("disableBundledSkills", config.get("disableBundledSkills", False))),
+            "disabledBuiltinTools": list(workspace.get("disabledBuiltinTools", config.get("disabledBuiltinTools", []))),
             "coworkEgressAllowedHosts": resolve_egress_hosts(args, spec, config),
             "inferenceModels": inference_models,
         }
     )
+
+    if permissive:
+        config.update(
+            {
+                "coworkEgressAllowedHosts": ["*"],
+                "allowedWorkspaceFolders": [{"path": "/", "isDefaultSelected": True}],
+                "disabledBuiltinTools": [],
+                "disableBundledSkills": False,
+                "builtinToolPolicy": {"*": "allow"},
+                "requireCoworkFullVmSandbox": False,
+                "isDesktopExtensionEnabled": True,
+                "isDesktopExtensionSignatureRequired": False,
+                "managedMcpServers": [],
+                "mcpPersistentAlwaysAllowEnabled": True,
+                "isLocalDevMcpEnabled": True,
+                "orgPluginSettings": {"mcpServers": {"*": {"toolPolicy": {"*": "allow"}}}},
+                "allowedPluginMarketplaces": DEFAULT_PLUGIN_MARKETPLACES,
+                "chatTabEnabled": True,
+                "chatAdvancedFileAnalysisEnabled": True,
+                "isClaudeCodeForDesktopEnabled": True,
+                "coworkTabEnabled": True,
+                "autoModeEnabled": True,
+                "toolSearchEnabled": True,
+            }
+        )
+
+    config["coworkEgressAllowedHosts"] = resolve_egress_hosts(args, spec, config)
+
+    assign_if_present(config, "builtinToolPolicy", workspace.get("builtinToolPolicy"))
+    assign_if_present(config, "allowedWorkspaceFolders", workspace.get("allowedWorkspaceFolders"))
+    assign_if_present(config, "requireCoworkFullVmSandbox", workspace.get("requireCoworkFullVmSandbox"))
+    assign_if_present(config, "disableDeepLinkRegistration", workspace.get("disableDeepLinkRegistration"))
+    assign_bool_if_present(config, "disableBundledSkills", workspace.get("disableBundledSkills"))
+    assign_if_present(config, "disabledBuiltinTools", workspace.get("disabledBuiltinTools"))
+    assign_if_present(config, "managedMcpServers", connectors.get("managedMcpServers"))
+    assign_if_present(config, "microsoftAuthBroker", connectors.get("microsoftAuthBroker"))
+    assign_bool_if_present(config, "isDesktopExtensionEnabled", connectors.get("desktopExtensionsEnabled", features.get("desktopExtensionsEnabled")))
+    assign_bool_if_present(config, "isDesktopExtensionSignatureRequired", connectors.get("desktopExtensionSignatureRequired", features.get("desktopExtensionSignatureRequired")))
+    assign_bool_if_present(config, "mcpPersistentAlwaysAllowEnabled", connectors.get("mcpPersistentAlwaysAllowEnabled"))
+    assign_bool_if_present(config, "isLocalDevMcpEnabled", connectors.get("localDevMcpEnabled"))
+    assign_bool_if_present(config, "chatTabEnabled", features.get("chatTabEnabled"))
+    assign_bool_if_present(config, "chatAdvancedFileAnalysisEnabled", features.get("chatAdvancedFileAnalysisEnabled"))
+    assign_bool_if_present(config, "isClaudeCodeForDesktopEnabled", features.get("claudeCodeTabEnabled"))
+    assign_bool_if_present(config, "coworkTabEnabled", features.get("coworkTabEnabled"))
+    assign_bool_if_present(config, "autoModeEnabled", features.get("autoModeEnabled"))
+    assign_bool_if_present(config, "toolSearchEnabled", features.get("toolSearchEnabled"))
+    assign_if_present(config, "organizationPluginsUrl", plugins.get("organizationPluginsUrl"))
+    assign_if_present(config, "orgPluginSettings", plugins.get("orgPluginSettings"))
+    assign_if_present(config, "allowedPluginMarketplaces", plugins.get("allowedPluginMarketplaces"))
+    assign_if_present(config, "inferenceMaxTokensPerWindow", usage_limits.get("inferenceMaxTokensPerWindow"))
+    assign_if_present(config, "inferenceTokenWindowHours", usage_limits.get("inferenceTokenWindowHours"))
+    assign_if_present(config, "banner", appearance.get("banner"))
+    assign_if_present(config, "deploymentDisplayName", appearance.get("deploymentDisplayName"))
+    assign_if_present(config, "deploymentDisplaySubtitle", appearance.get("deploymentDisplaySubtitle"))
+    assign_if_present(config, "enduserAttribution", appearance.get("enduserAttribution"))
+    assign_if_present(config, "disableFeatureDiscovery", appearance.get("disableFeatureDiscovery"))
+    assign_if_present(config, "disableAutoUpdates", updates.get("disableAutoUpdates"))
+    assign_if_present(config, "autoUpdaterEnforcementHours", updates.get("autoUpdaterEnforcementHours"))
+    assign_if_present(config, "otlpEndpoint", telemetry.get("otlpEndpoint"))
+    assign_if_present(config, "otlpProtocol", telemetry.get("otlpProtocol"))
+    assign_if_present(config, "otlpHeaders", telemetry.get("otlpHeaders"))
+    assign_if_present(config, "otlpResourceAttributes", telemetry.get("otlpResourceAttributes"))
+    assign_if_present(config, "otlpDesktopLogLevel", telemetry.get("otlpDesktopLogLevel"))
+    assign_if_present(config, "otlpContentCapture", telemetry.get("otlpContentCapture"))
+    assign_if_present(config, "otlpTracesEnabled", telemetry.get("otlpTracesEnabled"))
+    assign_if_present(config, "bootstrapEnabled", bootstrap.get("enabled"))
+    assign_if_present(config, "bootstrapUrl", bootstrap.get("url"))
+    assign_if_present(config, "bootstrapOidc", bootstrap.get("oidc"))
+    assign_if_present(config, "claudeAiImport", source.get("claudeAiImport"))
 
     custom_headers = cli_or_spec(gateway.get("customHeaders"), gateway.get("headers"), config.get("inferenceCustomHeaders"), None)
     if custom_headers is not None:
@@ -315,6 +426,8 @@ def validate_config(config: dict[str, Any]) -> None:
     names = [model.get("name") for model in config["inferenceModels"] if isinstance(model, dict)]
     if len(names) != len(set(names)):
         raise SystemExit("error: duplicate inferenceModels names generated")
+    if "inferenceMaxTokensPerWindow" in config and "inferenceTokenWindowHours" not in config:
+        raise SystemExit("error: inferenceMaxTokensPerWindow requires inferenceTokenWindowHours")
 
 
 def resolve_egress_hosts(args: argparse.Namespace, spec: dict[str, Any], config: dict[str, Any]) -> list[str]:
@@ -346,21 +459,61 @@ def order_config(config: dict[str, Any]) -> dict[str, Any]:
     preferred_order = [
         "deploymentOrganizationUuid",
         "disableDeploymentModeChooser",
+        "disableDeepLinkRegistration",
         "inferenceProvider",
         "inferenceCredentialKind",
         "inferenceGatewayBaseUrl",
         "inferenceGatewayApiKey",
         "inferenceGatewayAuthScheme",
+        "inferenceCustomHeaders",
+        "inferenceGatewayOidc",
+        "inferenceSessionLifetimeSec",
         "modelDiscoveryEnabled",
         "inferenceModels",
+        "inferenceMaxTokensPerWindow",
+        "inferenceTokenWindowHours",
         "coworkEgressAllowedHosts",
+        "allowedWorkspaceFolders",
+        "disabledBuiltinTools",
+        "disableBundledSkills",
+        "builtinToolPolicy",
+        "requireCoworkFullVmSandbox",
         "isDesktopExtensionEnabled",
+        "isDesktopExtensionSignatureRequired",
+        "microsoftAuthBroker",
+        "managedMcpServers",
+        "mcpPersistentAlwaysAllowEnabled",
+        "isLocalDevMcpEnabled",
+        "organizationPluginsUrl",
+        "orgPluginSettings",
+        "allowedPluginMarketplaces",
         "chatTabEnabled",
         "chatAdvancedFileAnalysisEnabled",
+        "isClaudeCodeForDesktopEnabled",
+        "coworkTabEnabled",
         "autoModeEnabled",
         "toolSearchEnabled",
+        "banner",
+        "deploymentDisplayName",
+        "deploymentDisplaySubtitle",
+        "enduserAttribution",
+        "disableFeatureDiscovery",
+        "disableAutoUpdates",
+        "autoUpdaterEnforcementHours",
         "disableEssentialTelemetry",
         "disableNonessentialTelemetry",
+        "disableNonessentialServices",
+        "otlpEndpoint",
+        "otlpProtocol",
+        "otlpHeaders",
+        "otlpResourceAttributes",
+        "otlpDesktopLogLevel",
+        "otlpContentCapture",
+        "otlpTracesEnabled",
+        "bootstrapEnabled",
+        "bootstrapUrl",
+        "bootstrapOidc",
+        "claudeAiImport",
     ]
     ordered = {key: config[key] for key in preferred_order if key in config}
     for key in sorted(config):
@@ -387,6 +540,16 @@ def cli_or_spec(*values: Any) -> Any:
         if value is not None:
             return value
     return None
+
+
+def assign_if_present(config: dict[str, Any], key: str, value: Any) -> None:
+    if value is not None:
+        config[key] = value
+
+
+def assign_bool_if_present(config: dict[str, Any], key: str, value: Any) -> None:
+    if value is not None:
+        config[key] = parse_bool(value)
 
 
 def first_string(*values: Any) -> str | None:
@@ -422,7 +585,7 @@ def backup_if_exists(path: Path) -> None:
 def redact_config(config: dict[str, Any]) -> dict[str, Any]:
     redacted = dict(config)
     for key in SENSITIVE_KEYS:
-        if key in redacted:
+        if key in redacted and redacted[key]:
             redacted[key] = "<redacted>"
     return redacted
 

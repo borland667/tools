@@ -61,6 +61,28 @@ def test_generate_config_from_bridge_aliases(tmp_path):
         },
         "modelDiscoveryEnabled": False,
         "features": {"toolSearchEnabled": True},
+        "workspace": {
+            "allowedWorkspaceFolders": [{"path": "/", "isDefaultSelected": True}],
+            "builtinToolPolicy": {"*": "allow"},
+        },
+        "connectors": {
+            "localDevMcpEnabled": True,
+            "mcpPersistentAlwaysAllowEnabled": True,
+            "managedMcpServers": [],
+        },
+        "plugins": {
+            "allowedPluginMarketplaces": [
+                {
+                    "source": "github",
+                    "repo": "anthropics/knowledge-work-plugins",
+                    "installationPreference": "available",
+                    "credentialKind": "anonymous",
+                }
+            ],
+            "orgPluginSettings": {
+                "mcpServers": {"*": {"toolPolicy": {"*": "allow"}}}
+            },
+        },
     })
 
     result = subprocess.run(
@@ -96,6 +118,27 @@ def test_generate_config_from_bridge_aliases(tmp_path):
     assert config["inferenceGatewayApiKey"] == "local-bridge"
     assert config["modelDiscoveryEnabled"] is False
     assert config["toolSearchEnabled"] is True
+    assert config["isDesktopExtensionEnabled"] is True
+    assert config["isDesktopExtensionSignatureRequired"] is False
+    assert config["isLocalDevMcpEnabled"] is True
+    assert config["mcpPersistentAlwaysAllowEnabled"] is True
+    assert config["managedMcpServers"] == []
+    assert config["coworkEgressAllowedHosts"] == ["*"]
+    assert config["allowedWorkspaceFolders"] == [{"path": "/", "isDefaultSelected": True}]
+    assert config["builtinToolPolicy"] == {"*": "allow"}
+    assert config["disabledBuiltinTools"] == []
+    assert config["disableBundledSkills"] is False
+    assert config["orgPluginSettings"] == {
+        "mcpServers": {"*": {"toolPolicy": {"*": "allow"}}}
+    }
+    assert config["allowedPluginMarketplaces"] == [
+        {
+            "source": "github",
+            "repo": "anthropics/knowledge-work-plugins",
+            "installationPreference": "available",
+            "credentialKind": "anonymous",
+        }
+    ]
     assert config["inferenceModels"] == [
         {
             "name": "claude-sonnet-4-5",
