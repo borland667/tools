@@ -39,6 +39,7 @@
       "target": "omlx/Qwen3.6-27B-Heretic-MLX-bf16",
       "labelOverride": "Qwen3.6 27B Heretic bf16 via Local Bridge",
       "anthropicFamilyTier": "sonnet",
+      "visionCapable": true,
       "isFamilyDefault": false
     },
     {

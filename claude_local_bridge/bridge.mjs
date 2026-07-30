@@ -457,11 +457,6 @@ async function prepareRequestForProvider(pathname, rawBody) {
 function resolveModelRoute(requestedModel, payload = null) {
   const normalized = requestedModel.toLowerCase()
 
-  const preferredVisionModel = pickVisionAwareModel(payload, normalized)
-  if (preferredVisionModel) {
-    return preferredVisionModel
-  }
-
   const preferredToolModel = pickToolAwareModel(payload, normalized)
   if (preferredToolModel) {
     return preferredToolModel
@@ -469,30 +464,34 @@ function resolveModelRoute(requestedModel, payload = null) {
 
   const exact = modelRoutes.get(requestedModel)
   if (exact) {
-    return exact
+    return pickVisionAwareModel(payload, normalized, exact) ?? exact
   }
 
   const exactCaseInsensitive = [...modelRoutes.entries()].find(
     ([routeId]) => routeId.toLowerCase() === normalized,
   )
   if (exactCaseInsensitive) {
-    return exactCaseInsensitive[1]
+    const route = exactCaseInsensitive[1]
+    return pickVisionAwareModel(payload, normalized, route) ?? route
   }
 
   const explicitMap = parseExplicitModelMap()
   if (explicitMap.has(requestedModel)) {
-    return routeForTargetModel(explicitMap.get(requestedModel))
+    const route = routeForTargetModel(explicitMap.get(requestedModel))
+    return pickVisionAwareModel(payload, normalized, route) ?? route
   }
 
   const caseInsensitiveMatch = [...explicitMap.entries()].find(
     ([key]) => key.toLowerCase() === normalized,
   )
   if (caseInsensitiveMatch) {
-    return routeForTargetModel(caseInsensitiveMatch[1])
+    const route = routeForTargetModel(caseInsensitiveMatch[1])
+    return pickVisionAwareModel(payload, normalized, route) ?? route
   }
 
   if (normalized.includes('haiku')) {
-    return routeForTargetModel(modelSelection.smallModel ?? modelSelection.mainModel)
+    const route = routeForTargetModel(modelSelection.smallModel ?? modelSelection.mainModel)
+    return pickVisionAwareModel(payload, normalized, route) ?? route
   }
 
   if (
@@ -500,18 +499,23 @@ function resolveModelRoute(requestedModel, payload = null) {
     normalized === 'best' ||
     ANTHROPIC_FAMILY_PATTERNS.some(pattern => normalized.includes(pattern))
   ) {
-    return routeForTargetModel(modelSelection.mainModel)
+    const route = routeForTargetModel(modelSelection.mainModel)
+    return pickVisionAwareModel(payload, normalized, route) ?? route
   }
 
   return null
 }
 
-function pickVisionAwareModel(payload, normalizedRequestedModel) {
+function pickVisionAwareModel(payload, normalizedRequestedModel, selectedRoute = null) {
   if (!payloadHasImages(payload)) {
     return null
   }
 
   if (!looksLikeAnthropicAlias(normalizedRequestedModel)) {
+    return null
+  }
+
+  if (selectedRoute && isVisionCapableRoute(selectedRoute)) {
     return null
   }
 
@@ -614,17 +618,24 @@ function pickConfiguredModelId(candidate) {
 
 function pickDetectedVisionModel() {
   const routes = [...modelRoutes.values()]
-  const preferred = routes.find(route =>
-    /qwen\d*[-.]?vl/i.test(`${route.routeId} ${route.upstreamModelId}`),
-  )
+  const preferred = routes.find(route => isStrongVisionModelId(route))
   if (preferred) {
     return preferred
   }
 
-  return routes.find(route => {
-    const text = `${route.routeId} ${route.upstreamModelId}`
-    return /\bvl\b|vision/i.test(text) && !/grafted|visualquality|image/i.test(text)
-  }) ?? null
+  return routes.find(route => isVisionCapableRoute(route)) ?? null
+}
+
+function isVisionCapableRoute(route) {
+  return Boolean(route?.visionCapable || isStrongVisionModelId(route))
+}
+
+function isStrongVisionModelId(route) {
+  const text = `${route?.routeId ?? ''} ${route?.upstreamModelId ?? ''}`
+  if (/grafted|visualquality|image/i.test(text)) {
+    return false
+  }
+  return /qwen\d*[-.]?vl/i.test(text) || /\bvl\b|vision/i.test(text)
 }
 
 function routeForTargetModel(candidate) {
@@ -1025,6 +1036,7 @@ async function syncModelOptions() {
         routeId: option.value,
         upstreamModelId: option.upstreamModelId,
         provider,
+        visionCapable: option.visionCapable,
       })
     }
   }
@@ -1112,6 +1124,7 @@ function normalizeClaudeDesktopModels(routesById) {
       upstreamModelId: route.upstreamModelId,
       label,
       description,
+      visionCapable: alias.visionCapable === true || route.visionCapable === true,
     }
     Object.defineProperty(option, 'route', {
       enumerable: false,
@@ -1119,6 +1132,7 @@ function normalizeClaudeDesktopModels(routesById) {
         routeId: name,
         upstreamModelId: route.upstreamModelId,
         provider: route.provider,
+        visionCapable: alias.visionCapable === true || route.visionCapable === true,
       },
     })
     options.push(option)
@@ -1276,8 +1290,7 @@ function normalizeModelOption(model, provider = providers[0]) {
     descriptionParts.push('tool use')
   }
   if (
-    model?.vision === true ||
-    model?.capabilities?.vision === true
+    isVisionCapableModel(model, id)
   ) {
     descriptionParts.push('vision')
   }
@@ -1294,7 +1307,16 @@ function normalizeModelOption(model, provider = providers[0]) {
     upstreamModelId: id,
     label,
     description,
+    visionCapable: isVisionCapableModel(model, id),
   }
+}
+
+function isVisionCapableModel(model, id) {
+  if (model?.vision === true || model?.capabilities?.vision === true) {
+    return true
+  }
+
+  return isStrongVisionModelId({ routeId: id, upstreamModelId: id })
 }
 
 function chooseDefaultModels(options) {
