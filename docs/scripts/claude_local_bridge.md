@@ -246,11 +246,17 @@ openai/gpt-4.1-mini
 anthropic/claude-sonnet-4-5
 ```
 
-Direct bridge callers can use those IDs. Claude Desktop/Cowork 3P gateway
-discovery is stricter and filters model IDs through Anthropic's model catalog.
-For Claude Desktop, configure `claudeDesktopModels[]` in `bridge.local.json` so
-the bridge exposes Claude-compatible aliases such as `claude-sonnet-4-5` and
-routes each alias to the real provider-qualified local target.
+Direct bridge callers can use those IDs. The bridge exposes every discovered
+provider model independent of inferred capabilities; embedding, reranking,
+vision, image-quality, and other specialized models are visible by their
+provider-qualified IDs.
+
+Claude Desktop/Cowork 3P gateway discovery is stricter and filters model IDs
+through Anthropic's model catalog. For Claude Desktop, configure
+`claudeDesktopModels[]` in `bridge.local.json` so the bridge also exposes
+Claude-compatible aliases such as `claude-sonnet-4-5` and routes each alias to
+the real provider-qualified local target. These aliases are additive; they do
+not hide the raw provider model IDs from the bridge API.
 
 Give every usable local conversation model one unique Claude-facing alias. If
 multiple local models share the same `anthropicFamilyTier`, use different

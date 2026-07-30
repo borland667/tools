@@ -5,8 +5,8 @@ Provider-neutral local bridge for Claude clients.
 The bridge exposes an Anthropic-compatible local API for Claude Code and Claude
 Desktop/Cowork 3P `gateway` profiles, then proxies inference requests to a
 local backend such as OMLX or LM Studio. It also keeps Claude-facing model
-lists usable by filtering local model discovery and, when configured, rewriting
-model aliases to actual local model IDs.
+lists usable by aggregating local model discovery and, when configured,
+rewriting model aliases to actual local model IDs.
 
 ## Project Path
 
@@ -33,8 +33,8 @@ flowchart LR
 The bridge is intentionally small:
 
 - `GET /healthz` reports provider health and selected models.
-- `GET /v1/models` and `GET /api/v1/models` expose Claude-safe conversation
-  model IDs.
+- `GET /v1/models` and `GET /api/v1/models` expose every discovered provider
+  model plus any configured Claude-facing aliases.
 - `POST /v1/messages` proxies Anthropic-compatible providers directly and
   adapts OpenAI-compatible providers through `/v1/chat/completions`.
 - Image-bearing Claude alias requests can be routed to a dedicated vision
@@ -62,8 +62,9 @@ Validated local setup:
   `$HOME/.claude-instances/<profile>`
 
 Keep Claude Desktop/Cowork pointed at the bridge, not directly at OMLX. The
-bridge filters embedding, reranking, image-generation, and image-quality models
-out of the conversation model list.
+bridge aggregates every discovered provider model. Capability hints still
+inform request routing and default-model heuristics, but they do not remove
+models from discovery.
 
 ## Claude Profiles
 
@@ -459,7 +460,9 @@ Dry run first if you want to inspect the planned route map:
 The refresh helper:
 
 - fetches live OMLX `/v1/models`
-- drops non-conversation models
+- keeps the bridge provider model list complete
+- generates Claude-compatible aliases for local models suitable for primary
+  chat inference
 - chooses a default/tool model by local heuristics
 - writes `inferenceModels` with Claude-compatible gateway alias IDs
 - updates `bridge.local.json` and `providers.local.json`
@@ -727,12 +730,19 @@ Recommended pattern:
 
 ## Model Mapping
 
-`/v1/models` is built from every configured provider. `CLAUDE_LOCAL_MODEL_MAP`
-is now for aliases such as `default`, `coder`, or Anthropic-style model names
-that should route to one of those provider-qualified model IDs.
+`/v1/models` is built from every configured provider and includes every
+discovered provider model, independent of inferred capabilities. Embedding,
+reranking, vision, image-quality, and other specialized models remain visible
+and routable by their provider-qualified IDs. Capability hints only affect
+automatic fallback routing for tool/image requests and default-model selection.
+
+`CLAUDE_LOCAL_MODEL_MAP` is now for aliases such as `default`, `coder`, or
+Anthropic-style model names that should route to one of those provider-qualified
+model IDs.
 
 For Claude Desktop/Cowork 3P, prefer `claudeDesktopModels[]` in
-`bridge.local.json`:
+`bridge.local.json`. These aliases are added alongside raw provider models,
+not used as a replacement list:
 
 ```json
 {

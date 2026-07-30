@@ -1112,14 +1112,15 @@ async function syncModelOptions() {
   }
 
   const claudeDesktopOptions = normalizeClaudeDesktopModels(routesById)
-  const options =
-    claudeDesktopOptions.length > 0
-      ? claudeDesktopOptions
-      : rawOptions
-
+  const optionsByPublicId = new Map(rawOptions.map(option => [option.value, option]))
   for (const alias of claudeDesktopOptions) {
+    optionsByPublicId.set(alias.value, alias)
     routesById.set(alias.value, alias.route)
   }
+
+  const options = [...optionsByPublicId.values()].sort((a, b) => {
+    return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
+  })
 
   lastSyncedOptions = options
   modelRoutes = routesById
@@ -1292,11 +1293,6 @@ function normalizeModelOptions(payload, provider = providers[0]) {
 }
 
 function normalizeModelOption(model, provider = providers[0]) {
-  const type = String(model?.type ?? '').toLowerCase()
-  if (type && type !== 'llm' && type !== 'model') {
-    return null
-  }
-
   const id = firstString(
     model?.id,
     model?.key,
@@ -1308,9 +1304,6 @@ function normalizeModelOption(model, provider = providers[0]) {
   if (!id) {
     return null
   }
-  if (isNonConversationModelId(id)) {
-    return null
-  }
 
   const baseLabel =
     firstString(model?.displayName, model?.display_name, model?.name) ??
@@ -1320,6 +1313,10 @@ function normalizeModelOption(model, provider = providers[0]) {
     : `${provider.label}: ${baseLabel}`
 
   const descriptionParts = []
+  const type = firstString(model?.type, model?.model_type, model?.object)
+  if (type && type !== 'model') {
+    descriptionParts.push(type)
+  }
   const paramsString = firstString(model?.paramsString, model?.params_string)
   if (paramsString) {
     descriptionParts.push(paramsString)

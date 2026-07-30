@@ -9,7 +9,7 @@ import test from 'node:test'
 const ROOT_DIR = path.resolve(import.meta.dirname, '../..')
 const BRIDGE_SCRIPT = path.join(ROOT_DIR, 'claude_local_bridge', 'bridge.mjs')
 
-test('aggregates providers, filters non-conversation models, and preserves duplicate route IDs', async t => {
+test('aggregates all provider models and preserves duplicate route IDs', async t => {
   const upstreams = []
   t.after(async () => {
     await closeServers(upstreams)
@@ -45,12 +45,14 @@ test('aggregates providers, filters non-conversation models, and preserves dupli
       const ids = response.data.map(item => item.id)
 
       assert.deepEqual(ids.sort(), [
+        'lmstudio/Qwen3-Reranker-0.6B-4bit',
         'lmstudio/openai-only',
         'lmstudio/shared-model',
+        'omlx/Qwen3-Embedding-0.6B-4bit-DWQ',
+        'omlx/VisualQuality-R1-7B-4bit',
         'omlx/anthropic-only',
         'omlx/shared-model',
       ])
-      assert.equal(ids.some(id => /embedding|reranker|visualquality/i.test(id)), false)
       assert.equal(response.data.find(item => item.id === 'omlx/shared-model').owned_by, 'omlx')
       assert.equal(response.data.find(item => item.id === 'lmstudio/shared-model').owned_by, 'lmstudio')
     },
@@ -123,8 +125,11 @@ test('exposes Claude Desktop compatible aliases while routing to local models', 
     [provider('omlx', 'anthropic', anthropic.baseUrl)],
     async bridge => {
       const models = await getJson(`${bridge.baseUrl}/v1/models`)
-      assert.deepEqual(models.data.map(item => item.id), ['claude-sonnet-4-5'])
-      assert.equal(models.data[0].owned_by, 'omlx')
+      assert.deepEqual(models.data.map(item => item.id).sort(), [
+        'claude-sonnet-4-5',
+        'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX',
+      ])
+      assert.equal(models.data.find(item => item.id === 'claude-sonnet-4-5').owned_by, 'omlx')
 
       const response = await postJson(`${bridge.baseUrl}/v1/messages`, {
         model: 'claude-sonnet-4-5',
@@ -149,6 +154,48 @@ test('exposes Claude Desktop compatible aliases while routing to local models', 
             labelOverride: 'Qwen3.5 Sushi Coder 9B via Local Bridge',
             anthropicFamilyTier: 'sonnet',
             isFamilyDefault: true,
+          },
+        ],
+      }),
+    },
+  )
+})
+
+test('adds Claude Desktop aliases without hiding raw provider models', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [
+      model('Qwen3.5-9b-Sushi-Coder-RL-MLX'),
+      model('Qwen3-Embedding-0.6B-4bit-DWQ'),
+    ],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const models = await getJson(`${bridge.baseUrl}/v1/models`)
+      const ids = models.data.map(item => item.id).sort()
+
+      assert.deepEqual(ids, [
+        'claude-sonnet-4-5',
+        'omlx/Qwen3-Embedding-0.6B-4bit-DWQ',
+        'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX',
+      ])
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'claude-sonnet-4-5'),
+        claudeDesktopModels: [
+          {
+            name: 'claude-sonnet-4-5',
+            target: 'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX',
+            labelOverride: 'Claude-facing local coder alias',
           },
         ],
       }),
