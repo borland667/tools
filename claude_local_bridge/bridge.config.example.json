@@ -13,6 +13,9 @@
     "providerStatusEnabled": true,
     "providerStatusTimeoutMs": 1200
   },
+  "thinking": {
+    "mode": "passthrough-with-progress"
+  },
   "models": {
     "main": "claude-sonnet-4-5",
     "small": "claude-haiku-4-5",

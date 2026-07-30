@@ -608,7 +608,46 @@ test('emits visible progress while upstream only sends thinking deltas', async t
           delayMs: 25,
           intervalMs: 50,
         },
+        thinking: {
+          mode: 'suppress',
+        },
       }),
+    },
+  )
+})
+
+test('passes upstream Anthropic thinking blocks through by default', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startThinkingOnlyAnthropicStreamingProvider({
+    models: [model('slow-thinking-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/slow-thinking-chat',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'think visibly' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      const text = await response.text()
+      assert.match(text, /"type":"thinking"/)
+      assert.match(text, /"type":"thinking_delta"/)
+      assert.match(text, /still thinking/)
+      assert.doesNotMatch(text, /\*\*Local model status\*\*/)
     },
   )
 })
@@ -656,6 +695,9 @@ test('keeps visible output indices contiguous after suppressing thinking', async
           enabled: true,
           delayMs: 25,
           intervalMs: 50,
+        },
+        thinking: {
+          mode: 'suppress',
         },
       }),
     },
@@ -740,6 +782,9 @@ test('includes OMLX provider activity in visible progress', async t => {
           enabled: true,
           delayMs: 25,
           intervalMs: 50,
+        },
+        thinking: {
+          mode: 'suppress',
         },
       }),
     },

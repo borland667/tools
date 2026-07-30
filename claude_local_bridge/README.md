@@ -887,6 +887,28 @@ slow models usable, the local config enables a visible stream timeout guard:
 }
 ```
 
+Thinking handling is configured separately:
+
+```json
+{
+  "thinking": {
+    "mode": "passthrough-with-progress"
+  }
+}
+```
+
+`passthrough-with-progress` is the default. It passes real upstream Anthropic
+`thinking` content blocks and `thinking_delta` events through so Claude can
+render the model's thought process when the provider emits it. If the provider
+does not produce usable thinking or visible output before `streamingProgress`
+fires, the bridge still falls back to the local status block.
+
+Use `passthrough` to show upstream thinking without the extra status fallback,
+or `suppress` / `status-only` to hide upstream thinking and keep the older
+visible-progress behavior. The bridge does not synthesize private chain of
+thought for models that do not emit Anthropic thinking events; it only forwards
+what the upstream provider actually streams.
+
 When enabled, the bridge applies this to every Anthropic-compatible streaming
 model, not just the known slow aliases. It waits `delayMs` for upstream visible
 text or tool output. If none arrives, the request is considered at risk of

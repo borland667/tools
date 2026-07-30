@@ -121,6 +121,7 @@ Environment:
   CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS Interval between progress updates (default: 5000)
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS     Fetch provider status for progress text (default: true)
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS_TIMEOUT_MS Provider status fetch timeout (default: 1200)
+  CLAUDE_LOCAL_THINKING_MODE              Thinking handling: passthrough-with-progress, passthrough, suppress, status-only
   CLAUDE_LOCAL_MODEL_MAP                  JSON object of explicit model rewrites
   claudeDesktopModels                     bridge config array of Claude-facing aliases
   CLAUDE_PROFILE_NAME                     Named Claude profile under ~/.claude-instances
@@ -1813,6 +1814,33 @@ function getVisibleStreamProgressStatusTimeoutMs() {
   )
 }
 
+function getThinkingMode() {
+  const raw = String(
+    configValue('thinking.mode', process.env.CLAUDE_LOCAL_THINKING_MODE) ??
+      'passthrough-with-progress',
+  )
+    .trim()
+    .toLowerCase()
+  if (['passthrough', 'pass-through', 'show', 'on', 'true'].includes(raw)) {
+    return 'passthrough'
+  }
+  if (['passthrough-with-progress', 'pass-through-with-progress'].includes(raw)) {
+    return 'passthrough-with-progress'
+  }
+  if (['suppress', 'off', 'false', 'hidden'].includes(raw)) {
+    return 'suppress'
+  }
+  if (['status-only', 'status'].includes(raw)) {
+    return 'status-only'
+  }
+  console.error(`[bridge] unknown thinking.mode "${raw}", using passthrough-with-progress`)
+  return 'passthrough-with-progress'
+}
+
+function shouldPassthroughThinking(mode) {
+  return mode === 'passthrough' || mode === 'passthrough-with-progress'
+}
+
 function parseBoolean(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') {
     return defaultValue
@@ -2009,6 +2037,8 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
 
   const progressDelayMs = getVisibleStreamProgressDelayMs()
   const progressIntervalMs = getVisibleStreamProgressIntervalMs()
+  const thinkingMode = getThinkingMode()
+  const visibleProgressEnabled = options.visibleProgress && thinkingMode !== 'passthrough'
   let progressInterval = null
   const writeProgressUpdate = async ({ initial = false } = {}) => {
     if (
@@ -2054,7 +2084,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
   }
   const startProgress = () => {
     if (
-      !options.visibleProgress ||
+      !visibleProgressEnabled ||
       progressStarted ||
       progressClosed ||
       sawVisibleOutput ||
@@ -2091,7 +2121,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
       })
     }
   }
-  const progressTimeout = options.visibleProgress
+  const progressTimeout = visibleProgressEnabled
     ? setTimeout(startProgress, progressDelayMs)
     : null
   progressTimeout?.unref?.()
@@ -2113,6 +2143,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
         const nextEvent = transformAnthropicSseEventAfterWarmup(event, {
           progressStarted,
           skippedThinkingIndexes,
+          thinkingMode,
         })
         if (nextEvent.skip) {
           continue
@@ -2131,6 +2162,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
       const nextEvent = transformAnthropicSseEventAfterWarmup(buffer, {
         progressStarted,
         skippedThinkingIndexes,
+        thinkingMode,
       })
       if (!nextEvent.skip) {
         if (nextEvent.visibleOutput) {
@@ -2515,8 +2547,10 @@ function transformAnthropicSseEventAfterWarmup(block, state) {
     payload.content_block?.type === 'thinking' &&
     Number.isInteger(index)
   ) {
-    state.skippedThinkingIndexes.add(index)
-    return { block, skip: true, visibleOutput: false }
+    if (!shouldPassthroughThinking(state.thinkingMode)) {
+      state.skippedThinkingIndexes.add(index)
+      return { block, skip: true, visibleOutput: false }
+    }
   }
 
   if (
@@ -2529,8 +2563,11 @@ function transformAnthropicSseEventAfterWarmup(block, state) {
 
   const visibleOutput =
     payload.content_block?.type === 'text' ||
+    payload.content_block?.type === 'thinking' ||
     payload.content_block?.type === 'tool_use' ||
     payload.delta?.type === 'text_delta' ||
+    payload.delta?.type === 'thinking_delta' ||
+    payload.delta?.type === 'signature_delta' ||
     payload.delta?.type === 'input_json_delta'
 
   if (state.progressStarted && Number.isInteger(index)) {

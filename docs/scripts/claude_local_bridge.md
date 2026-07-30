@@ -370,6 +370,23 @@ local inference. The local config enables:
 }
 ```
 
+Thinking passthrough is controlled separately:
+
+```json
+{
+  "thinking": {
+    "mode": "passthrough-with-progress"
+  }
+}
+```
+
+`passthrough-with-progress` is the default and forwards upstream Anthropic
+`thinking` blocks / `thinking_delta` events so Claude can render a Thought
+process when the provider emits one. `passthrough` forwards thinking without the
+status fallback. `suppress` and `status-only` hide upstream thinking and keep the
+older local status-block behavior. The bridge does not invent thinking for
+models that do not stream it.
+
 The guard applies to every Anthropic-compatible streaming model. If upstream
 sends only hidden thinking or takes longer than `delayMs` to produce visible
 text/tool output, the bridge emits a compact Markdown status block and concise
