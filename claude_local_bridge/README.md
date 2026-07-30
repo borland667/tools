@@ -761,9 +761,9 @@ For Claude Desktop/Cowork 3P, prefer `claudeDesktopModels[]` in
 
 Every usable local conversation model should have exactly one Claude-facing
 alias. When several local models use the same `anthropicFamilyTier`, give each
-one a different Claude model version alias, for example `claude-opus-4-5`,
-`claude-opus-4-8`, and `claude-opus-4-1`. The refresh helper validates this and
-refuses to write a partial or duplicate alias table.
+one a different Claude model version alias, for example `claude-opus-4-5` and
+`claude-opus-4-1`. The refresh helper validates this and refuses to write a
+partial or duplicate alias table.
 
 Current local OMLX desktop aliases:
 
@@ -772,7 +772,6 @@ claude-sonnet-4-5          -> omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
 claude-opus-4-5            -> omlx/Qwen3-Next-80B-A3B-Instruct-4bit
 claude-mythos-5            -> omlx/Qwen3-Next-80B-A3B-Thinking-4bit
 claude-sonnet-4-6          -> omlx/Qwen3.6-27B-Heretic-MLX-bf16
-claude-opus-4-8            -> omlx/Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit
 claude-opus-4-1            -> omlx/Qwen3.6-35B-A3B-MLX-4bit
 claude-fable-5             -> omlx/gemma-4-12b-coder-fable5-composer2.5-8bit
 claude-haiku-4-5           -> omlx/gemma-4-e4b-it-4bit
@@ -841,11 +840,74 @@ tail -f "$HOME/.omlx/logs/server.log"
 ```
 
 The bridge log shows local routing decisions, such as
-`claude-opus-4-8 -> omlx/Qwen3-VL-4B-Instruct-4bit`. The OMLX server log is the
+`claude-sonnet-4-6 -> omlx/Qwen3.6-27B-Heretic-MLX-bf16`. The OMLX server log is the
 source of truth for upstream model load failures, token generation timings, and
 image parser errors. The OMLX dashboard log viewer at
 `http://127.0.0.1:8005/admin/dashboard?tab=logs` reads from the same log
 directory and rotates daily files like `server.log.2026-07-29`.
+
+### If Claude Shows "Stream Idle Timeout"
+
+Claude Desktop may display `API Error: Stream idle timeout - no chunks
+received` when the gateway does not send a usable streaming event quickly
+enough. This can happen with local OMLX models during model load, prompt
+prefill, long tool-context requests, or when a selected model stalls before
+emitting text.
+
+The bridge starts Anthropic SSE responses immediately for streaming
+`/v1/messages` requests by sending an early `message_start` event, then sends
+periodic `ping` events while waiting for the upstream provider. When OMLX later
+emits its own `message_start`, the bridge filters that duplicate event and
+continues proxying the real content blocks.
+
+Slow local models can still spend a long time in hidden thinking or prefill
+without emitting visible assistant text. Claude Desktop's local-agent watchdog
+may ignore SSE `ping`, lifecycle events, and hidden thinking chunks. To keep
+slow models usable, the local config enables a visible stream timeout guard:
+
+```json
+{
+  "streamingProgress": {
+    "enabled": true,
+    "delayMs": 12000,
+    "intervalMs": 5000,
+    "providerStatusEnabled": true,
+    "providerStatusTimeoutMs": 1200
+  }
+}
+```
+
+When enabled, the bridge applies this to every Anthropic-compatible streaming
+model, not just the known slow aliases. It waits `delayMs` for upstream visible
+text or tool output. If none arrives, the request is considered at risk of
+Claude's stream idle timeout: the bridge opens a small text block such as
+`Working locally with Qwen3.6 27B Heretic MLX bf16 via OMLX...` and appends
+periodic progress lines until the real upstream text/tool output begins.
+
+For OMLX providers, `providerStatusEnabled` lets the bridge fetch
+`/admin/api/activity` while waiting. When available, progress lines include
+status like model loading, prefill token progress, generation speed, last token
+age, queue state, active request count, and memory pressure. The status fetch is
+best-effort and bounded by `providerStatusTimeoutMs`, so it cannot block or fail
+the model stream. This intentionally trades a small visible preamble for
+reliable long-running local inference. Set `CLAUDE_LOCAL_STREAM_PROGRESS=false`
+or `"streamingProgress": {"enabled": false}` to disable the visible timeout
+guard; set `"providerStatusEnabled": false` to keep the guard but use generic
+messages. If the error still appears:
+
+```bash
+curl http://127.0.0.1:1245/healthz
+tail -f "$HOME/Library/Logs/claude-local-bridge.log"
+tail -f "$HOME/.omlx/logs/server.log"
+```
+
+Look for bridge entries like `upstream stream failed ... Premature close`,
+which usually means Claude closed the request after waiting too long, and OMLX
+entries showing model load failures, request cancellations, or long hidden
+thinking phases without visible text deltas. If OMLX reports a model as
+unavailable after a cached load failure, remove that model from
+`bridge.local.json` or remap its Claude alias to a known-working local model,
+then restart the launchd service.
 
 ## Files
 

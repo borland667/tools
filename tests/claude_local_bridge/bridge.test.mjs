@@ -480,6 +480,259 @@ test('loads and reloads bridge JSON config from the working directory', async t 
   )
 })
 
+test('emits streaming message start before a slow upstream sends headers', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startSlowAnthropicStreamingProvider({
+    models: [model('slow-chat')],
+    headerDelayMs: 1500,
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const startedAt = Date.now()
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/slow-chat',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'hello' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      assert.equal(response.headers.get('content-type'), 'text/event-stream; charset=utf-8')
+      const firstChunk = await readFirstChunk(response)
+      assert.match(firstChunk, /event: message_start/)
+      assert.match(firstChunk, /msg_bridge_warmup_/)
+      assert.equal(Date.now() - startedAt < 1000, true)
+    },
+  )
+})
+
+test('emits visible progress while upstream only sends thinking deltas', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startThinkingOnlyAnthropicStreamingProvider({
+    models: [model('slow-thinking-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/slow-thinking-chat',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'think slowly' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      const text = await readChunksUntil(response, /Working locally with slow thinking chat via omlx/)
+      assert.match(text, /event: content_block_start/)
+      assert.match(text, /Working locally with slow thinking chat via omlx/)
+      assert.doesNotMatch(text, /thinking_delta/)
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'omlx/slow-thinking-chat'),
+        streamingProgress: {
+          enabled: true,
+          delayMs: 25,
+          intervalMs: 50,
+        },
+      }),
+    },
+  )
+})
+
+test('keeps visible output indices contiguous after suppressing thinking', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startThinkingThenTextAnthropicStreamingProvider({
+    models: [model('slow-thinking-text-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/slow-thinking-text-chat',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'think, then answer' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      const text = await response.text()
+      assert.match(text, /"index":0/)
+      assert.match(text, /Working locally with slow thinking text chat via omlx/)
+      assert.match(text, /"index":1/)
+      assert.match(text, /final answer/)
+      assert.doesNotMatch(text, /"index":2/)
+      assert.doesNotMatch(text, /thinking_delta/)
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'omlx/slow-thinking-text-chat'),
+        streamingProgress: {
+          enabled: true,
+          delayMs: 25,
+          intervalMs: 50,
+        },
+      }),
+    },
+  )
+})
+
+test('includes OMLX provider activity in visible progress', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startThinkingOnlyAnthropicStreamingProvider({
+    models: [model('Qwen3.6-27B-Heretic-MLX-bf16')],
+    activity: {
+      active_models: {
+        models: [
+          {
+            id: 'Qwen3.6-27B-Heretic-MLX-bf16',
+            is_loading: false,
+            active_requests: 2,
+            waiting_requests: 0,
+            waiting: [],
+            prefilling: [
+              {
+                request_id: 'prefill-test',
+                processed: 8192,
+                total: 32768,
+                speed: 64.4,
+                eta: 382,
+              },
+            ],
+            generating: [],
+            actual_size_formatted: '51.26GB',
+          },
+        ],
+        memory_pressure: {
+          enabled: true,
+          current_formatted: '70.0GB',
+          soft_formatted: '96.0GB',
+          hard_formatted: '101.0GB',
+          pressure_level: 'ok',
+        },
+        total_active_requests: 2,
+        total_waiting_requests: 0,
+      },
+    },
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/Qwen3.6-27B-Heretic-MLX-bf16',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'think slowly' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      const text = await readChunksUntil(response, /OMLX is prefilling/)
+      assert.match(text, /OMLX is prefilling 8\.2k\/32\.8k tokens/)
+      assert.match(text, /25%/)
+      assert.match(text, /64\.4 tok\/s/)
+      assert.match(text, /about 6m 22s left/)
+      assert.match(text, /2 active requests/)
+      assert.match(text, /memory 70\.0GB\/96\.0GB soft\/101\.0GB hard/)
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'omlx/Qwen3.6-27B-Heretic-MLX-bf16'),
+        streamingProgress: {
+          enabled: true,
+          delayMs: 25,
+          intervalMs: 50,
+        },
+      }),
+    },
+  )
+})
+
+test('rewrites Claude aliases for Anthropic messages subpaths', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [model('Qwen3.6-27B-Heretic-MLX-bf16')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await postJson(`${bridge.baseUrl}/v1/messages/count_tokens`, {
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'hello' }],
+      })
+
+      assert.equal(response.input_tokens, 7)
+      assert.equal(anthropic.requests.countTokens.length, 1)
+      assert.equal(
+        anthropic.requests.countTokens[0].model,
+        'Qwen3.6-27B-Heretic-MLX-bf16',
+      )
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'claude-sonnet-4-6'),
+        claudeDesktopModels: [
+          {
+            name: 'claude-sonnet-4-6',
+            target: 'omlx/Qwen3.6-27B-Heretic-MLX-bf16',
+          },
+        ],
+      }),
+    },
+  )
+})
+
 function bridgeConfig(providersFile, mainModel) {
   return {
     bridge: { host: '127.0.0.1' },
@@ -575,7 +828,7 @@ async function withBridge(t, providers, callback, options = {}) {
 }
 
 async function startAnthropicProvider({ models }) {
-  const requests = { messages: [] }
+  const requests = { messages: [], countTokens: [] }
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && ['/api/v1/models', '/v1/models'].includes(req.url)) {
       return writeJson(res, 200, { object: 'list', data: models })
@@ -594,6 +847,186 @@ async function startAnthropicProvider({ models }) {
         stop_sequence: null,
         usage: { input_tokens: 1, output_tokens: 3 },
       })
+    }
+
+    if (req.method === 'POST' && req.url === '/v1/messages/count_tokens') {
+      const body = await readJsonBody(req)
+      requests.countTokens.push(body)
+      return writeJson(res, 200, { input_tokens: 7 })
+    }
+
+    writeJson(res, 404, { error: `unexpected ${req.method} ${req.url}` })
+  })
+
+  const baseUrl = await listen(server)
+  return { server, baseUrl, requests }
+}
+
+async function startSlowAnthropicStreamingProvider({ models, headerDelayMs }) {
+  const requests = { messages: [] }
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'GET' && ['/api/v1/models', '/v1/models'].includes(req.url)) {
+      return writeJson(res, 200, { object: 'list', data: models })
+    }
+
+    if (req.method === 'POST' && req.url === '/v1/messages') {
+      const body = await readJsonBody(req)
+      requests.messages.push(body)
+      await new Promise(resolve => setTimeout(resolve, headerDelayMs))
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+      })
+      res.end(
+        `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
+      )
+      return
+    }
+
+    writeJson(res, 404, { error: `unexpected ${req.method} ${req.url}` })
+  })
+
+  const baseUrl = await listen(server)
+  return { server, baseUrl, requests }
+}
+
+async function startThinkingOnlyAnthropicStreamingProvider({ models, activity = null }) {
+  const requests = { messages: [] }
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'GET' && ['/api/v1/models', '/v1/models'].includes(req.url)) {
+      return writeJson(res, 200, { object: 'list', data: models })
+    }
+
+    if (req.method === 'GET' && req.url === '/admin/api/activity' && activity) {
+      return writeJson(res, 200, activity)
+    }
+
+    if (req.method === 'POST' && req.url === '/v1/messages') {
+      const body = await readJsonBody(req)
+      requests.messages.push(body)
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+      })
+      res.write(
+        `event: message_start\ndata: ${JSON.stringify({
+          type: 'message_start',
+          message: {
+            id: 'msg_thinking_only',
+            type: 'message',
+            role: 'assistant',
+            model: body.model,
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 1, output_tokens: 0 },
+          },
+        })}\n\n`,
+      )
+      res.write(
+        `event: content_block_start\ndata: ${JSON.stringify({
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'thinking', thinking: '', signature: 'test' },
+        })}\n\n`,
+      )
+      res.write(
+        `event: content_block_delta\ndata: ${JSON.stringify({
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'thinking_delta', thinking: 'still thinking' },
+        })}\n\n`,
+      )
+      setTimeout(() => {
+        res.end(
+          `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
+        )
+      }, 250)
+      return
+    }
+
+    writeJson(res, 404, { error: `unexpected ${req.method} ${req.url}` })
+  })
+
+  const baseUrl = await listen(server)
+  return { server, baseUrl, requests }
+}
+
+async function startThinkingThenTextAnthropicStreamingProvider({ models }) {
+  const requests = { messages: [] }
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'GET' && ['/api/v1/models', '/v1/models'].includes(req.url)) {
+      return writeJson(res, 200, { object: 'list', data: models })
+    }
+
+    if (req.method === 'POST' && req.url === '/v1/messages') {
+      const body = await readJsonBody(req)
+      requests.messages.push(body)
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+      })
+      res.write(
+        `event: message_start\ndata: ${JSON.stringify({
+          type: 'message_start',
+          message: {
+            id: 'msg_thinking_text',
+            type: 'message',
+            role: 'assistant',
+            model: body.model,
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 1, output_tokens: 0 },
+          },
+        })}\n\n`,
+      )
+      res.write(
+        `event: content_block_start\ndata: ${JSON.stringify({
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'thinking', thinking: '', signature: 'test' },
+        })}\n\n`,
+      )
+      res.write(
+        `event: content_block_delta\ndata: ${JSON.stringify({
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'thinking_delta', thinking: 'still thinking' },
+        })}\n\n`,
+      )
+      setTimeout(() => {
+        res.write(
+          `event: content_block_stop\ndata: ${JSON.stringify({
+            type: 'content_block_stop',
+            index: 0,
+          })}\n\n`,
+        )
+        res.write(
+          `event: content_block_start\ndata: ${JSON.stringify({
+            type: 'content_block_start',
+            index: 1,
+            content_block: { type: 'text', text: '' },
+          })}\n\n`,
+        )
+        res.write(
+          `event: content_block_delta\ndata: ${JSON.stringify({
+            type: 'content_block_delta',
+            index: 1,
+            delta: { type: 'text_delta', text: 'final answer' },
+          })}\n\n`,
+        )
+        res.write(
+          `event: content_block_stop\ndata: ${JSON.stringify({
+            type: 'content_block_stop',
+            index: 1,
+          })}\n\n`,
+        )
+        res.end(
+          `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
+        )
+      }, 80)
+      return
     }
 
     writeJson(res, 404, { error: `unexpected ${req.method} ${req.url}` })
@@ -696,6 +1129,35 @@ async function postJson(url, body) {
   })
   assert.equal(response.ok, true, `${url} returned HTTP ${response.status}`)
   return response.json()
+}
+
+async function readFirstChunk(response) {
+  const reader = response.body.getReader()
+  const { done, value } = await reader.read()
+  assert.equal(done, false)
+  await reader.cancel()
+  return Buffer.from(value).toString('utf8')
+}
+
+async function readChunksUntil(response, pattern) {
+  const reader = response.body.getReader()
+  let text = ''
+  const deadline = Date.now() + 3000
+  try {
+    while (Date.now() < deadline) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      text += Buffer.from(value).toString('utf8')
+      if (pattern.test(text)) {
+        return text
+      }
+    }
+  } finally {
+    await reader.cancel()
+  }
+  assert.fail(`did not see ${pattern} in stream:\n${text}`)
 }
 
 async function readJsonBody(req) {

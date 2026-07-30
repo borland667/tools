@@ -116,6 +116,11 @@ Environment:
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
   CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
   CLAUDE_LOCAL_VISION_MODEL               Override model used for image /v1/messages requests
+  CLAUDE_LOCAL_STREAM_PROGRESS            Emit visible progress text for timeout-risk streams (default: true)
+  CLAUDE_LOCAL_STREAM_PROGRESS_DELAY_MS   Delay before visible progress text (default: 12000)
+  CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS Interval between progress updates (default: 5000)
+  CLAUDE_LOCAL_STREAM_PROGRESS_STATUS     Fetch provider status for progress text (default: true)
+  CLAUDE_LOCAL_STREAM_PROGRESS_STATUS_TIMEOUT_MS Provider status fetch timeout (default: 1200)
   CLAUDE_LOCAL_MODEL_MAP                  JSON object of explicit model rewrites
   claudeDesktopModels                     bridge config array of Claude-facing aliases
   CLAUDE_PROFILE_NAME                     Named Claude profile under ~/.claude-instances
@@ -290,6 +295,8 @@ async function proxyToUpstream(req, res, url) {
   let upstreamPath = url.pathname
   const headers = copyIncomingHeaders(req.headers)
   let expectsStreamingResponse = false
+  let streamingWarmupMessage = null
+  let sseKeepalive = null
 
   let body
   if (req.method && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
@@ -299,10 +306,14 @@ async function proxyToUpstream(req, res, url) {
     provider = prepared.provider ?? provider
     upstreamPath = prepared.upstreamPath ?? upstreamPath
     expectsStreamingResponse = prepared.expectsStreamingResponse
+    streamingWarmupMessage = prepared.streamingWarmupMessage ?? null
   }
 
   const upstreamUrl = new URL(upstreamPath + url.search, provider.baseUrl)
   applyUpstreamAuthHeaders(headers, provider)
+  if (expectsStreamingResponse) {
+    sseKeepalive = startAnthropicSseKeepalive(res, streamingWarmupMessage)
+  }
 
   let upstream
   try {
@@ -332,9 +343,27 @@ async function proxyToUpstream(req, res, url) {
     url.pathname === '/v1/messages'
   ) {
     if (expectsStreamingResponse) {
-      return writeOpenAiChatAsAnthropicSse(upstream, res, provider)
+      try {
+        return await writeOpenAiChatAsAnthropicSse(upstream, res, provider)
+      } finally {
+        sseKeepalive?.stop()
+      }
     }
     return writeOpenAiChatAsAnthropic(upstream, res, provider)
+  }
+
+  if (!upstream.ok && expectsStreamingResponse) {
+    sseKeepalive?.stop()
+    const text = await upstream.text()
+    console.error(
+      `[bridge] upstream error from ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: HTTP ${upstream.status} ${truncateForLog(text)}`,
+    )
+    writeAnthropicSseError(
+      res,
+      upstream.status,
+      `${provider.label} request failed: ${truncateForLog(text)}`,
+    )
+    return
   }
 
   if (!upstream.ok && !expectsStreamingResponse) {
@@ -356,14 +385,17 @@ async function proxyToUpstream(req, res, url) {
 
   res.statusCode = upstream.status
   res.statusMessage = upstream.statusText
-  upstream.headers.forEach((value, key) => {
-    if (['content-length', 'connection', 'transfer-encoding'].includes(key)) {
-      return
-    }
-    res.setHeader(key, value)
-  })
+  if (!res.headersSent) {
+    upstream.headers.forEach((value, key) => {
+      if (['content-length', 'connection', 'transfer-encoding'].includes(key)) {
+        return
+      }
+      res.setHeader(key, value)
+    })
+  }
 
   if (!upstream.body) {
+    sseKeepalive?.stop()
     res.end()
     return
   }
@@ -373,7 +405,15 @@ async function proxyToUpstream(req, res, url) {
   )
 
   try {
-    await pipeline(Readable.fromWeb(upstream.body), res)
+    if (isSseResponse && streamingWarmupMessage) {
+      await pipeAnthropicSseAfterWarmup(upstream.body, res, {
+        visibleProgress: shouldSendVisibleStreamProgress(),
+        provider,
+        upstreamModelId: streamingWarmupMessage.model,
+      })
+    } else {
+      await pipeline(Readable.fromWeb(upstream.body), res)
+    }
   } catch (error) {
     console.error(
       `[bridge] upstream stream failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
@@ -387,11 +427,13 @@ async function proxyToUpstream(req, res, url) {
       return
     }
     throw error
+  } finally {
+    sseKeepalive?.stop()
   }
 }
 
 async function prepareRequestForProvider(pathname, rawBody) {
-  if (pathname !== '/v1/messages' || rawBody.length === 0) {
+  if (!isAnthropicMessagesPath(pathname) || rawBody.length === 0) {
     return {
       body: rawBody,
       expectsStreamingResponse: false,
@@ -415,7 +457,8 @@ async function prepareRequestForProvider(pathname, rawBody) {
     }
   }
 
-  const expectsStreamingResponse = payload.stream === true
+  const isMessagesCreate = pathname === '/v1/messages'
+  const expectsStreamingResponse = isMessagesCreate && payload.stream === true
   await syncModelOptions()
 
   if (typeof payload.model !== 'string' || payload.model.length === 0) {
@@ -437,7 +480,7 @@ async function prepareRequestForProvider(pathname, rawBody) {
   }
 
   payload.model = route.upstreamModelId
-  if (route.provider.type === 'openai') {
+  if (isMessagesCreate && route.provider.type === 'openai') {
     return {
       provider: route.provider,
       upstreamPath: '/v1/chat/completions',
@@ -448,10 +491,17 @@ async function prepareRequestForProvider(pathname, rawBody) {
 
   return {
     provider: route.provider,
-    upstreamPath: '/v1/messages',
+    upstreamPath: pathname,
     body: Buffer.from(JSON.stringify(payload), 'utf8'),
     expectsStreamingResponse,
+    streamingWarmupMessage: expectsStreamingResponse
+      ? anthropicStreamingWarmupMessage(route.upstreamModelId)
+      : null,
   }
+}
+
+function isAnthropicMessagesPath(pathname) {
+  return pathname === '/v1/messages' || pathname.startsWith('/v1/messages/')
 }
 
 function resolveModelRoute(requestedModel, payload = null) {
@@ -1729,6 +1779,60 @@ function getRequestTimeoutMs() {
   )
 }
 
+function shouldSendVisibleStreamProgress() {
+  return parseBoolean(
+    configValue('streamingProgress.enabled', process.env.CLAUDE_LOCAL_STREAM_PROGRESS),
+    true,
+  )
+}
+
+function getVisibleStreamProgressDelayMs() {
+  return Number(
+    configValue('streamingProgress.delayMs', process.env.CLAUDE_LOCAL_STREAM_PROGRESS_DELAY_MS) ??
+      '12000',
+  )
+}
+
+function getVisibleStreamProgressIntervalMs() {
+  return Number(
+    configValue('streamingProgress.intervalMs', process.env.CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS) ??
+      '5000',
+  )
+}
+
+function shouldFetchVisibleStreamProgressStatus() {
+  return parseBoolean(
+    configValue('streamingProgress.providerStatusEnabled', process.env.CLAUDE_LOCAL_STREAM_PROGRESS_STATUS),
+    true,
+  )
+}
+
+function getVisibleStreamProgressStatusTimeoutMs() {
+  return Number(
+    configValue(
+      'streamingProgress.providerStatusTimeoutMs',
+      process.env.CLAUDE_LOCAL_STREAM_PROGRESS_STATUS_TIMEOUT_MS,
+    ) ?? '1200',
+  )
+}
+
+function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue
+  }
+  if (typeof value === 'boolean') {
+    return value
+  }
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false
+  }
+  return defaultValue
+}
+
 function providerConfigSource() {
   const providersFile = getProvidersFile()
   if (providersFile) {
@@ -1835,6 +1939,507 @@ function isEventStreamContentType(contentType) {
   return String(contentType ?? '')
     .toLowerCase()
     .includes('text/event-stream')
+}
+
+function anthropicStreamingWarmupMessage(model) {
+  return {
+    id: `msg_bridge_warmup_${Date.now().toString(36)}`,
+    type: 'message',
+    role: 'assistant',
+    model,
+    content: [],
+    stop_reason: null,
+    stop_sequence: null,
+    usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+    },
+  }
+}
+
+function startAnthropicSseKeepalive(res, warmupMessage = null) {
+  if (!res.headersSent) {
+    res.statusCode = 200
+    res.setHeader('content-type', 'text/event-stream; charset=utf-8')
+    res.setHeader('cache-control', 'no-cache')
+    res.setHeader('connection', 'keep-alive')
+  }
+
+  if (warmupMessage) {
+    writeAnthropicSseEvent(res, 'message_start', {
+      type: 'message_start',
+      message: warmupMessage,
+    })
+  } else {
+    writeAnthropicSsePing(res)
+  }
+
+  const interval = setInterval(() => {
+    writeAnthropicSsePing(res)
+  }, 5000)
+  interval.unref?.()
+
+  const stop = () => {
+    clearInterval(interval)
+  }
+  res.once('close', stop)
+  return { stop }
+}
+
+function writeAnthropicSsePing(res) {
+  writeAnthropicSseEvent(res, 'ping', { type: 'ping' })
+}
+
+function writeAnthropicSseEvent(res, event, payload) {
+  if (res.writableEnded || res.destroyed) {
+    return
+  }
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
+}
+
+async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
+  const reader = upstreamBody.getReader()
+  const decoder = new TextDecoder()
+  const startedAt = Date.now()
+  let buffer = ''
+  let skippedMessageStart = false
+  let progressStarted = false
+  let progressClosed = false
+  let sawVisibleOutput = false
+  let progressUpdateInFlight = false
+  const skippedThinkingIndexes = new Set()
+
+  const progressDelayMs = getVisibleStreamProgressDelayMs()
+  const progressIntervalMs = getVisibleStreamProgressIntervalMs()
+  let progressInterval = null
+  const writeProgressUpdate = async ({ initial = false } = {}) => {
+    if (
+      progressClosed ||
+      sawVisibleOutput ||
+      progressUpdateInFlight ||
+      res.writableEnded ||
+      res.destroyed
+    ) {
+      return
+    }
+
+    progressUpdateInFlight = true
+    try {
+      const text = await buildVisibleProgressText({
+        provider: options.provider,
+        upstreamModelId: options.upstreamModelId,
+        elapsedMs: Date.now() - startedAt,
+        initial,
+      })
+      if (!text || progressClosed || sawVisibleOutput || res.writableEnded || res.destroyed) {
+        return
+      }
+      writeAnthropicSseEvent(res, 'content_block_delta', {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'text_delta',
+          text,
+        },
+      })
+    } finally {
+      progressUpdateInFlight = false
+    }
+  }
+  const startProgress = () => {
+    if (
+      !options.visibleProgress ||
+      progressStarted ||
+      progressClosed ||
+      sawVisibleOutput ||
+      res.writableEnded ||
+      res.destroyed
+    ) {
+      return
+    }
+    progressStarted = true
+    writeAnthropicSseEvent(res, 'content_block_start', {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    })
+    void writeProgressUpdate({ initial: true })
+    progressInterval = setInterval(() => {
+      void writeProgressUpdate()
+    }, progressIntervalMs)
+    progressInterval.unref?.()
+  }
+  const closeProgress = () => {
+    if (progressClosed) {
+      return
+    }
+    progressClosed = true
+    if (progressInterval) {
+      clearInterval(progressInterval)
+      progressInterval = null
+    }
+    if (progressStarted && !res.writableEnded && !res.destroyed) {
+      writeAnthropicSseEvent(res, 'content_block_stop', {
+        type: 'content_block_stop',
+        index: 0,
+      })
+    }
+  }
+  const progressTimeout = options.visibleProgress
+    ? setTimeout(startProgress, progressDelayMs)
+    : null
+  progressTimeout?.unref?.()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      buffer += decoder.decode(value, { stream: true })
+      const events = buffer.split(/\r?\n\r?\n/)
+      buffer = events.pop() ?? ''
+      for (const event of events) {
+        if (!skippedMessageStart && isSseEvent(event, 'message_start')) {
+          skippedMessageStart = true
+          continue
+        }
+        const nextEvent = transformAnthropicSseEventAfterWarmup(event, {
+          progressStarted,
+          skippedThinkingIndexes,
+        })
+        if (nextEvent.skip) {
+          continue
+        }
+        if (nextEvent.visibleOutput) {
+          sawVisibleOutput = true
+          closeProgress()
+        }
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`${nextEvent.block}\n\n`)
+        }
+      }
+    }
+    buffer += decoder.decode()
+    if (buffer && !( !skippedMessageStart && isSseEvent(buffer, 'message_start'))) {
+      const nextEvent = transformAnthropicSseEventAfterWarmup(buffer, {
+        progressStarted,
+        skippedThinkingIndexes,
+      })
+      if (!nextEvent.skip) {
+        if (nextEvent.visibleOutput) {
+          closeProgress()
+        }
+        res.write(nextEvent.block)
+      }
+    }
+    closeProgress()
+    res.end()
+  } finally {
+    if (progressTimeout) {
+      clearTimeout(progressTimeout)
+    }
+    closeProgress()
+    reader.releaseLock()
+  }
+}
+
+async function buildVisibleProgressText({
+  provider,
+  upstreamModelId,
+  elapsedMs,
+  initial = false,
+}) {
+  const providerLabel = provider?.label ?? provider?.id ?? 'local provider'
+  const modelLabel = displayModelName(upstreamModelId)
+  const elapsed = formatDuration(Math.max(0, elapsedMs / 1000))
+  const prefix = initial
+    ? `Working locally with ${modelLabel} via ${providerLabel}.`
+    : `\n${providerLabel} is still working with ${modelLabel}.`
+
+  const providerStatus = await getProviderProgressStatus(provider, upstreamModelId)
+  if (providerStatus) {
+    return `${prefix} ${providerStatus}`
+  }
+
+  return `${prefix} Waiting ${elapsed} for visible model output.`
+}
+
+async function getProviderProgressStatus(provider, upstreamModelId) {
+  if (!shouldFetchVisibleStreamProgressStatus() || !provider) {
+    return null
+  }
+
+  if (provider.backend === 'omlx' || provider.id === 'omlx') {
+    return getOmlxProgressStatus(provider, upstreamModelId)
+  }
+
+  return null
+}
+
+async function getOmlxProgressStatus(provider, upstreamModelId) {
+  const payload = await fetchJsonBestEffort(
+    new URL('/admin/api/activity', provider.baseUrl),
+    provider,
+    getVisibleStreamProgressStatusTimeoutMs(),
+  )
+  const activeModels = payload?.active_models
+  if (!activeModels || typeof activeModels !== 'object') {
+    return null
+  }
+
+  const models = Array.isArray(activeModels.models) ? activeModels.models : []
+  const model =
+    models.find(item => item?.id === upstreamModelId) ??
+    models.find(item => item?.id?.toLowerCase?.() === upstreamModelId?.toLowerCase?.())
+
+  const pressure = formatMemoryPressure(activeModels.memory_pressure)
+  if (!model) {
+    const active = Number(activeModels.total_active_requests ?? 0)
+    const waiting = Number(activeModels.total_waiting_requests ?? 0)
+    return compactSentence([
+      active > 0 ? `${active} active request${active === 1 ? '' : 's'}` : null,
+      waiting > 0 ? `${waiting} waiting` : null,
+      pressure,
+      'waiting for model-specific activity',
+    ])
+  }
+
+  if (model.is_loading) {
+    return compactSentence([
+      'OMLX is loading the model',
+      model.loading_elapsed_seconds != null
+        ? `${formatDuration(model.loading_elapsed_seconds)} elapsed`
+        : null,
+      model.loading_remaining_seconds_estimate != null
+        ? `about ${formatDuration(model.loading_remaining_seconds_estimate)} left`
+        : null,
+      model.estimated_size_formatted ? `estimated ${model.estimated_size_formatted}` : null,
+      pressure,
+    ])
+  }
+
+  const prefilling = Array.isArray(model.prefilling) ? model.prefilling : []
+  const generating = Array.isArray(model.generating) ? model.generating : []
+  const waiting = Array.isArray(model.waiting) ? model.waiting : []
+
+  if (prefilling.length > 0) {
+    const current = prefilling[0]
+    const processed = Number(current.processed ?? 0)
+    const total = Number(current.total ?? 0)
+    const percent = total > 0 ? Math.floor((processed / total) * 100) : null
+    return compactSentence([
+      `OMLX is prefilling ${formatTokenCount(processed)}${total > 0 ? `/${formatTokenCount(total)}` : ''} tokens`,
+      percent != null ? `${percent}%` : null,
+      current.speed ? `${formatNumber(current.speed, 1)} tok/s` : null,
+      current.eta ? `about ${formatDuration(current.eta)} left` : null,
+      model.active_requests > 1 ? `${model.active_requests} active requests` : null,
+      pressure,
+    ])
+  }
+
+  if (generating.length > 0) {
+    const current = generating[0]
+    return compactSentence([
+      `OMLX is generating ${formatTokenCount(current.generated_tokens ?? 0)} tokens so far`,
+      current.tokens_per_second != null
+        ? `${formatNumber(current.tokens_per_second, 2)} tok/s`
+        : null,
+      current.last_activity_age_seconds != null
+        ? `last token ${formatDuration(current.last_activity_age_seconds)} ago`
+        : null,
+      current.max_tokens ? `limit ${formatTokenCount(current.max_tokens)} tokens` : null,
+      pressure,
+    ])
+  }
+
+  if (waiting.length > 0 || Number(model.waiting_requests ?? 0) > 0) {
+    const position = waiting[0]?.queue_position
+    return compactSentence([
+      'OMLX has this model queued',
+      position ? `queue position ${position}` : null,
+      model.waiting_requests ? `${model.waiting_requests} waiting` : null,
+      pressure,
+    ])
+  }
+
+  return compactSentence([
+    'OMLX reports the model loaded, but no visible tokens yet',
+    model.actual_size_formatted ? `loaded size ${model.actual_size_formatted}` : null,
+    pressure,
+  ])
+}
+
+async function fetchJsonBestEffort(url, provider, timeoutMs) {
+  try {
+    const headers = new Headers()
+    applyUpstreamAuthHeaders(headers, provider)
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!response.ok) {
+      return null
+    }
+    return response.json()
+  } catch {
+    return null
+  }
+}
+
+function formatMemoryPressure(memoryPressure) {
+  if (!memoryPressure || typeof memoryPressure !== 'object') {
+    return null
+  }
+  const current = memoryPressure.current_formatted
+  const soft = memoryPressure.soft_formatted
+  const hard = memoryPressure.hard_formatted
+  if (!current || !soft || !hard) {
+    return null
+  }
+  const level = memoryPressure.pressure_level && memoryPressure.pressure_level !== 'ok'
+    ? `, pressure ${memoryPressure.pressure_level}`
+    : ''
+  return `memory ${current}/${soft} soft/${hard} hard${level}`
+}
+
+function compactSentence(parts) {
+  return `${parts.filter(Boolean).join('; ')}.`
+}
+
+function displayModelName(modelId) {
+  return String(modelId ?? 'the selected model')
+    .replace(/^omlx\//, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function formatTokenCount(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return '0'
+  }
+  if (Math.abs(number) >= 1_000_000) {
+    return `${formatNumber(number / 1_000_000, 1)}M`
+  }
+  if (Math.abs(number) >= 1_000) {
+    return `${formatNumber(number / 1_000, 1)}k`
+  }
+  return String(Math.round(number))
+}
+
+function formatDuration(seconds) {
+  const number = Number(seconds)
+  if (!Number.isFinite(number) || number < 0) {
+    return '0s'
+  }
+  if (number < 1) {
+    return `${formatNumber(number, 1)}s`
+  }
+  if (number < 60) {
+    return `${Math.round(number)}s`
+  }
+  const minutes = Math.floor(number / 60)
+  const remainingSeconds = Math.round(number % 60)
+  if (minutes < 60) {
+    return `${minutes}m ${remainingSeconds}s`
+  }
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${minutes % 60}m`
+}
+
+function formatNumber(value, digits = 0) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return '0'
+  }
+  return number.toFixed(digits).replace(/\.0+$/, '')
+}
+
+function transformAnthropicSseEventAfterWarmup(block, state) {
+  const eventName = sseEventName(block)
+  const data = sseEventData(block)
+  if (!data) {
+    return { block, skip: false, visibleOutput: false }
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(data)
+  } catch {
+    return { block, skip: false, visibleOutput: false }
+  }
+
+  const index = Number(payload.index)
+  if (
+    eventName === 'content_block_start' &&
+    payload.content_block?.type === 'thinking' &&
+    Number.isInteger(index)
+  ) {
+    state.skippedThinkingIndexes.add(index)
+    return { block, skip: true, visibleOutput: false }
+  }
+
+  if (
+    Number.isInteger(index) &&
+    state.skippedThinkingIndexes.has(index) &&
+    (eventName === 'content_block_delta' || eventName === 'content_block_stop')
+  ) {
+    return { block, skip: true, visibleOutput: false }
+  }
+
+  const visibleOutput =
+    payload.content_block?.type === 'text' ||
+    payload.content_block?.type === 'tool_use' ||
+    payload.delta?.type === 'text_delta' ||
+    payload.delta?.type === 'input_json_delta'
+
+  if (state.progressStarted && Number.isInteger(index)) {
+    payload.index = visibleContentIndexAfterWarmup(index, state.skippedThinkingIndexes)
+    return {
+      block: replaceSseData(block, payload),
+      skip: false,
+      visibleOutput,
+    }
+  }
+
+  return { block, skip: false, visibleOutput }
+}
+
+function visibleContentIndexAfterWarmup(index, skippedThinkingIndexes) {
+  const skippedBefore = [...skippedThinkingIndexes].filter(skipped => skipped < index).length
+  return index - skippedBefore + 1
+}
+
+function isSseEvent(block, eventName) {
+  return block
+    .split(/\r?\n/)
+    .some(line => line.trim() === `event: ${eventName}`)
+}
+
+function sseEventName(block) {
+  const line = block
+    .split(/\r?\n/)
+    .find(line => line.startsWith('event:'))
+  return line ? line.slice('event:'.length).trim() : ''
+}
+
+function sseEventData(block) {
+  const lines = block
+    .split(/\r?\n/)
+    .filter(line => line.startsWith('data:'))
+    .map(line => line.slice('data:'.length).trimStart())
+  return lines.length > 0 ? lines.join('\n') : ''
+}
+
+function replaceSseData(block, payload) {
+  return block
+    .split(/\r?\n/)
+    .map(line => line.startsWith('data:')
+      ? `data: ${JSON.stringify(payload)}`
+      : line)
+    .join('\n')
 }
 
 function writeAnthropicSseError(res, statusCode, message) {

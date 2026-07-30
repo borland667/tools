@@ -6,6 +6,13 @@
   "providersFile": "providers.local.json",
   "modelSyncIntervalMs": 30000,
   "requestTimeoutMs": 600000,
+  "streamingProgress": {
+    "enabled": true,
+    "delayMs": 12000,
+    "intervalMs": 5000,
+    "providerStatusEnabled": true,
+    "providerStatusTimeoutMs": 1200
+  },
   "models": {
     "main": "claude-sonnet-4-5",
     "small": "claude-haiku-4-5",
@@ -42,13 +49,6 @@
       "anthropicFamilyTier": "sonnet",
       "toolCapable": true,
       "visionCapable": true,
-      "isFamilyDefault": false
-    },
-    {
-      "name": "claude-opus-4-8",
-      "target": "omlx/Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit",
-      "labelOverride": "Qwen3.6 35B Claude Opus VL 8-bit via Local Bridge",
-      "anthropicFamilyTier": "opus",
       "isFamilyDefault": false
     },
     {

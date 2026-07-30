@@ -36,12 +36,6 @@
       "isFamilyDefault": false
     },
     {
-      "name": "claude-opus-4-8",
-      "labelOverride": "Qwen3.6 35B Claude Opus VL 8-bit via Local Bridge",
-      "anthropicFamilyTier": "opus",
-      "isFamilyDefault": false
-    },
-    {
       "name": "claude-opus-4-1",
       "labelOverride": "Qwen3.6 35B A3B 4-bit via Local Bridge",
       "anthropicFamilyTier": "opus",

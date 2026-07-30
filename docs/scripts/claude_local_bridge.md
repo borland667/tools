@@ -254,9 +254,9 @@ routes each alias to the real provider-qualified local target.
 
 Give every usable local conversation model one unique Claude-facing alias. If
 multiple local models share the same `anthropicFamilyTier`, use different
-version aliases inside that tier, such as `claude-opus-4-5`,
-`claude-opus-4-8`, and `claude-opus-4-1`. The OMLX refresh helper validates
-this before writing config.
+version aliases inside that tier, such as `claude-opus-4-5` and
+`claude-opus-4-1`. The OMLX refresh helper validates this before writing
+config.
 
 Example:
 
@@ -281,7 +281,6 @@ claude-sonnet-4-5          -> omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
 claude-opus-4-5            -> omlx/Qwen3-Next-80B-A3B-Instruct-4bit
 claude-mythos-5            -> omlx/Qwen3-Next-80B-A3B-Thinking-4bit
 claude-sonnet-4-6          -> omlx/Qwen3.6-27B-Heretic-MLX-bf16
-claude-opus-4-8            -> omlx/Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit
 claude-opus-4-1            -> omlx/Qwen3.6-35B-A3B-MLX-4bit
 claude-fable-5             -> omlx/gemma-4-12b-coder-fable5-composer2.5-8bit
 claude-haiku-4-5           -> omlx/gemma-4-e4b-it-4bit
@@ -348,6 +347,35 @@ For `type: "openai"` providers, the bridge adapts Anthropic `/v1/messages`
 requests to OpenAI `/v1/chat/completions`. Streaming requests are returned as
 Anthropic-shaped SSE after the upstream non-streaming response completes, so
 they are client-compatible but not token-by-token.
+
+For Anthropic-compatible streaming providers such as OMLX, the bridge starts
+the SSE lifecycle immediately and supports a visible timeout guard for slow
+local inference. The local config enables:
+
+```json
+{
+  "streamingProgress": {
+    "enabled": true,
+    "delayMs": 12000,
+    "intervalMs": 5000,
+    "providerStatusEnabled": true,
+    "providerStatusTimeoutMs": 1200
+  }
+}
+```
+
+The guard applies to every Anthropic-compatible streaming model. If upstream
+sends only hidden thinking or takes longer than `delayMs` to produce visible
+text/tool output, the bridge emits a small visible text block like `Working
+locally with Qwen3.6 27B Heretic MLX bf16 via OMLX...` and periodic progress
+lines until real output arrives. For OMLX, the bridge also samples
+`/admin/api/activity` to report loading, prefill progress, generation speed,
+queue state, and memory pressure when available. This keeps Claude Desktop's
+stream watchdog from treating long local prefill as an idle connection, without
+adding progress text to normal fast responses. Disable with
+`CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting `streamingProgress.enabled`
+to `false`; disable provider status only with
+`streamingProgress.providerStatusEnabled=false`.
 
 ## Safety Notes
 
