@@ -182,55 +182,65 @@ def build_route_map(models: list[dict]) -> dict[str, str]:
 
 def build_claude_desktop_models(route_map: dict[str, str]) -> list[dict]:
     routes = list(route_map)
-    default_route = routes[0]
     alias_specs = [
-        ("claude-sonnet-4-5", "sonnet", default_route, "Qwen3.5 Sushi Coder 9B"),
-        ("claude-haiku-4-5", "haiku", default_route, "Qwen3.5 Sushi Coder 9B Small"),
-        (
-            "claude-opus-4-5",
-            "opus",
-            choose_route(routes, [r"qwen3\.6-35b-a3b-mlx-4bit", r"qwen3-next-80b-a3b-instruct"]),
-            None,
-        ),
-        (
-            "claude-fable-5",
-            "fable",
-            choose_route(routes, [r"gemma-4-12b-coder", r"gemma"]),
-            None,
-        ),
-        (
-            "claude-mythos-5",
-            "mythos",
-            choose_route(routes, [r"claude-opus-vl-grafted", r"qwen3\.6-35b"]),
-            None,
-        ),
+        ("claude-sonnet-4-5", "sonnet", [r"qwen3\.5-9b-sushi-coder"], None),
+        ("claude-opus-4-5", "opus", [r"qwen3-next-80b-a3b-instruct"], None),
+        ("claude-mythos-5", "mythos", [r"qwen3-next-80b-a3b-thinking"], None),
+        ("claude-sonnet-4-6", "sonnet", [r"qwen3\.6-27b-heretic"], None),
+        ("claude-opus-4-8", "opus", [r"claude-opus-vl-grafted"], None),
+        ("claude-opus-4-1", "opus", [r"qwen3\.6-35b-a3b-mlx-4bit"], None),
+        ("claude-fable-5", "fable", [r"gemma-4-12b-coder"], None),
+        ("claude-haiku-4-5", "haiku", [r"gemma-4-e4b-it"], None),
+        ("claude-haiku-4-5-20251001", "haiku", [r"qwen3-vl-4b-instruct"], None),
+        ("claude-sonnet-4-5-20250929", "sonnet", [], None),
+        ("claude-opus-4-1-20250805", "opus", [], None),
+        ("claude-3-7-sonnet-20250219", "sonnet", [], None),
+        ("claude-3-5-sonnet-20241022", "sonnet", [], None),
+        ("claude-3-5-haiku-20241022", "haiku", [], None),
+        ("claude-3-opus-20240229", "opus", [], None),
+        ("claude-3-sonnet-20240229", "sonnet", [], None),
     ]
-
     models = []
     seen_names: set[str] = set()
-    for name, tier, target, label_hint in alias_specs:
-        if not target or name in seen_names:
+    used_routes: set[str] = set()
+    default_tiers: set[str] = set()
+    for name, tier, patterns, label_hint in alias_specs:
+        if name in seen_names:
             continue
+        target = choose_unused_route(routes, used_routes, patterns)
+        if not target:
+            continue
+        used_routes.add(target)
         seen_names.add(name)
         upstream_id = route_map[target]
         label = label_hint or label_for_model(upstream_id)
+        is_family_default = tier not in default_tiers
+        default_tiers.add(tier)
         models.append(
             {
                 "name": name,
                 "target": target,
                 "labelOverride": f"{label} via Local Bridge",
                 "anthropicFamilyTier": tier,
-                "isFamilyDefault": True,
+                "isFamilyDefault": is_family_default,
             }
         )
     return models
 
 
-def choose_route(routes: list[str], patterns: list[str]) -> str | None:
+def choose_unused_route(
+    routes: list[str],
+    used_routes: set[str],
+    patterns: list[str],
+) -> str | None:
     for pattern in patterns:
         regex = re.compile(pattern, re.IGNORECASE)
         for route in routes:
-            if regex.search(route):
+            if route not in used_routes and regex.search(route):
+                return route
+    if not patterns:
+        for route in routes:
+            if route not in used_routes:
                 return route
     return None
 

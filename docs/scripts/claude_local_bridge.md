@@ -236,6 +236,20 @@ Example:
 }
 ```
 
+Current local OMLX desktop aliases:
+
+```text
+claude-sonnet-4-5          -> omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
+claude-opus-4-5            -> omlx/Qwen3-Next-80B-A3B-Instruct-4bit
+claude-mythos-5            -> omlx/Qwen3-Next-80B-A3B-Thinking-4bit
+claude-sonnet-4-6          -> omlx/Qwen3.6-27B-Heretic-MLX-bf16
+claude-opus-4-8            -> omlx/Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit
+claude-opus-4-1            -> omlx/Qwen3.6-35B-A3B-MLX-4bit
+claude-fable-5             -> omlx/gemma-4-12b-coder-fable5-composer2.5-8bit
+claude-haiku-4-5           -> omlx/gemma-4-e4b-it-4bit
+claude-haiku-4-5-20251001  -> omlx/Qwen3-VL-4B-Instruct-4bit
+```
+
 Legacy single-provider mode without `CLAUDE_LOCAL_PROVIDERS_FILE` or
 `CLAUDE_LOCAL_PROVIDERS` still exposes raw upstream model IDs for compatibility
 with the existing local Cowork setup. Explicit multi-provider mode always uses
