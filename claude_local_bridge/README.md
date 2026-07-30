@@ -136,13 +136,25 @@ Use an explicit directory when your launcher stores profiles somewhere else:
 
 ## LaunchAgent
 
-Install the generic bridge as a user LaunchAgent so Claude Desktop/Cowork can
-reach it whenever a profile starts.
+Install the generic bridge API as a user LaunchAgent so Claude Desktop/Cowork
+can reach it whenever a profile starts. The LaunchAgent uses reloadable
+provider-file mode, binds only to `127.0.0.1`, and does not embed cloud API
+keys.
+
+Prepare the ignored local provider file first:
+
+```bash
+cd /Users/borland/tools/claude_local_bridge
+cp providers.example.json providers.local.json
+```
+
+Keep local providers such as OMLX and LM Studio on loopback. If you enable
+cloud providers in `providers.local.json`, keep `apiKeyEnv` references and set
+those secrets outside git; do not write real keys into the plist.
 
 Copy and fill the template:
 
 ```bash
-cd /Users/borland/tools/claude_local_bridge
 cp launchd/com.borland.claude-local-bridge.plist.template \
   "$HOME/Library/LaunchAgents/com.borland.claude-local-bridge.plist"
 ```
@@ -152,6 +164,12 @@ Replace placeholders:
 - `__NODE_BIN__`: usually `/usr/local/bin/node` or `/opt/homebrew/bin/node`
 - `__BRIDGE_DIR__`: `/Users/borland/tools/claude_local_bridge`
 - `__HOME__`: `/Users/borland`
+
+The template sets `CLAUDE_LOCAL_PROVIDERS_FILE` to
+`providers.local.json`, `CLAUDE_LOCAL_BRIDGE_HOST=127.0.0.1`, and placeholder
+local provider keys (`OMLX_API_KEY` / `LMSTUDIO_API_KEY`) with value
+`local-bridge`. Those placeholders are fine for local providers that only need
+a non-empty key; replace them only if the upstream requires a specific token.
 
 Validate and load:
 

@@ -12,20 +12,18 @@
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>CLAUDE_LOCAL_INFERENCE_BACKEND</key>
-    <string>omlx</string>
-    <key>OMLX_BASE_URL</key>
-    <string>http://127.0.0.1:8005</string>
     <key>CLAUDE_LOCAL_PROVIDERS_FILE</key>
     <string>__BRIDGE_DIR__/providers.local.json</string>
-    <key>CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME</key>
-    <string>x-api-key</string>
-    <key>CLAUDE_LOCAL_INFERENCE_API_KEY</key>
+    <key>OMLX_API_KEY</key>
+    <string>local-bridge</string>
+    <key>LMSTUDIO_API_KEY</key>
     <string>local-bridge</string>
     <key>CLAUDE_LOCAL_BRIDGE_HOST</key>
     <string>127.0.0.1</string>
     <key>CLAUDE_LOCAL_BRIDGE_PORT</key>
     <string>1245</string>
+    <key>CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS</key>
+    <string>30000</string>
     <key>CLAUDE_LOCAL_MAIN_MODEL</key>
     <string>omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX</string>
     <key>CLAUDE_LOCAL_SMALL_MODEL</key>

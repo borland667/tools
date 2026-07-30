@@ -43,6 +43,33 @@ Do not use this when:
 - `/Users/borland/tools/claude_local_bridge/claude-3p-provider.example.json`
 - `/Users/borland/tools/claude_local_bridge/launchd/com.borland.claude-local-bridge.plist.template`
 
+## LaunchAgent Setup
+
+The LaunchAgent template runs the generic bridge API in reloadable
+multi-provider mode:
+
+- Program: `/Users/borland/tools/claude_local_bridge/bridge.mjs serve`
+- Bind host: `127.0.0.1` only
+- Port: `1245`
+- Provider config: `/Users/borland/tools/claude_local_bridge/providers.local.json`
+- Logs: `$HOME/Library/Logs/claude-local-bridge.log`
+
+Prepare the ignored local provider file before loading launchd:
+
+```bash
+cd /Users/borland/tools/claude_local_bridge
+cp providers.example.json providers.local.json
+```
+
+Then copy the plist template into `$HOME/Library/LaunchAgents`, replace
+`__NODE_BIN__`, `__BRIDGE_DIR__`, and `__HOME__`, validate with `plutil -lint`,
+and load with `launchctl bootstrap gui/$(id -u) ...`.
+
+The template includes placeholder `OMLX_API_KEY` and `LMSTUDIO_API_KEY` values
+of `local-bridge` for local providers that only require a non-empty API key.
+Do not put real cloud provider secrets in the plist; keep cloud providers
+disabled or reference secrets through a machine-local mechanism.
+
 ## Claude Profile Model
 
 The bridge assumes Claude Desktop profiles are isolated by Electron
