@@ -115,6 +115,7 @@ Environment:
   CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
   CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
+  CLAUDE_LOCAL_VISION_MODEL               Override model used for image /v1/messages requests
   CLAUDE_LOCAL_MODEL_MAP                  JSON object of explicit model rewrites
   claudeDesktopModels                     bridge config array of Claude-facing aliases
   CLAUDE_PROFILE_NAME                     Named Claude profile under ~/.claude-instances
@@ -336,6 +337,23 @@ async function proxyToUpstream(req, res, url) {
     return writeOpenAiChatAsAnthropic(upstream, res, provider)
   }
 
+  if (!upstream.ok && !expectsStreamingResponse) {
+    const text = await upstream.text()
+    console.error(
+      `[bridge] upstream error from ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: HTTP ${upstream.status} ${truncateForLog(text)}`,
+    )
+    res.statusCode = upstream.status
+    res.statusMessage = upstream.statusText
+    upstream.headers.forEach((value, key) => {
+      if (['content-length', 'connection', 'transfer-encoding'].includes(key)) {
+        return
+      }
+      res.setHeader(key, value)
+    })
+    res.end(text)
+    return
+  }
+
   res.statusCode = upstream.status
   res.statusMessage = upstream.statusText
   upstream.headers.forEach((value, key) => {
@@ -438,6 +456,17 @@ async function prepareRequestForProvider(pathname, rawBody) {
 
 function resolveModelRoute(requestedModel, payload = null) {
   const normalized = requestedModel.toLowerCase()
+
+  const preferredVisionModel = pickVisionAwareModel(payload, normalized)
+  if (preferredVisionModel) {
+    return preferredVisionModel
+  }
+
+  const preferredToolModel = pickToolAwareModel(payload, normalized)
+  if (preferredToolModel) {
+    return preferredToolModel
+  }
+
   const exact = modelRoutes.get(requestedModel)
   if (exact) {
     return exact
@@ -448,11 +477,6 @@ function resolveModelRoute(requestedModel, payload = null) {
   )
   if (exactCaseInsensitive) {
     return exactCaseInsensitive[1]
-  }
-
-  const preferredToolModel = pickToolAwareModel(payload, normalized)
-  if (preferredToolModel) {
-    return preferredToolModel
   }
 
   const explicitMap = parseExplicitModelMap()
@@ -482,6 +506,22 @@ function resolveModelRoute(requestedModel, payload = null) {
   return null
 }
 
+function pickVisionAwareModel(payload, normalizedRequestedModel) {
+  if (!payloadHasImages(payload)) {
+    return null
+  }
+
+  if (!looksLikeAnthropicAlias(normalizedRequestedModel)) {
+    return null
+  }
+
+  return (
+    pickConfiguredModelId(getVisionModelOverride()) ??
+    pickDetectedVisionModel() ??
+    null
+  )
+}
+
 function pickToolAwareModel(payload, normalizedRequestedModel) {
   if (!payloadHasTools(payload)) {
     return null
@@ -505,6 +545,40 @@ function payloadHasTools(payload) {
       Array.isArray(payload.tools) &&
       payload.tools.length > 0,
   )
+}
+
+function payloadHasImages(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+
+  for (const message of Array.isArray(payload.messages) ? payload.messages : []) {
+    if (contentHasImages(message?.content)) {
+      return true
+    }
+  }
+
+  return contentHasImages(payload.system)
+}
+
+function contentHasImages(content) {
+  if (!Array.isArray(content)) {
+    return false
+  }
+
+  for (const part of content) {
+    if (!part || typeof part !== 'object') {
+      continue
+    }
+    if (part.type === 'image' || part.type === 'image_url') {
+      return true
+    }
+    if (contentHasImages(part.content)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 function looksLikeAnthropicAlias(normalizedRequestedModel) {
@@ -536,6 +610,21 @@ function pickConfiguredModelId(candidate) {
   }
 
   return null
+}
+
+function pickDetectedVisionModel() {
+  const routes = [...modelRoutes.values()]
+  const preferred = routes.find(route =>
+    /qwen\d*[-.]?vl/i.test(`${route.routeId} ${route.upstreamModelId}`),
+  )
+  if (preferred) {
+    return preferred
+  }
+
+  return routes.find(route => {
+    const text = `${route.routeId} ${route.upstreamModelId}`
+    return /\bvl\b|vision/i.test(text) && !/grafted|visualquality|image/i.test(text)
+  }) ?? null
 }
 
 function routeForTargetModel(candidate) {
@@ -578,7 +667,7 @@ function toOpenAiChatCompletion(payload) {
     const role = message?.role === 'assistant' ? 'assistant' : 'user'
     messages.push({
       role,
-      content: anthropicTextFromContent(message?.content),
+      content: openAiContentFromAnthropicContent(message?.content),
     })
   }
 
@@ -608,6 +697,47 @@ function toOpenAiChatCompletion(payload) {
   }
 
   return next
+}
+
+function openAiContentFromAnthropicContent(content) {
+  if (typeof content === 'string') {
+    return content
+  }
+  if (!Array.isArray(content)) {
+    return ''
+  }
+
+  const parts = []
+  for (const part of content) {
+    if (typeof part === 'string') {
+      parts.push({ type: 'text', text: part })
+    } else if (part?.type === 'text' && typeof part.text === 'string') {
+      parts.push({ type: 'text', text: part.text })
+    } else if (part?.type === 'image' && part.source?.type === 'base64') {
+      const mediaType = part.source.media_type ?? 'image/png'
+      parts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${mediaType};base64,${part.source.data ?? ''}`,
+        },
+      })
+    } else if (part?.type === 'image_url') {
+      parts.push(part)
+    } else if (part?.type === 'tool_result') {
+      const text = anthropicTextFromContent(part.content)
+      if (text) {
+        parts.push({ type: 'text', text })
+      }
+    }
+  }
+
+  if (parts.length === 0) {
+    return ''
+  }
+  if (parts.every(part => part.type === 'text')) {
+    return parts.map(part => part.text).join('\n')
+  }
+  return parts
 }
 
 function anthropicTextFromContent(content) {
@@ -1536,6 +1666,10 @@ function getToolModelOverride() {
   return configValue('models.tool', process.env.CLAUDE_LOCAL_TOOL_MODEL) ?? ''
 }
 
+function getVisionModelOverride() {
+  return configValue('models.vision', process.env.CLAUDE_LOCAL_VISION_MODEL) ?? ''
+}
+
 function getModelSyncIntervalMs() {
   return Number(
     configValue('modelSyncIntervalMs', process.env.CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS) ??
@@ -1824,4 +1958,12 @@ function formatError(error) {
     return error.message
   }
   return String(error)
+}
+
+function truncateForLog(value, maxLength = 800) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) {
+    return text
+  }
+  return `${text.slice(0, maxLength)}...`
 }

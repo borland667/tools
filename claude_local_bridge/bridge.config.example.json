@@ -9,7 +9,8 @@
   "models": {
     "main": "claude-sonnet-4-5",
     "small": "claude-haiku-4-5",
-    "tool": "claude-sonnet-4-5"
+    "tool": "claude-sonnet-4-5",
+    "vision": "claude-haiku-4-5-20251001"
   },
   "claudeDesktopModels": [
     {

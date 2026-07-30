@@ -37,6 +37,8 @@ The bridge is intentionally small:
   model IDs.
 - `POST /v1/messages` proxies Anthropic-compatible providers directly and
   adapts OpenAI-compatible providers through `/v1/chat/completions`.
+- Image-bearing Claude alias requests can be routed to a dedicated vision
+  model with `models.vision` / `CLAUDE_LOCAL_VISION_MODEL`.
 - `GET /api/claude_cli/bootstrap` returns additional model picker options for
   Claude Code builds that read that bootstrap endpoint.
 - `GET /sync-models` refreshes the local model cache.
@@ -53,6 +55,7 @@ Validated local setup:
 - Bridge server: `http://127.0.0.1:1245`
 - LaunchAgent label: `com.borland.claude-local-bridge`
 - Default/tool route: `omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX`
+- Vision route: `omlx/Qwen3-VL-4B-Instruct-4bit`
 - Claude profiles: isolated with Electron `--user-data-dir`, usually under
   `$HOME/.claude-instances/<profile>`
 
@@ -222,6 +225,7 @@ export CLAUDE_LOCAL_BRIDGE_PORT=1245
 export CLAUDE_LOCAL_MAIN_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
 export CLAUDE_LOCAL_SMALL_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
 export CLAUDE_LOCAL_TOOL_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
+export CLAUDE_LOCAL_VISION_MODEL=omlx/Qwen3-VL-4B-Instruct-4bit
 ```
 
 For multiple simultaneous providers, prefer a reloadable provider file:
@@ -316,12 +320,47 @@ provider, the bridge asks the upstream for a non-streaming chat completion and
 then emits Anthropic-shaped SSE events. That preserves Claude client
 compatibility, but it is buffered rather than token-by-token streaming.
 
+## Tool And Vision Routing
+
+Claude Desktop/Cowork can choose internal Claude-family aliases that differ
+from the model label selected in the UI. For example, an image prompt may be
+sent as an opus-family request even when the profile later shows a sonnet-family
+model. The bridge therefore treats tools and images as request capabilities,
+not just picker labels.
+
+When a request includes tools and the requested model looks like an Anthropic
+alias, `models.tool` or `CLAUDE_LOCAL_TOOL_MODEL` can force a more reliable
+tool-calling model. When a request includes Anthropic image content blocks and
+the requested model looks like an Anthropic alias, `models.vision` or
+`CLAUDE_LOCAL_VISION_MODEL` can force a known-working vision model. Exact
+provider-qualified model IDs, such as `omlx/Qwen3-VL-4B-Instruct-4bit`, are
+left alone.
+
+For the current OMLX setup, keep:
+
+```json
+{
+  "models": {
+    "main": "claude-sonnet-4-5",
+    "small": "claude-haiku-4-5",
+    "tool": "claude-sonnet-4-5",
+    "vision": "claude-haiku-4-5-20251001"
+  }
+}
+```
+
+The `claude-haiku-4-5-20251001` alias maps to
+`omlx/Qwen3-VL-4B-Instruct-4bit`. This avoids routing image prompts to
+`Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit`, which has been observed to
+fail in OMLX with `409 Conflict` and a VLM load error about missing parameters.
+
 ## Auto-Reload
 
-Auto-reload applies to provider-file changes, model discovery, route maps,
-health state, and Claude Code model option cache. It does not reload process
-environment variables because launchd and shells do not mutate a running
-process environment.
+Auto-reload applies to `bridge.local.json`, provider-file changes, model
+discovery, route maps, health state, and Claude Code model option cache. It
+does not reload process environment variables because launchd and shells do not
+mutate a running process environment. It also does not reload changed
+JavaScript source code; restart the LaunchAgent after changing `bridge.mjs`.
 
 Use this for reloadable provider changes:
 
@@ -640,9 +679,10 @@ Anthropic-style alias mapping is also supported:
 export CLAUDE_LOCAL_MODEL_MAP='{"default":"omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX","claude-sonnet-4-5":"omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX"}'
 ```
 
-When a request includes tools and the requested model looks like an Anthropic
-alias, `CLAUDE_LOCAL_TOOL_MODEL` can force a more reliable tool-calling model.
-This is a bridge behavior, not an Anthropic provider config key.
+When a request includes tools or image content and the requested model looks
+like an Anthropic alias, `CLAUDE_LOCAL_TOOL_MODEL` and
+`CLAUDE_LOCAL_VISION_MODEL` can force more reliable capability-specific models.
+This is bridge behavior, not an Anthropic provider config key.
 
 ## Validation
 

@@ -205,6 +205,77 @@ test('routes Anthropic-family tool requests to configured tool model', async t =
   )
 })
 
+test('routes Anthropic-family image requests to configured vision model', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [
+      model('Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit'),
+      model('Qwen3-VL-4B-Instruct-4bit'),
+    ],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      await postJson(`${bridge.baseUrl}/v1/messages`, {
+        model: 'claude-opus-4-8',
+        max_tokens: 16,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: 'abc123',
+                },
+              },
+              { type: 'text', text: 'describe this image' },
+            ],
+          },
+        ],
+      })
+
+      assert.equal(anthropic.requests.messages.length, 1)
+      assert.equal(
+        anthropic.requests.messages[0].model,
+        'Qwen3-VL-4B-Instruct-4bit',
+      )
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'claude-opus-4-8'),
+        models: {
+          main: 'claude-opus-4-8',
+          small: 'claude-haiku-4-5-20251001',
+          tool: 'claude-sonnet-4-5',
+          vision: 'claude-haiku-4-5-20251001',
+        },
+        claudeDesktopModels: [
+          {
+            name: 'claude-opus-4-8',
+            target: 'omlx/Qwen3.6-35B-A3B-Claude-Opus-VL-grafted-MLX-8bit',
+            labelOverride: 'Broken VLM alias',
+          },
+          {
+            name: 'claude-haiku-4-5-20251001',
+            target: 'omlx/Qwen3-VL-4B-Instruct-4bit',
+            labelOverride: 'Working vision alias',
+          },
+        ],
+      }),
+    },
+  )
+})
+
 test('isolates failed providers while keeping healthy provider models available', async t => {
   const upstreams = []
   t.after(async () => {
