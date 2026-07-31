@@ -767,6 +767,9 @@ not used as a replacement list:
   `models.tool`.
 - `visionCapable`: optional boolean; when true, image requests selected through
   this alias stay on this route instead of falling back to `models.vision`.
+- `maxContextLength` / `max_model_len`: optional override for the advertised
+  alias context window; by default aliases inherit the target model's upstream
+  context metadata.
 - `isFamilyDefault`: optional winner when several entries share a tier.
 
 Every usable local conversation model should have exactly one Claude-facing
@@ -774,6 +777,22 @@ alias. When several local models use the same `anthropicFamilyTier`, give each
 one a different Claude model version alias, for example `claude-opus-4-5` and
 `claude-opus-4-1`. The refresh helper validates this and refuses to write a
 partial or duplicate alias table.
+
+### Context Windows
+
+The bridge preserves provider context-window metadata in `/v1/models`. OMLX
+reports this as `max_model_len`; the bridge forwards it for raw provider routes
+and for Claude-facing aliases. Check what Claude/config tooling can discover:
+
+```bash
+curl -s http://127.0.0.1:1245/v1/models | jq '.data[] | {id, max_model_len}'
+```
+
+This is the advertised model capacity. OMLX also has a runtime cap in
+`~/.omlx/settings.json` at `sampling.max_context_window`; if that value is lower
+than a model's `max_model_len`, the OMLX runtime cap is the practical limit.
+For long Cowork/code tasks, keep the OMLX runtime context window at least as
+large as the models exposed through the bridge.
 
 Current local OMLX desktop aliases:
 

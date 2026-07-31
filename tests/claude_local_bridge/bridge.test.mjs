@@ -116,7 +116,7 @@ test('exposes Claude Desktop compatible aliases while routing to local models', 
   })
 
   const anthropic = await startAnthropicProvider({
-    models: [model('Qwen3.5-9b-Sushi-Coder-RL-MLX')],
+    models: [model('Qwen3.5-9b-Sushi-Coder-RL-MLX', { max_model_len: 262144 })],
   })
   upstreams.push(anthropic.server)
 
@@ -130,6 +130,15 @@ test('exposes Claude Desktop compatible aliases while routing to local models', 
         'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX',
       ])
       assert.equal(models.data.find(item => item.id === 'claude-sonnet-4-5').owned_by, 'omlx')
+      assert.equal(
+        models.data.find(item => item.id === 'claude-sonnet-4-5').max_model_len,
+        262144,
+      )
+      assert.equal(
+        models.data.find(item => item.id === 'omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX')
+          .max_model_len,
+        262144,
+      )
 
       const response = await postJson(`${bridge.baseUrl}/v1/messages`, {
         model: 'claude-sonnet-4-5',
@@ -847,12 +856,13 @@ function bridgeConfig(providersFile, mainModel) {
   }
 }
 
-function model(id) {
+function model(id, extra = {}) {
   return {
     id,
     object: 'model',
     created: 0,
     owned_by: 'test',
+    ...extra,
   }
 }
 

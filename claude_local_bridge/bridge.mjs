@@ -1160,6 +1160,7 @@ async function buildGatewayModelList() {
       object: 'model',
       created: 0,
       owned_by: option.providerId ?? 'local',
+      ...(option.maxContextLength ? { max_model_len: option.maxContextLength } : {}),
     })),
   }
 }
@@ -1218,6 +1219,7 @@ async function syncModelOptions() {
         provider,
         toolCapable: option.toolCapable,
         visionCapable: option.visionCapable,
+        maxContextLength: option.maxContextLength,
       })
     }
   }
@@ -1308,6 +1310,7 @@ function normalizeClaudeDesktopModels(routesById) {
       description,
       toolCapable: alias.toolCapable === true || route.toolCapable === true,
       visionCapable: alias.visionCapable === true || route.visionCapable === true,
+      maxContextLength: firstNumber(alias.maxContextLength, alias.max_model_len) ?? route.maxContextLength,
     }
     Object.defineProperty(option, 'route', {
       enumerable: false,
@@ -1317,6 +1320,7 @@ function normalizeClaudeDesktopModels(routesById) {
         provider: route.provider,
         toolCapable: alias.toolCapable === true || route.toolCapable === true,
         visionCapable: alias.visionCapable === true || route.visionCapable === true,
+        maxContextLength: option.maxContextLength,
       },
     })
     options.push(option)
@@ -1453,6 +1457,10 @@ function normalizeModelOption(model, provider = providers[0]) {
   const maxContextLength = firstNumber(
     model?.maxContextLength,
     model?.max_context_length,
+    model?.max_model_len,
+    model?.maxModelLen,
+    model?.context_length,
+    model?.contextLength,
   )
   if (maxContextLength !== null) {
     descriptionParts.push(`${compactNumber(maxContextLength)} ctx`)
@@ -1488,6 +1496,7 @@ function normalizeModelOption(model, provider = providers[0]) {
     description,
     toolCapable: isToolCapableModel(model),
     visionCapable: isVisionCapableModel(model, id),
+    maxContextLength,
   }
 }
 

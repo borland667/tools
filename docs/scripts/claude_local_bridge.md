@@ -349,6 +349,17 @@ once at launch. If the settings dialog was open before the manual edit, discard
 the stale dialog changes before relaunching so it does not remove the fixed
 model list.
 
+The bridge forwards upstream context-window metadata as `max_model_len` in
+`/v1/models` for raw provider models and Claude aliases. Verify with:
+
+```bash
+curl -s http://127.0.0.1:1245/v1/models | jq '.data[] | {id, max_model_len}'
+```
+
+For OMLX, also check `~/.omlx/settings.json`: `sampling.max_context_window` is
+the runtime cap. If it is lower than the model's discovered `max_model_len`, the
+OMLX setting wins in practice.
+
 For `type: "openai"` providers, the bridge adapts Anthropic `/v1/messages`
 requests to OpenAI `/v1/chat/completions`. Streaming requests are returned as
 Anthropic-shaped SSE after the upstream non-streaming response completes, so
