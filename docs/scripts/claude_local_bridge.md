@@ -71,10 +71,10 @@ and load with `launchctl bootstrap gui/$(id -u) ...`.
 
 The plist intentionally keeps `EnvironmentVariables` empty. Edit
 `bridge.local.json` for bridge host/port, model defaults, sync interval,
-request timeout, provider file path, and placeholder local API-key values. The
-bridge re-reads `bridge.local.json` on `/sync-models` and periodic syncs;
-host/port changes still require a LaunchAgent restart because the socket is
-already bound.
+non-streaming request timeout, streaming request timeout, provider file path,
+and placeholder local API-key values. The bridge re-reads `bridge.local.json` on
+`/sync-models` and periodic syncs; host/port changes still require a
+LaunchAgent restart because the socket is already bound.
 
 ## Claude Profile Model
 
@@ -371,6 +371,8 @@ local inference. The local config enables:
 
 ```json
 {
+  "requestTimeoutMs": 600000,
+  "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {
     "enabled": true,
     "delayMs": 12000,
@@ -380,6 +382,13 @@ local inference. The local config enables:
   }
 }
 ```
+
+Use `requestTimeoutMs` for short non-streaming calls such as token counting, and
+`streamRequestTimeoutMs` for long-running streaming generations. Keep streaming
+much higher than the normal timeout for slow local providers; large OMLX prompts
+can spend more than 10 minutes in prefill before emitting visible answer text.
+Set `streamRequestTimeoutMs` to `0` only when you want no bridge-side absolute
+timeout for streaming requests.
 
 Thinking passthrough is controlled separately:
 

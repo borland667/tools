@@ -113,6 +113,8 @@ Environment:
   CLAUDE_LOCAL_BRIDGE_HOST                Loopback listen host only: 127.0.0.1, localhost, or ::1
   CLAUDE_LOCAL_BRIDGE_PORT                Bridge listen port (default: 1245)
   CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS     Model sync interval in ms (default: 30000)
+  CLAUDE_LOCAL_REQUEST_TIMEOUT_MS         Non-streaming upstream timeout in ms (default: 600000)
+  CLAUDE_LOCAL_STREAM_REQUEST_TIMEOUT_MS  Streaming upstream timeout in ms (default: 3600000; 0 disables)
   CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
   CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
@@ -344,6 +346,7 @@ async function proxyToUpstream(req, res, url) {
     selectedModel: diagnostics.selectedModel,
     upstreamModel: diagnostics.upstreamModel,
     streaming: expectsStreamingResponse,
+    timeoutMs: getUpstreamRequestTimeoutMs(expectsStreamingResponse),
   })
   applyUpstreamAuthHeaders(headers, provider)
   if (expectsStreamingResponse) {
@@ -356,7 +359,7 @@ async function proxyToUpstream(req, res, url) {
       method: req.method,
       headers,
       body,
-      signal: AbortSignal.timeout(getRequestTimeoutMs()),
+      signal: getUpstreamRequestSignal(expectsStreamingResponse),
     })
   } catch (error) {
     console.error(
@@ -500,6 +503,7 @@ function logRequestEvent(diagnostics, event, details = {}) {
     details.selectedModel ? `selected=${details.selectedModel}` : null,
     details.upstreamModel ? `model=${details.upstreamModel}` : null,
     details.streaming != null ? `streaming=${details.streaming}` : null,
+    details.timeoutMs != null ? `timeoutMs=${details.timeoutMs}` : null,
     details.elapsed ? `elapsed=${details.elapsed}` : null,
     details.events != null ? `events=${details.events}` : null,
     details.visibleEvents != null ? `visible=${details.visibleEvents}` : null,
@@ -1902,6 +1906,28 @@ function getRequestTimeoutMs() {
     configValue('requestTimeoutMs', process.env.CLAUDE_LOCAL_REQUEST_TIMEOUT_MS) ??
       '600000',
   )
+}
+
+function getStreamRequestTimeoutMs() {
+  return Number(
+    configValue(
+      'streamRequestTimeoutMs',
+      process.env.CLAUDE_LOCAL_STREAM_REQUEST_TIMEOUT_MS,
+    ) ??
+      '3600000',
+  )
+}
+
+function getUpstreamRequestTimeoutMs(expectsStreamingResponse) {
+  return expectsStreamingResponse ? getStreamRequestTimeoutMs() : getRequestTimeoutMs()
+}
+
+function getUpstreamRequestSignal(expectsStreamingResponse) {
+  const timeoutMs = getUpstreamRequestTimeoutMs(expectsStreamingResponse)
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return undefined
+  }
+  return AbortSignal.timeout(timeoutMs)
 }
 
 function shouldSendVisibleStreamProgress() {

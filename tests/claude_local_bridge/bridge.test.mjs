@@ -711,6 +711,50 @@ test('keeps visible output indices contiguous after suppressing thinking', async
   )
 })
 
+test('uses streaming request timeout for long-running streams', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startThinkingThenTextAnthropicStreamingProvider({
+    models: [model('slow-timeout-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/slow-timeout-chat',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'finish after the normal timeout' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      const text = await response.text()
+      assert.match(text, /final answer/)
+      assert.doesNotMatch(bridge.logs, /aborted due to timeout/)
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'omlx/slow-timeout-chat'),
+        requestTimeoutMs: 20,
+        streamRequestTimeoutMs: 1000,
+        streamingProgress: {
+          enabled: false,
+        },
+      }),
+    },
+  )
+})
+
 test('includes OMLX provider activity in visible progress', async t => {
   const upstreams = []
   t.after(async () => {

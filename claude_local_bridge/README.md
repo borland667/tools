@@ -176,8 +176,8 @@ Replace placeholders:
 
 The template keeps an empty `EnvironmentVariables` dict on purpose. The bridge
 defaults to `bridge.local.json` in the working directory. That JSON file sets
-the bridge host/port, model defaults, provider file, sync interval, request
-timeout, and placeholder local provider keys.
+the bridge host/port, model defaults, provider file, sync interval, non-streaming
+and streaming request timeouts, and placeholder local provider keys.
 
 Validate and load:
 
@@ -903,6 +903,8 @@ slow models usable, the local config enables a visible stream timeout guard:
 
 ```json
 {
+  "requestTimeoutMs": 600000,
+  "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {
     "enabled": true,
     "delayMs": 12000,
@@ -912,6 +914,14 @@ slow models usable, the local config enables a visible stream timeout guard:
   }
 }
 ```
+
+`requestTimeoutMs` applies to short non-streaming calls such as
+`/v1/messages/count_tokens`. `streamRequestTimeoutMs` applies to streaming
+`/v1/messages` generations after Claude is already connected to the bridge.
+Keep it much longer than the normal timeout for slow local models; Heretic-sized
+OMLX prompts can spend more than 10 minutes in prefill before producing visible
+answer text. Set `streamRequestTimeoutMs` to `0` only if you want no bridge-side
+absolute timeout for streaming requests.
 
 Thinking handling is configured separately:
 
