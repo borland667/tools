@@ -3,8 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BRIDGE_SCRIPT="${SCRIPT_DIR}/bridge.mjs"
-DEFAULT_CLAUDE_CODE_MAIN_MODEL="Qwen3.5-9b-Sushi-Coder-RL-MLX"
-DEFAULT_CLAUDE_CODE_SMALL_MODEL="Qwen3.5-9b-Sushi-Coder-RL-MLX"
+BRIDGE_CONFIG_FILE="${CLAUDE_LOCAL_CONFIG_FILE:-${SCRIPT_DIR}/bridge.local.json}"
 NODE_BIN="${NODE_BIN:-}"
 CLAUDE_BIN="${CLAUDE_BIN:-}"
 
@@ -36,21 +35,21 @@ if [[ -z "${CLAUDE_BIN}" ]]; then
   exit 1
 fi
 
-export CLAUDE_LOCAL_MAIN_MODEL="${CLAUDE_LOCAL_MAIN_MODEL:-${DEFAULT_CLAUDE_CODE_MAIN_MODEL}}"
-export CLAUDE_LOCAL_SMALL_MODEL="${CLAUDE_LOCAL_SMALL_MODEL:-${DEFAULT_CLAUDE_CODE_SMALL_MODEL}}"
-export CLAUDE_LOCAL_TOOL_MODEL="${CLAUDE_LOCAL_TOOL_MODEL:-${CLAUDE_LOCAL_SMALL_MODEL}}"
-export CLAUDE_LOCAL_INFERENCE_BACKEND="${CLAUDE_LOCAL_INFERENCE_BACKEND:-omlx}"
-case "${CLAUDE_LOCAL_BRIDGE_HOST:-127.0.0.1}" in
+export CLAUDE_LOCAL_CONFIG_FILE="${BRIDGE_CONFIG_FILE}"
+
+BRIDGE_HOST="$("${NODE_BIN}" -e 'const fs=require("fs"); const file=process.argv[1]; let config={}; try { config=JSON.parse(fs.readFileSync(file,"utf8")); } catch {} console.log(config.bridge?.host || "127.0.0.1")' "${BRIDGE_CONFIG_FILE}")"
+BRIDGE_PORT="$("${NODE_BIN}" -e 'const fs=require("fs"); const file=process.argv[1]; let config={}; try { config=JSON.parse(fs.readFileSync(file,"utf8")); } catch {} console.log(config.bridge?.port || 1245)' "${BRIDGE_CONFIG_FILE}")"
+
+case "${BRIDGE_HOST}" in
   127.0.0.1|localhost|::1)
-    export CLAUDE_LOCAL_BRIDGE_HOST="${CLAUDE_LOCAL_BRIDGE_HOST:-127.0.0.1}"
     ;;
   *)
-    echo "refusing non-loopback CLAUDE_LOCAL_BRIDGE_HOST=${CLAUDE_LOCAL_BRIDGE_HOST}; using 127.0.0.1" >&2
-    export CLAUDE_LOCAL_BRIDGE_HOST="127.0.0.1"
+    echo "refusing non-loopback bridge.host=${BRIDGE_HOST}; using 127.0.0.1" >&2
+    BRIDGE_HOST="127.0.0.1"
     ;;
 esac
 
-BRIDGE_BASE_URL="http://${CLAUDE_LOCAL_BRIDGE_HOST}:${CLAUDE_LOCAL_BRIDGE_PORT:-1245}"
+BRIDGE_BASE_URL="http://${BRIDGE_HOST}:${BRIDGE_PORT}"
 BRIDGE_PID=""
 
 if command -v curl >/dev/null 2>&1 && curl -fsS "${BRIDGE_BASE_URL}/healthz" >/dev/null 2>&1; then

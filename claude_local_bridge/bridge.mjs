@@ -97,8 +97,25 @@ Usage:
   node bridge.mjs sync-models
   node bridge.mjs print-env
 
-Environment:
-  CLAUDE_LOCAL_CONFIG_FILE                JSON bridge config file
+Configuration:
+  bridge.local.json                       Preferred runtime settings file in the working directory
+  bridge.host / bridge.port               Loopback listen address
+  providersFile / providers               Reloadable provider file or inline provider array
+  singleProvider                          Legacy one-provider config object
+  models.main / models.small              Default Claude-facing model aliases
+  models.tool / models.vision             Tool and vision fallback models
+  modelSyncIntervalMs                     Model sync interval in ms (default: 30000)
+  requestTimeoutMs                        Non-streaming upstream timeout in ms (default: 600000)
+  streamRequestTimeoutMs                  Streaming upstream timeout in ms (default: 3600000; 0 disables)
+  streamingProgress                       Visible heartbeat settings for timeout-risk streams
+  thinking.mode                           passthrough-with-progress, passthrough, suppress, status-only
+  claudeDesktopModels                     Claude-facing aliases for Desktop/Cowork discovery
+  claude.profileName / profileDir         Claude profile under ~/.claude-instances or explicit dir
+  claude.globalConfigFile / configDir      Claude config output location for sync-models
+  env                                     Config-local env lookup map for apiKeyEnv and print-env
+
+Legacy environment fallback:
+  CLAUDE_LOCAL_CONFIG_FILE                JSON bridge config file override
   CLAUDE_LOCAL_PROVIDERS                  JSON array of provider definitions
   CLAUDE_LOCAL_PROVIDERS_FILE             JSON file to auto-reload provider definitions
   CLAUDE_LOCAL_INFERENCE_BACKEND          Single-provider fallback: lmstudio, omlx, openai, anthropic
@@ -114,7 +131,6 @@ Environment:
   CLAUDE_LOCAL_BRIDGE_PORT                Bridge listen port (default: 1245)
   CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS     Model sync interval in ms (default: 30000)
   CLAUDE_LOCAL_REQUEST_TIMEOUT_MS         Non-streaming upstream timeout in ms (default: 600000)
-  CLAUDE_LOCAL_STREAM_REQUEST_TIMEOUT_MS  Streaming upstream timeout in ms (default: 3600000; 0 disables)
   CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
   CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
@@ -126,7 +142,6 @@ Environment:
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS_TIMEOUT_MS Provider status fetch timeout (default: 1200)
   CLAUDE_LOCAL_THINKING_MODE              Thinking handling: passthrough-with-progress, passthrough, suppress, status-only
   CLAUDE_LOCAL_MODEL_MAP                  JSON object of explicit model rewrites
-  claudeDesktopModels                     bridge config array of Claude-facing aliases
   CLAUDE_PROFILE_NAME                     Named Claude profile under ~/.claude-instances
   CLAUDE_PROFILE_DIR                      Explicit Claude profile user-data dir
   CLAUDE_GLOBAL_CONFIG_FILE               Override Claude global config path
@@ -159,23 +174,19 @@ function reloadBridgeConfig() {
 }
 
 function configValue(pathExpression, envValueOverride) {
-  if (envValueOverride !== undefined) {
-    return envValueOverride
-  }
-
   const value = pathExpression
     .split('.')
     .reduce((current, key) => current?.[key], BRIDGE_CONFIG)
   if (value === undefined || value === null || value === '') {
-    return undefined
+    return envValueOverride
   }
   return value
 }
 
 function printEnvBlock(bridgeBaseUrl) {
   const token =
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.ANTHROPIC_AUTH_TOKEN ||
+    configEnvValue('ANTHROPIC_API_KEY') ||
+    configEnvValue('ANTHROPIC_AUTH_TOKEN') ||
     'local-bridge'
   console.log(`export ANTHROPIC_BASE_URL=${bridgeBaseUrl}`)
   console.log(`export ANTHROPIC_API_KEY=${token}`)
@@ -1879,7 +1890,7 @@ function envValue(name) {
 }
 
 function configEnvValue(name) {
-  return process.env[name] ?? BRIDGE_CONFIG.env?.[name]
+  return BRIDGE_CONFIG.env?.[name] ?? process.env[name]
 }
 
 function getProvidersFile() {
@@ -1910,10 +1921,7 @@ function getRequestTimeoutMs() {
 
 function getStreamRequestTimeoutMs() {
   return Number(
-    configValue(
-      'streamRequestTimeoutMs',
-      process.env.CLAUDE_LOCAL_STREAM_REQUEST_TIMEOUT_MS,
-    ) ??
+    configValue('streamRequestTimeoutMs') ??
       '3600000',
   )
 }
@@ -2016,10 +2024,13 @@ function providerConfigSource() {
   if (providersFile) {
     return providersFile
   }
-  if (process.env.CLAUDE_LOCAL_PROVIDERS || BRIDGE_CONFIG.providers) {
-    return 'CLAUDE_LOCAL_PROVIDERS'
+  if (BRIDGE_CONFIG.providers) {
+    return 'bridge config providers'
   }
-  return 'single-provider-env'
+  if (process.env.CLAUDE_LOCAL_PROVIDERS) {
+    return 'legacy CLAUDE_LOCAL_PROVIDERS'
+  }
+  return 'single-provider fallback'
 }
 
 function stableJson(value) {
@@ -2798,8 +2809,12 @@ async function writeJsonObject(filePath, payload) {
 }
 
 async function getClaudeGlobalConfigPath() {
-  if (process.env.CLAUDE_GLOBAL_CONFIG_FILE) {
-    return process.env.CLAUDE_GLOBAL_CONFIG_FILE
+  const explicitGlobalConfig = configValue(
+    'claude.globalConfigFile',
+    process.env.CLAUDE_GLOBAL_CONFIG_FILE,
+  )
+  if (explicitGlobalConfig) {
+    return explicitGlobalConfig
   }
 
   const profileDir = getClaudeProfileDir()
@@ -2811,23 +2826,28 @@ async function getClaudeGlobalConfigPath() {
     return path.join(profileDir, '.claude.json')
   }
 
-  const claudeConfigDir = (
-    process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude')
-  ).normalize('NFC')
+  const configuredConfigDir = configValue(
+    'claude.configDir',
+    process.env.CLAUDE_CONFIG_DIR,
+  )
+  const claudeConfigDir = (configuredConfigDir ?? path.join(homedir(), '.claude')).normalize('NFC')
   const legacyPath = path.join(claudeConfigDir, '.config.json')
   if (existsSync(legacyPath)) {
     return legacyPath
   }
 
-  return path.join(process.env.CLAUDE_CONFIG_DIR ?? homedir(), '.claude.json')
+  return path.join(configuredConfigDir ?? homedir(), '.claude.json')
 }
 
 function getClaudeProfileDir() {
-  if (process.env.CLAUDE_PROFILE_DIR) {
-    return process.env.CLAUDE_PROFILE_DIR
+  const explicitProfileDir = configValue('claude.profileDir', process.env.CLAUDE_PROFILE_DIR)
+  if (explicitProfileDir) {
+    return explicitProfileDir
   }
 
-  const profileName = firstString(process.env.CLAUDE_PROFILE_NAME)
+  const profileName = firstString(
+    configValue('claude.profileName', process.env.CLAUDE_PROFILE_NAME),
+  )
   if (!profileName || profileName === 'default') {
     return null
   }

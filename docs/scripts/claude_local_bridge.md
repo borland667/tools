@@ -72,9 +72,11 @@ and load with `launchctl bootstrap gui/$(id -u) ...`.
 The plist intentionally keeps `EnvironmentVariables` empty. Edit
 `bridge.local.json` for bridge host/port, model defaults, sync interval,
 non-streaming request timeout, streaming request timeout, provider file path,
-and placeholder local API-key values. The bridge re-reads `bridge.local.json` on
-`/sync-models` and periodic syncs; host/port changes still require a
-LaunchAgent restart because the socket is already bound.
+Claude profile selection, and placeholder local API-key values. The bridge
+re-reads `bridge.local.json` on `/sync-models` and periodic syncs; host/port
+changes still require a LaunchAgent restart because the socket is already
+bound. Use `claude.profileName: "local-3p"` for the local third-party inference
+profile under `/Users/borland/.claude-instances/local-3p`.
 
 ## Claude Profile Model
 
@@ -210,13 +212,18 @@ selection; bridge-specific settings use `CLAUDE_LOCAL_*`.
 
 ## Multi-Provider Mode
 
-Use `CLAUDE_LOCAL_PROVIDERS_FILE` when more than one upstream should be visible
-through the same local bridge and you want runtime reloads:
+Use `providersFile` in `bridge.local.json` when more than one upstream should be
+visible through the same local bridge and you want runtime reloads:
 
 ```bash
 cp /Users/borland/tools/claude_local_bridge/providers.example.json \
   /Users/borland/tools/claude_local_bridge/providers.local.json
-export CLAUDE_LOCAL_PROVIDERS_FILE=/Users/borland/tools/claude_local_bridge/providers.local.json
+```
+
+```json
+{
+  "providersFile": "providers.local.json"
+}
 ```
 
 The bridge re-reads that file on each model sync interval and whenever
@@ -226,16 +233,23 @@ The bridge re-reads that file on each model sync interval and whenever
 tracked template, then customize the local copy with enabled providers and
 `apiKeyEnv` names for each machine.
 
-`CLAUDE_LOCAL_PROVIDERS` is also supported for static env-only configuration:
+Static providers can also be embedded directly in `bridge.local.json`:
 
-```bash
-export CLAUDE_LOCAL_PROVIDERS='[
-  {"id":"omlx","type":"anthropic","baseUrl":"http://127.0.0.1:8005","authScheme":"x-api-key","apiKeyEnv":"OMLX_API_KEY","label":"OMLX"},
-  {"id":"lmstudio","type":"openai","baseUrl":"http://127.0.0.1:1234","authScheme":"x-api-key","apiKeyEnv":"LMSTUDIO_API_KEY","label":"LM Studio"},
-  {"id":"openai","type":"openai","baseUrl":"https://api.openai.com","authScheme":"bearer","apiKeyEnv":"OPENAI_API_KEY","label":"OpenAI"},
-  {"id":"anthropic","type":"anthropic","baseUrl":"https://api.anthropic.com","authScheme":"x-api-key","apiKeyEnv":"ANTHROPIC_API_KEY","anthropicVersion":"2023-06-01","label":"Anthropic"}
-]'
+```json
+{
+  "providers": [
+    {"id":"omlx","type":"anthropic","baseUrl":"http://127.0.0.1:8005","authScheme":"x-api-key","apiKeyEnv":"OMLX_API_KEY","label":"OMLX"},
+    {"id":"lmstudio","type":"openai","baseUrl":"http://127.0.0.1:1234","authScheme":"x-api-key","apiKeyEnv":"LMSTUDIO_API_KEY","label":"LM Studio"}
+  ],
+  "env": {
+    "OMLX_API_KEY": "local-bridge",
+    "LMSTUDIO_API_KEY": "local-bridge"
+  }
+}
 ```
+
+Legacy env-only provider config is still parsed as a fallback for tests and
+one-off runs, but the LaunchAgent setup should keep settings in JSON.
 
 By default, bridge route IDs are provider-qualified:
 

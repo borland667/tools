@@ -187,8 +187,9 @@ launchctl bootstrap gui/$(id -u) \
   "$HOME/Library/LaunchAgents/com.borland.claude-local-bridge.plist"
 ```
 
-After editing LaunchAgent environment variables, fully reload it. `kickstart`
-alone may keep launchd's cached environment:
+After editing the plist itself, fully reload it. `kickstart` is enough for
+normal `bridge.local.json` setting changes, but plist edits are cached by
+launchd:
 
 ```bash
 launchctl bootout gui/$(id -u) \
@@ -204,7 +205,7 @@ launchctl print gui/$(id -u)/com.borland.claude-local-bridge
 curl http://127.0.0.1:1245/healthz
 ```
 
-## Environment
+## JSON Configuration
 
 For launchd, prefer `bridge.local.json` in the bridge working directory:
 
@@ -212,77 +213,77 @@ For launchd, prefer `bridge.local.json` in the bridge working directory:
 cp bridge.config.example.json bridge.local.json
 ```
 
-Environment variables are still supported as overrides for tests and one-off
-runs, but the installed LaunchAgent intentionally avoids bridge settings in the
-plist.
+The installed LaunchAgent intentionally avoids bridge settings in the plist.
+Keep runtime settings in `bridge.local.json`; the bridge reads JSON values before
+falling back to process environment variables. `CLAUDE_LOCAL_CONFIG_FILE` is the
+only env var normally needed, and only when you want to point the process at a
+non-default config file.
 
-For one provider, generic names are enough:
+Claude profile paths also live in JSON. For the local 3P profile used by this
+setup:
 
-```bash
-export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
-export CLAUDE_LOCAL_INFERENCE_BASE_URL=http://127.0.0.1:8005
-export CLAUDE_LOCAL_INFERENCE_AUTH_SCHEME=x-api-key
-export CLAUDE_LOCAL_INFERENCE_API_KEY=local-bridge
-export CLAUDE_LOCAL_BRIDGE_HOST=127.0.0.1
-export CLAUDE_LOCAL_BRIDGE_PORT=1245
-export CLAUDE_LOCAL_MAIN_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
-export CLAUDE_LOCAL_SMALL_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
-export CLAUDE_LOCAL_TOOL_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
-export CLAUDE_LOCAL_VISION_MODEL=omlx/Qwen3-VL-4B-Instruct-4bit
+```json
+{
+  "claude": {
+    "profileName": "local-3p"
+  }
+}
+```
+
+Use `claude.profileDir` for an explicit profile directory,
+`claude.globalConfigFile` for a specific config file, or `claude.configDir` for
+a non-default Claude config root.
+
+For one provider, use the `singleProvider` object:
+
+```json
+{
+  "bridge": { "host": "127.0.0.1", "port": 1245 },
+  "singleProvider": {
+    "backend": "omlx",
+    "baseUrl": "http://127.0.0.1:8005",
+    "authScheme": "x-api-key",
+    "apiKey": "local-bridge"
+  },
+  "models": {
+    "main": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+    "small": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+    "tool": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+    "vision": "omlx/Qwen3-VL-4B-Instruct-4bit"
+  }
+}
 ```
 
 For multiple simultaneous providers, prefer a reloadable provider file:
 
-```bash
-cp providers.example.json providers.local.json
-export CLAUDE_LOCAL_PROVIDERS_FILE=/Users/borland/tools/claude_local_bridge/providers.local.json
+```json
+{
+  "providersFile": "providers.local.json",
+  "modelSyncIntervalMs": 30000
+}
 ```
 
-The bridge re-reads `CLAUDE_LOCAL_PROVIDERS_FILE` on every model sync. The
-default sync interval is `30000` ms and can be changed with:
+The bridge re-reads `providersFile` on every model sync. The default sync
+interval is `30000` ms and can be changed with `modelSyncIntervalMs`.
 
-```bash
-export CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS=10000
-```
+You can also embed static providers directly in `bridge.local.json`:
 
-You can also use static env-only JSON with `CLAUDE_LOCAL_PROVIDERS`:
-
-```bash
-export CLAUDE_LOCAL_PROVIDERS='[
-  {
-    "id": "omlx",
-    "type": "anthropic",
-    "baseUrl": "http://127.0.0.1:8005",
-    "authScheme": "x-api-key",
-    "apiKeyEnv": "OMLX_API_KEY",
-    "label": "OMLX"
-  },
-  {
-    "id": "lmstudio",
-    "type": "openai",
-    "baseUrl": "http://127.0.0.1:1234",
-    "authScheme": "x-api-key",
-    "apiKeyEnv": "LMSTUDIO_API_KEY",
-    "label": "LM Studio"
-  },
-  {
-    "id": "openai",
-    "type": "openai",
-    "baseUrl": "https://api.openai.com",
-    "authScheme": "bearer",
-    "apiKeyEnv": "OPENAI_API_KEY",
-    "label": "OpenAI"
-  },
-  {
-    "id": "anthropic",
-    "type": "anthropic",
-    "baseUrl": "https://api.anthropic.com",
-    "authScheme": "x-api-key",
-    "apiKeyEnv": "ANTHROPIC_API_KEY",
-    "anthropicVersion": "2023-06-01",
-    "label": "Anthropic"
+```json
+{
+  "providers": [
+    {
+      "id": "omlx",
+      "type": "anthropic",
+      "baseUrl": "http://127.0.0.1:8005",
+      "authScheme": "x-api-key",
+      "apiKeyEnv": "OMLX_API_KEY",
+      "label": "OMLX"
+    }
+  ],
+  "env": {
+    "OMLX_API_KEY": "local-bridge"
   }
-]'
+}
 ```
 
 Provider fields:
@@ -292,8 +293,10 @@ Provider fields:
   OpenAI-compatible `/v1/chat/completions`.
 - `baseUrl`: provider API root, without the trailing `/v1` path when possible.
 - `authScheme`: `auto`, `none`, `bearer`, `x-api-key`, or `both`.
-- `apiKeyEnv`: environment variable that contains the secret key. Prefer this
-  over inline `apiKey` so secrets are not written into plist files or docs.
+- `apiKeyEnv`: environment variable name to resolve. The bridge checks
+  `bridge.local.json` `env` first, then the process environment. For real cloud
+  keys, prefer a local ignored config file or an OS secret workflow; never put
+  secrets in the plist or tracked docs.
 - `label`: human-readable provider label for picker entries and diagnostics.
 - `modelsFile`: optional fixture file for offline tests.
 
@@ -312,10 +315,12 @@ IDs with `claudeDesktopModels[]`, then map each alias to the real route ID.
 This lets Claude see `claude-sonnet-4-5` while the bridge sends
 `omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX` upstream.
 
-For backward compatibility, if neither `CLAUDE_LOCAL_PROVIDERS_FILE` nor
-`CLAUDE_LOCAL_PROVIDERS` is set and the bridge is running in legacy
-single-provider mode, the bridge keeps exposing raw upstream model IDs. As soon
-as file/env multi-provider config is set, use provider-qualified IDs.
+For backward compatibility, if neither `providersFile` nor `providers` is set
+and the bridge is running in legacy single-provider mode, the bridge keeps
+exposing raw upstream model IDs. As soon as JSON multi-provider config is set,
+use provider-qualified IDs. Legacy env-only provider config is still parsed as a
+fallback for tests and one-off runs, but the LaunchAgent setup should keep
+settings in JSON.
 
 OpenAI-compatible providers are adapted from Anthropic `/v1/messages` to
 OpenAI `/v1/chat/completions`. When Claude requests streaming for an OpenAI
@@ -373,13 +378,16 @@ Claude-facing alias.
 Auto-reload applies to `bridge.local.json`, provider-file changes, model
 discovery, route maps, health state, and Claude Code model option cache. It
 does not reload process environment variables because launchd and shells do not
-mutate a running process environment. It also does not reload changed
-JavaScript source code; restart the LaunchAgent after changing `bridge.mjs`.
+mutate a running process environment. Keep reloadable settings in
+`bridge.local.json`. It also does not reload changed JavaScript source code;
+restart the LaunchAgent after changing `bridge.mjs`.
 
 Use this for reloadable provider changes:
 
-```bash
-export CLAUDE_LOCAL_PROVIDERS_FILE=/Users/borland/tools/claude_local_bridge/providers.local.json
+```json
+{
+  "providersFile": "providers.local.json"
+}
 ```
 
 Then edit `providers.local.json`. Within the next sync interval, or
@@ -694,15 +702,24 @@ That script:
 - syncs the local model picker cache
 - runs `claude`
 
-Override backend/model choices before launching:
+The helper reads bridge settings from `bridge.local.json` by default. Set
+`CLAUDE_LOCAL_CONFIG_FILE` only if you want to point it at another JSON file.
+Override backend/model choices in JSON before launching:
 
-```bash
-export CLAUDE_LOCAL_INFERENCE_BACKEND=omlx
-export OMLX_BASE_URL=http://127.0.0.1:8005
-export CLAUDE_LOCAL_MAIN_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
-export CLAUDE_LOCAL_TOOL_MODEL=omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
-./run_claude_with_local_bridge.sh
+```json
+{
+  "singleProvider": {
+    "backend": "omlx",
+    "baseUrl": "http://127.0.0.1:8005"
+  },
+  "models": {
+    "main": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+    "tool": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX"
+  }
+}
 ```
+
+Then run `./run_claude_with_local_bridge.sh`.
 
 ## MCP And Plugins
 

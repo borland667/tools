@@ -536,6 +536,33 @@ test('loads and reloads bridge JSON config from the working directory', async t 
   )
 })
 
+test('prefers bridge JSON settings over legacy environment fallbacks', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [model('json-chat'), model('env-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const health = await getJson(`${bridge.baseUrl}/healthz`)
+      assert.equal(health.mainModel, 'omlx/json-chat')
+    },
+    {
+      bridgeConfig: providersFile => bridgeConfig(providersFile, 'omlx/json-chat'),
+      env: {
+        CLAUDE_LOCAL_MAIN_MODEL: 'omlx/env-chat',
+      },
+    },
+  )
+})
+
 test('emits streaming message start before a slow upstream sends headers', async t => {
   const upstreams = []
   t.after(async () => {

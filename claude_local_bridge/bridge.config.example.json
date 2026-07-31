@@ -17,6 +17,9 @@
   "thinking": {
     "mode": "passthrough-with-progress"
   },
+  "claude": {
+    "profileName": "local-3p"
+  },
   "models": {
     "main": "claude-sonnet-4-5",
     "small": "claude-haiku-4-5",
@@ -85,6 +88,8 @@
     }
   ],
   "env": {
+    "ANTHROPIC_API_KEY": "local-bridge",
+    "ANTHROPIC_AUTH_TOKEN": "local-bridge",
     "OMLX_API_KEY": "local-bridge",
     "LMSTUDIO_API_KEY": "local-bridge"
   }
