@@ -685,26 +685,12 @@ If the first disable cannot auto-detect a pre-bridge backup, seed it:
   --baseline /path/to/pre-bridge-provider.json
 ```
 
-## Claude Code
+## Claude Code Profiles
 
-Run Claude Code against the bridge:
-
-```bash
-cd /Users/borland/tools/claude_local_bridge
-./run_claude_with_local_bridge.sh
-```
-
-That script:
-
-- starts a foreground bridge for the session
-- exports `ANTHROPIC_BASE_URL=http://127.0.0.1:1245`
-- sets local placeholder auth values
-- syncs the local model picker cache
-- runs `claude`
-
-The helper reads bridge settings from `bridge.local.json` by default. Set
-`CLAUDE_LOCAL_CONFIG_FILE` only if you want to point it at another JSON file.
-Override backend/model choices in JSON before launching:
+Use Claude profiles instead of a launcher shell script. The bridge runs as a
+LaunchAgent on `http://127.0.0.1:1245`, and the profile in
+`/Users/borland/.claude-instances/local-3p` carries the third-party gateway
+settings. Keep backend/model choices in `bridge.local.json`:
 
 ```json
 {
@@ -719,7 +705,16 @@ Override backend/model choices in JSON before launching:
 }
 ```
 
-Then run `./run_claude_with_local_bridge.sh`.
+After editing JSON, sync the profile-facing model cache if needed:
+
+```bash
+cd /Users/borland/tools/claude_local_bridge
+node bridge.mjs sync-models
+```
+
+Then launch the desired Claude Desktop/Cowork profile using the
+`claude_multi_launcher` tooling, or open the already-configured local 3P
+profile.
 
 ## MCP And Plugins
 
@@ -850,7 +845,6 @@ Syntax checks:
 
 ```bash
 node --check bridge.mjs
-bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
 python3 -m py_compile generate_claude_3p_config.py
@@ -1010,7 +1004,6 @@ then restart the launchd service.
 ## Files
 
 - `bridge.mjs`: provider-neutral Anthropic-compatible proxy
-- `run_claude_with_local_bridge.sh`: Claude Code launcher
 - `toggle_claude_local_bridge.sh`: Desktop/Cowork profile toggle
 - `refresh_omlx_cowork_models.py`: live OMLX model refresh helper
 - `bridge.config.example.json`: tracked bridge runtime config template

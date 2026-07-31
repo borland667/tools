@@ -37,7 +37,6 @@ Do not use this when:
 ## Main Files
 
 - `/Users/borland/tools/claude_local_bridge/bridge.mjs`
-- `/Users/borland/tools/claude_local_bridge/run_claude_with_local_bridge.sh`
 - `/Users/borland/tools/claude_local_bridge/toggle_claude_local_bridge.sh`
 - `/Users/borland/tools/claude_local_bridge/refresh_omlx_cowork_models.py`
 - `/Users/borland/tools/claude_local_bridge/generate_claude_3p_config.py`
@@ -127,12 +126,16 @@ OMLX_BASE_URL=http://127.0.0.1:8005 \
 node bridge.mjs serve
 ```
 
-Run Claude Code through the bridge:
+Use a Claude profile through the bridge:
 
 ```bash
 cd /Users/borland/tools/claude_local_bridge
-./run_claude_with_local_bridge.sh
+node bridge.mjs sync-models
 ```
+
+Then launch the configured local third-party inference profile from
+`/Users/borland/.claude-instances/local-3p`. Profiles own the Claude app
+runtime settings; the bridge owns inference routing.
 
 Refresh a Cowork profile from live OMLX models:
 
@@ -461,7 +464,6 @@ unloads or request aborts.
 ```bash
 cd /Users/borland/tools/claude_local_bridge
 node --check bridge.mjs
-bash -n run_claude_with_local_bridge.sh
 bash -n toggle_claude_local_bridge.sh
 python3 -m py_compile refresh_omlx_cowork_models.py
 python3 -m py_compile generate_claude_3p_config.py
