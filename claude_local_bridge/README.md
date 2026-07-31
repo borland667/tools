@@ -901,6 +901,13 @@ enough. This can happen with local OMLX models during model load, prompt
 prefill, long tool-context requests, or when a selected model stalls before
 emitting text.
 
+For the current slow OMLX models, use a 15-second visible idle heartbeat. Claude
+Desktop appears to tolerate long total generations when it receives occasional
+visible chunks, but it can fail if the stream stays visually quiet for too long.
+The recommended guard starts after 8 seconds and then ensures the transcript
+gets a compact heartbeat at least every 15 seconds until real model output
+arrives.
+
 The bridge starts Anthropic SSE responses immediately for streaming
 `/v1/messages` requests by sending an early `message_start` event, then sends
 periodic `ping` events while waiting for the upstream provider. When OMLX later
@@ -918,8 +925,9 @@ slow models usable, the local config enables a visible stream timeout guard:
   "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {
     "enabled": true,
-    "delayMs": 12000,
-    "intervalMs": 30000,
+    "delayMs": 8000,
+    "intervalMs": 15000,
+    "idleHeartbeatMs": 15000,
     "providerStatusEnabled": true,
     "providerStatusTimeoutMs": 1200
   }
@@ -963,6 +971,12 @@ Claude's stream idle timeout: the bridge emits the smallest visible heartbeat it
 can, then appends occasional one-line italic updates until the real upstream
 text/tool output begins.
 
+`idleHeartbeatMs` is the important idle limit. Status updates are still
+deduplicated when OMLX reports the same phase/progress bucket, but once the
+stream has been quiet for this many milliseconds the bridge emits another
+compact heartbeat anyway. Set it lower if Claude still reports idle timeouts;
+set it to `0` only if you want strict dedupe and accept the idle-timeout risk.
+
 Example:
 
 ```markdown
@@ -978,9 +992,9 @@ full model, memory, event-count, and provider diagnostics stay in the bridge log
 instead of the Claude transcript. The status fetch is
 best-effort and bounded by `providerStatusTimeoutMs`, so it cannot block or fail
 the model stream. Repeated updates are deduplicated by provider phase and coarse
-progress bucket, so Claude does not render a long wall of near-identical status
-lines. This intentionally trades a tiny visible heartbeat for reliable
-long-running local inference. Set `CLAUDE_LOCAL_STREAM_PROGRESS=false` or
+progress bucket unless the idle heartbeat limit has elapsed, so Claude does not
+render a long wall of near-identical status lines. This intentionally trades a
+tiny visible heartbeat for reliable long-running local inference. Set
 `"streamingProgress": {"enabled": false}` to disable the visible timeout guard;
 set `"providerStatusEnabled": false` to keep the guard but use generic messages.
 If the error still appears:

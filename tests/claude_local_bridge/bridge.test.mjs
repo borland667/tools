@@ -865,6 +865,72 @@ test('includes OMLX provider activity in visible progress', async t => {
   )
 })
 
+test('emits compact heartbeat when provider progress bucket is unchanged', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startThinkingOnlyAnthropicStreamingProvider({
+    models: [model('Qwen3.6-27B-Heretic-MLX-bf16')],
+    endDelayMs: 250,
+    activity: {
+      active_models: {
+        models: [
+          {
+            id: 'Qwen3.6-27B-Heretic-MLX-bf16',
+            is_loading: false,
+            active_requests: 1,
+            waiting_requests: 0,
+            waiting: [],
+            prefilling: [],
+            generating: [],
+            actual_size_formatted: '51.26GB',
+          },
+        ],
+        total_active_requests: 1,
+        total_waiting_requests: 0,
+      },
+    },
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/Qwen3.6-27B-Heretic-MLX-bf16',
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: 'user', content: 'stay alive while status is unchanged' }],
+        }),
+      })
+
+      assert.equal(response.ok, true)
+      const text = await readChunksUntilCount(response, /_Local model:/g, 2)
+      assert.match(text, /model loaded, waiting for output/)
+    },
+    {
+      bridgeConfig: providersFile => ({
+        ...bridgeConfig(providersFile, 'omlx/Qwen3.6-27B-Heretic-MLX-bf16'),
+        streamingProgress: {
+          enabled: true,
+          delayMs: 10,
+          intervalMs: 20,
+          idleHeartbeatMs: 50,
+        },
+        thinking: {
+          mode: 'suppress',
+        },
+      }),
+    },
+  )
+})
+
 test('rewrites Claude aliases for Anthropic messages subpaths', async t => {
   const upstreams = []
   t.after(async () => {
@@ -1336,6 +1402,27 @@ async function readChunksUntil(response, pattern) {
     await reader.cancel()
   }
   assert.fail(`did not see ${pattern} in stream:\n${text}`)
+}
+
+async function readChunksUntilCount(response, pattern, count) {
+  const reader = response.body.getReader()
+  let text = ''
+  const deadline = Date.now() + 3000
+  try {
+    while (Date.now() < deadline) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      text += Buffer.from(value).toString('utf8')
+      if ([...text.matchAll(pattern)].length >= count) {
+        return text
+      }
+    }
+  } finally {
+    await reader.cancel()
+  }
+  assert.fail(`did not see ${count} matches for ${pattern} in stream:\n${text}`)
 }
 
 async function readJsonBody(req) {

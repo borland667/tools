@@ -108,6 +108,7 @@ Configuration:
   requestTimeoutMs                        Non-streaming upstream timeout in ms (default: 600000)
   streamRequestTimeoutMs                  Streaming upstream timeout in ms (default: 3600000; 0 disables)
   streamingProgress                       Visible heartbeat settings for timeout-risk streams
+  streamingProgress.idleHeartbeatMs       Max quiet period between visible heartbeats (default: 15000; 0 disables)
   thinking.mode                           passthrough-with-progress, passthrough, suppress, status-only
   claudeDesktopModels                     Claude-facing aliases for Desktop/Cowork discovery
   claude.profileName / profileDir         Claude profile under ~/.claude-instances or explicit dir
@@ -136,8 +137,8 @@ Legacy environment fallback:
   CLAUDE_LOCAL_TOOL_MODEL                 Override model used for tool-enabled /v1/messages requests
   CLAUDE_LOCAL_VISION_MODEL               Override model used for image /v1/messages requests
   CLAUDE_LOCAL_STREAM_PROGRESS            Emit visible progress text for timeout-risk streams (default: true)
-  CLAUDE_LOCAL_STREAM_PROGRESS_DELAY_MS   Delay before visible progress text (default: 12000)
-  CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS Interval between progress updates (default: 30000)
+  CLAUDE_LOCAL_STREAM_PROGRESS_DELAY_MS   Delay before visible progress text (default: 8000)
+  CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS Interval between progress updates (default: 15000)
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS     Fetch provider status for progress text (default: true)
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS_TIMEOUT_MS Provider status fetch timeout (default: 1200)
   CLAUDE_LOCAL_THINKING_MODE              Thinking handling: passthrough-with-progress, passthrough, suppress, status-only
@@ -1948,14 +1949,21 @@ function shouldSendVisibleStreamProgress() {
 function getVisibleStreamProgressDelayMs() {
   return Number(
     configValue('streamingProgress.delayMs', process.env.CLAUDE_LOCAL_STREAM_PROGRESS_DELAY_MS) ??
-      '12000',
+      '8000',
   )
 }
 
 function getVisibleStreamProgressIntervalMs() {
   return Number(
     configValue('streamingProgress.intervalMs', process.env.CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS) ??
-      '30000',
+      '15000',
+  )
+}
+
+function getVisibleStreamProgressIdleHeartbeatMs() {
+  return Number(
+    configValue('streamingProgress.idleHeartbeatMs') ??
+      '15000',
   )
 }
 
@@ -2202,6 +2210,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
 
   const progressDelayMs = getVisibleStreamProgressDelayMs()
   const progressIntervalMs = getVisibleStreamProgressIntervalMs()
+  const progressIdleHeartbeatMs = getVisibleStreamProgressIdleHeartbeatMs()
   const thinkingMode = getThinkingMode()
   const visibleProgressEnabled = options.visibleProgress && thinkingMode !== 'passthrough'
   let progressInterval = null
@@ -2228,9 +2237,18 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
         diagnostics.lastProviderStatus = progress.status
         diagnostics.lastProgressSummary = progress.status.summary
       }
+      const now = Date.now()
+      const sameProgressKey = progress.key === lastProgressKey
+      const canSendIdleHeartbeat =
+        sameProgressKey &&
+        Number.isFinite(progressIdleHeartbeatMs) &&
+        progressIdleHeartbeatMs > 0 &&
+        diagnostics?.lastProgressUpdateAt != null &&
+        now - diagnostics.lastProgressUpdateAt >= progressIdleHeartbeatMs
+
       if (
         !progress?.text ||
-        progress.key === lastProgressKey ||
+        (sameProgressKey && !canSendIdleHeartbeat) ||
         progressClosed ||
         sawVisibleOutput ||
         res.writableEnded ||
@@ -2241,6 +2259,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
       lastProgressKey = progress.key
       if (diagnostics) {
         diagnostics.progressUpdates += 1
+        diagnostics.lastProgressUpdateAt = now
       }
       writeAnthropicSseEvent(res, 'content_block_delta', {
         type: 'content_block_delta',

@@ -392,8 +392,9 @@ local inference. The local config enables:
   "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {
     "enabled": true,
-    "delayMs": 12000,
-    "intervalMs": 30000,
+    "delayMs": 8000,
+    "intervalMs": 15000,
+    "idleHeartbeatMs": 15000,
     "providerStatusEnabled": true,
     "providerStatusTimeoutMs": 1200
   }
@@ -406,6 +407,12 @@ much higher than the normal timeout for slow local providers; large OMLX prompts
 can spend more than 10 minutes in prefill before emitting visible answer text.
 Set `streamRequestTimeoutMs` to `0` only when you want no bridge-side absolute
 timeout for streaming requests.
+
+Use a 15-second `idleHeartbeatMs` for slow OMLX models. Claude Desktop can run
+long local generations as long as the stream receives occasional visible chunks;
+the bridge starts guarding after `delayMs` and then sends a compact heartbeat at
+least every `idleHeartbeatMs`, even when OMLX status remains in the same
+deduplicated progress bucket.
 
 Thinking passthrough is controlled separately:
 
@@ -431,11 +438,11 @@ occasional compact updates until real output arrives. For OMLX, the bridge also
 samples `/admin/api/activity`, but only queue, prefill, generation, and ETA
 essentials are shown; full diagnostics stay in bridge logs. Updates are
 deduplicated by provider phase and coarse progress bucket so the UI does not
-fill with repeated near-identical lines. This keeps Claude Desktop's stream
-watchdog from treating long local prefill as an idle connection, without adding
-progress text to normal fast responses. Disable with
-`CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting
-`streamingProgress.enabled` to `false`; disable provider status only with
+fill with repeated near-identical lines unless the idle heartbeat limit has
+elapsed. This keeps Claude Desktop's stream watchdog from treating long local
+prefill as an idle connection, without adding progress text to normal fast
+responses. Disable by setting `streamingProgress.enabled` to `false`; disable
+provider status only with
 `streamingProgress.providerStatusEnabled=false`.
 
 Bridge logs include a short request id such as `[bridge:000a]` for each proxied

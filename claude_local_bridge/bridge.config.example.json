@@ -9,8 +9,9 @@
   "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {
     "enabled": true,
-    "delayMs": 12000,
-    "intervalMs": 30000,
+    "delayMs": 8000,
+    "intervalMs": 15000,
+    "idleHeartbeatMs": 15000,
     "providerStatusEnabled": true,
     "providerStatusTimeoutMs": 1200
   },
