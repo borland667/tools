@@ -374,7 +374,7 @@ local inference. The local config enables:
   "streamingProgress": {
     "enabled": true,
     "delayMs": 12000,
-    "intervalMs": 5000,
+    "intervalMs": 30000,
     "providerStatusEnabled": true,
     "providerStatusTimeoutMs": 1200
   }
@@ -400,14 +400,15 @@ models that do not stream it.
 
 The guard applies to every Anthropic-compatible streaming model. If upstream
 sends only hidden thinking or takes longer than `delayMs` to produce visible
-text/tool output, the bridge emits a compact Markdown status block and concise
-italic updates until real output arrives. For OMLX, the bridge also samples
-`/admin/api/activity` to report loading, prefill progress, generation speed,
-queue state, and memory pressure when available. Updates are deduplicated by
-provider phase and progress bucket so the UI does not fill with repeated
-near-identical lines. This keeps Claude Desktop's stream watchdog from treating
-long local prefill as an idle connection, without adding progress text to normal
-fast responses. Disable with `CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting
+text/tool output, the bridge emits a tiny one-line italic heartbeat and
+occasional compact updates until real output arrives. For OMLX, the bridge also
+samples `/admin/api/activity`, but only queue, prefill, generation, and ETA
+essentials are shown; full diagnostics stay in bridge logs. Updates are
+deduplicated by provider phase and coarse progress bucket so the UI does not
+fill with repeated near-identical lines. This keeps Claude Desktop's stream
+watchdog from treating long local prefill as an idle connection, without adding
+progress text to normal fast responses. Disable with
+`CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting
 `streamingProgress.enabled` to `false`; disable provider status only with
 `streamingProgress.providerStatusEnabled=false`.
 

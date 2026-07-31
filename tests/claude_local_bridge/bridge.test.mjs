@@ -601,12 +601,10 @@ test('emits visible progress while upstream only sends thinking deltas', async t
       })
 
       assert.equal(response.ok, true)
-      const text = await readChunksUntil(response, /\*\*Local model status\*\*/)
+      const text = await readChunksUntil(response, /_Local model: /)
       assert.match(text, /event: content_block_start/)
-      assert.match(text, /\*\*Local model status\*\*/)
-      assert.match(text, /- Model: slow thinking chat/)
-      assert.match(text, /- Provider: omlx/)
-      assert.match(text, /- State: Waiting for visible output/)
+      assert.match(text, /_Local model: waiting .* for visible model output/)
+      assert.doesNotMatch(text, /\*\*Local model status\*\*/)
       assert.doesNotMatch(text, /thinking_delta/)
     },
     {
@@ -690,8 +688,8 @@ test('keeps visible output indices contiguous after suppressing thinking', async
       assert.equal(response.ok, true)
       const text = await response.text()
       assert.match(text, /"index":0/)
-      assert.match(text, /\*\*Local model status\*\*/)
-      assert.match(text, /- Model: slow thinking text chat/)
+      assert.match(text, /_Local model: waiting .* for visible model output/)
+      assert.doesNotMatch(text, /\*\*Local model status\*\*/)
       assert.match(text, /"index":1/)
       assert.match(text, /final answer/)
       assert.doesNotMatch(text, /"index":2/)
@@ -774,15 +772,11 @@ test('includes OMLX provider activity in visible progress', async t => {
       })
 
       assert.equal(response.ok, true)
-      const text = await readChunksUntil(response, /OMLX is prefilling the prompt/)
-      assert.match(text, /\*\*Local model status\*\*/)
-      assert.match(text, /- State: OMLX is prefilling the prompt/)
-      assert.match(text, /- Prompt progress: 8\.2k \/ 32\.8k tokens \(25%\)/)
+      const text = await readChunksUntil(response, /prefill 8\.2k \/ 32\.8k tokens/)
+      assert.match(text, /_Local model: prefill 8\.2k \/ 32\.8k tokens \(25%\), about 6m 22s left/)
       assert.match(text, /25%/)
-      assert.match(text, /- Speed: 64\.4 tok\/s/)
-      assert.match(text, /- ETA: about 6m 22s left/)
-      assert.match(text, /- Load: 2 active requests/)
-      assert.match(text, /- Memory: 70\.0GB \/ 96\.0GB soft \/ 101\.0GB hard/)
+      assert.doesNotMatch(text, /\*\*Local model status\*\*/)
+      assert.doesNotMatch(text, /Memory:/)
     },
     {
       bridgeConfig: providersFile => ({

@@ -9,7 +9,7 @@
   "streamingProgress": {
     "enabled": true,
     "delayMs": 12000,
-    "intervalMs": 5000,
+    "intervalMs": 30000,
     "providerStatusEnabled": true,
     "providerStatusTimeoutMs": 1200
   },

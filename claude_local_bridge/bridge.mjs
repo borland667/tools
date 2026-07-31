@@ -119,7 +119,7 @@ Environment:
   CLAUDE_LOCAL_VISION_MODEL               Override model used for image /v1/messages requests
   CLAUDE_LOCAL_STREAM_PROGRESS            Emit visible progress text for timeout-risk streams (default: true)
   CLAUDE_LOCAL_STREAM_PROGRESS_DELAY_MS   Delay before visible progress text (default: 12000)
-  CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS Interval between progress updates (default: 5000)
+  CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS Interval between progress updates (default: 30000)
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS     Fetch provider status for progress text (default: true)
   CLAUDE_LOCAL_STREAM_PROGRESS_STATUS_TIMEOUT_MS Provider status fetch timeout (default: 1200)
   CLAUDE_LOCAL_THINKING_MODE              Thinking handling: passthrough-with-progress, passthrough, suppress, status-only
@@ -1921,7 +1921,7 @@ function getVisibleStreamProgressDelayMs() {
 function getVisibleStreamProgressIntervalMs() {
   return Number(
     configValue('streamingProgress.intervalMs', process.env.CLAUDE_LOCAL_STREAM_PROGRESS_INTERVAL_MS) ??
-      '5000',
+      '30000',
   )
 }
 
@@ -2337,8 +2337,6 @@ async function buildVisibleProgressText({
   elapsedMs,
   initial = false,
 }) {
-  const providerLabel = provider?.label ?? provider?.id ?? 'local provider'
-  const modelLabel = displayModelName(upstreamModelId)
   const elapsed = formatDuration(Math.max(0, elapsedMs / 1000))
   const providerStatus = await getProviderProgressStatus(provider, upstreamModelId)
   if (providerStatus) {
@@ -2347,8 +2345,6 @@ async function buildVisibleProgressText({
       status: providerStatus,
       text: initial
         ? formatInitialProgressBlock({
-            providerLabel,
-            modelLabel,
             elapsed,
             status: providerStatus,
           })
@@ -2367,8 +2363,6 @@ async function buildVisibleProgressText({
     },
     text: initial
       ? formatInitialProgressBlock({
-          providerLabel,
-          modelLabel,
           elapsed,
           status: {
             title: 'Waiting for visible output',
@@ -2388,26 +2382,14 @@ async function buildVisibleProgressText({
 }
 
 function formatInitialProgressBlock({
-  providerLabel,
-  modelLabel,
   elapsed,
   status,
 }) {
-  const lines = [
-    '',
-    '',
-    '**Local model status**',
-    `- Model: ${modelLabel}`,
-    `- Provider: ${providerLabel}`,
-    `- State: ${status.title}`,
-    `- Elapsed: ${elapsed}`,
-    ...status.lines.map(line => `- ${line}`),
-  ]
-  return lines.join('\n')
+  return `\n\n_Local model: ${status.summary} (${elapsed})._`
 }
 
 function formatProgressUpdate({ elapsed, status }) {
-  return `\n\n_Status update after ${elapsed}:_ ${status.summary}.`
+  return `\n\n_Local model: ${status.summary} (${elapsed})._`
 }
 
 async function getProviderProgressStatus(provider, upstreamModelId) {
@@ -2438,22 +2420,19 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
     models.find(item => item?.id === upstreamModelId) ??
     models.find(item => item?.id?.toLowerCase?.() === upstreamModelId?.toLowerCase?.())
 
-  const pressure = formatMemoryPressure(activeModels.memory_pressure)
   if (!model) {
     const active = Number(activeModels.total_active_requests ?? 0)
     const waiting = Number(activeModels.total_waiting_requests ?? 0)
-    const lines = [
-      active > 0 ? `${active} active request${active === 1 ? '' : 's'}` : null,
-      waiting > 0 ? `${waiting} waiting` : null,
-      pressure,
-      'waiting for model-specific activity',
-    ].filter(Boolean)
     return progressStatus({
       phase: 'activity',
       bucket: `${active}:${waiting}`,
       title: 'Waiting for model activity',
-      lines,
-      summary: lines.join(', '),
+      lines: [],
+      summary: compactPhrase([
+        active > 0 ? `${active} active request${active === 1 ? '' : 's'}` : null,
+        waiting > 0 ? `${waiting} waiting` : null,
+        'waiting for model activity',
+      ]),
     })
   }
 
@@ -2468,16 +2447,7 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
       phase: 'loading',
       bucket: bucketNumber(model.loading_elapsed_seconds, 10),
       title: 'OMLX is loading the model',
-      lines: [
-      model.loading_elapsed_seconds != null
-        ? `Loading time: ${elapsed} elapsed`
-        : null,
-      model.loading_remaining_seconds_estimate != null
-        ? `ETA: about ${remaining} left`
-        : null,
-      model.estimated_size_formatted ? `Estimated size: ${model.estimated_size_formatted}` : null,
-      pressure,
-      ].filter(Boolean),
+      lines: [],
       summary: compactPhrase([
         'loading model',
         elapsed ? `${elapsed} elapsed` : null,
@@ -2500,18 +2470,11 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
     const eta = current.eta ? `about ${formatDuration(current.eta)} left` : null
     return progressStatus({
       phase: 'prefill',
-      bucket: total > 0 ? Math.floor((processed / total) * 10) : bucketNumber(processed, 1000),
+      bucket: total > 0 ? Math.floor((processed / total) * 4) : bucketNumber(processed, 8000),
       title: 'OMLX is prefilling the prompt',
-      lines: [
-      `Prompt progress: ${progress}${percent != null ? ` (${percent}%)` : ''}`,
-      speed ? `Speed: ${speed}` : null,
-      eta ? `ETA: ${eta}` : null,
-      model.active_requests > 1 ? `Load: ${model.active_requests} active requests` : null,
-      pressure,
-      ].filter(Boolean),
+      lines: [],
       summary: compactPhrase([
         `prefill ${progress}${percent != null ? ` (${percent}%)` : ''}`,
-        speed,
         eta,
       ]),
     })
@@ -2530,15 +2493,9 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
       phase: 'generate',
       bucket: `${bucketNumber(current.generated_tokens, 10)}:${bucketNumber(current.last_activity_age_seconds, 15)}`,
       title: 'OMLX is generating',
-      lines: [
-      `Generated: ${generated} tokens`,
-      speed ? `Speed: ${speed}` : null,
-      lastToken ? `Last token: ${lastToken}` : null,
-      current.max_tokens ? `Limit: ${formatTokenCount(current.max_tokens)} tokens` : null,
-      pressure,
-      ].filter(Boolean),
+      lines: [],
       summary: compactPhrase([
-        `generating, ${generated} tokens so far`,
+        `generating ${generated} tokens`,
         speed,
         lastToken ? `last token ${lastToken}` : null,
       ]),
@@ -2551,11 +2508,7 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
       phase: 'queued',
       bucket: `${position ?? 'unknown'}:${model.waiting_requests ?? 0}`,
       title: 'OMLX queued this request',
-      lines: [
-      position ? `Queue position: ${position}` : null,
-      model.waiting_requests ? `Waiting requests: ${model.waiting_requests}` : null,
-      pressure,
-      ].filter(Boolean),
+      lines: [],
       summary: compactPhrase([
         'queued',
         position ? `position ${position}` : null,
@@ -2568,13 +2521,9 @@ async function getOmlxProgressStatus(provider, upstreamModelId) {
     phase: 'loaded-waiting',
     bucket: bucketNumber(activeModels.model_memory_used, 5 * 1024 ** 3),
     title: 'Model loaded, waiting for answer text',
-    lines: [
-    model.actual_size_formatted ? `Loaded size: ${model.actual_size_formatted}` : null,
-    pressure,
-    ].filter(Boolean),
+    lines: [],
     summary: compactPhrase([
-      'model loaded, no visible tokens yet',
-      model.actual_size_formatted ? `${model.actual_size_formatted} loaded` : null,
+      'model loaded, waiting for output',
     ]),
   })
 }
@@ -2594,22 +2543,6 @@ async function fetchJsonBestEffort(url, provider, timeoutMs) {
   } catch {
     return null
   }
-}
-
-function formatMemoryPressure(memoryPressure) {
-  if (!memoryPressure || typeof memoryPressure !== 'object') {
-    return null
-  }
-  const current = memoryPressure.current_formatted
-  const soft = memoryPressure.soft_formatted
-  const hard = memoryPressure.hard_formatted
-  if (!current || !soft || !hard) {
-    return null
-  }
-  const level = memoryPressure.pressure_level && memoryPressure.pressure_level !== 'ok'
-    ? `, pressure ${memoryPressure.pressure_level}`
-    : ''
-  return `Memory: ${current} / ${soft} soft / ${hard} hard${level}`
 }
 
 function progressStatus({ phase, bucket, title, lines, summary }) {
