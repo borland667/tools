@@ -35,6 +35,7 @@ let modelSelection = {
   mainModel: null,
   smallModel: null,
 }
+let nextRequestId = 1
 
 main().catch(error => {
   console.error(`[bridge] fatal: ${formatError(error)}`)
@@ -292,12 +293,33 @@ async function routeRequest(req, res) {
 }
 
 async function proxyToUpstream(req, res, url) {
+  const requestId = nextBridgeRequestId()
+  const startedAt = Date.now()
   let provider = providers[0]
   let upstreamPath = url.pathname
   const headers = copyIncomingHeaders(req.headers)
   let expectsStreamingResponse = false
   let streamingWarmupMessage = null
   let sseKeepalive = null
+  const diagnostics = {
+    requestId,
+    startedAt,
+    method: req.method ?? 'GET',
+    path: url.pathname,
+    selectedModel: null,
+    upstreamModel: null,
+    providerId: provider?.id,
+    providerLabel: provider?.label ?? provider?.id,
+    upstreamPath,
+    upstreamStatus: null,
+    upstreamContentType: null,
+    streamEvents: 0,
+    streamBytes: 0,
+    visibleEvents: 0,
+    progressUpdates: 0,
+    lastProgressSummary: null,
+    lastProviderStatus: null,
+  }
 
   let body
   if (req.method && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
@@ -308,9 +330,21 @@ async function proxyToUpstream(req, res, url) {
     upstreamPath = prepared.upstreamPath ?? upstreamPath
     expectsStreamingResponse = prepared.expectsStreamingResponse
     streamingWarmupMessage = prepared.streamingWarmupMessage ?? null
+    diagnostics.selectedModel = prepared.selectedModel ?? null
+    diagnostics.upstreamModel = prepared.upstreamModel ?? streamingWarmupMessage?.model ?? null
   }
 
   const upstreamUrl = new URL(upstreamPath + url.search, provider.baseUrl)
+  diagnostics.providerId = provider?.id
+  diagnostics.providerLabel = provider?.label ?? provider?.id
+  diagnostics.upstreamPath = upstreamUrl.pathname
+  logRequestEvent(diagnostics, 'start', {
+    provider: provider?.id,
+    upstream: `${upstreamUrl.origin}${upstreamUrl.pathname}`,
+    selectedModel: diagnostics.selectedModel,
+    upstreamModel: diagnostics.upstreamModel,
+    streaming: expectsStreamingResponse,
+  })
   applyUpstreamAuthHeaders(headers, provider)
   if (expectsStreamingResponse) {
     sseKeepalive = startAnthropicSseKeepalive(res, streamingWarmupMessage)
@@ -326,7 +360,7 @@ async function proxyToUpstream(req, res, url) {
     })
   } catch (error) {
     console.error(
-      `[bridge] upstream request failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
+      `[bridge:${requestId}] upstream request failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
     )
     if (expectsStreamingResponse) {
       writeAnthropicSseError(
@@ -338,6 +372,12 @@ async function proxyToUpstream(req, res, url) {
     }
     throw error
   }
+  diagnostics.upstreamStatus = upstream.status
+  diagnostics.upstreamContentType = upstream.headers.get('content-type')
+  logRequestEvent(diagnostics, 'upstream_response', {
+    status: upstream.status,
+    contentType: diagnostics.upstreamContentType,
+  })
 
   if (
     provider.type === 'openai' &&
@@ -357,7 +397,7 @@ async function proxyToUpstream(req, res, url) {
     sseKeepalive?.stop()
     const text = await upstream.text()
     console.error(
-      `[bridge] upstream error from ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: HTTP ${upstream.status} ${truncateForLog(text)}`,
+      `[bridge:${requestId}] upstream error from ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: HTTP ${upstream.status} ${truncateForLog(text)}`,
     )
     writeAnthropicSseError(
       res,
@@ -370,7 +410,7 @@ async function proxyToUpstream(req, res, url) {
   if (!upstream.ok && !expectsStreamingResponse) {
     const text = await upstream.text()
     console.error(
-      `[bridge] upstream error from ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: HTTP ${upstream.status} ${truncateForLog(text)}`,
+      `[bridge:${requestId}] upstream error from ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: HTTP ${upstream.status} ${truncateForLog(text)}`,
     )
     res.statusCode = upstream.status
     res.statusMessage = upstream.statusText
@@ -411,19 +451,26 @@ async function proxyToUpstream(req, res, url) {
         visibleProgress: shouldSendVisibleStreamProgress(),
         provider,
         upstreamModelId: streamingWarmupMessage.model,
+        diagnostics,
       })
     } else {
       await pipeline(Readable.fromWeb(upstream.body), res)
     }
+    logRequestEvent(diagnostics, 'complete', {
+      elapsed: formatDuration((Date.now() - startedAt) / 1000),
+      events: diagnostics.streamEvents,
+      visibleEvents: diagnostics.visibleEvents,
+      progressUpdates: diagnostics.progressUpdates,
+    })
   } catch (error) {
     console.error(
-      `[bridge] upstream stream failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
+      `[bridge:${requestId}] upstream stream failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}; ${formatStreamDiagnostics(diagnostics)}`,
     )
     if (isSseResponse) {
       writeAnthropicSseError(
         res,
         upstream.status || 502,
-        `${provider.label} stream closed unexpectedly: ${formatError(error)}`,
+        buildStreamFailureMessage(provider, error, diagnostics),
       )
       return
     }
@@ -431,6 +478,72 @@ async function proxyToUpstream(req, res, url) {
   } finally {
     sseKeepalive?.stop()
   }
+}
+
+function nextBridgeRequestId() {
+  const id = nextRequestId
+  nextRequestId += 1
+  return id.toString(36).padStart(4, '0')
+}
+
+function logRequestEvent(diagnostics, event, details = {}) {
+  if (!diagnostics) {
+    return
+  }
+  const parts = [
+    event,
+    `${diagnostics.method} ${diagnostics.path}`,
+    details.provider ? `provider=${details.provider}` : null,
+    details.upstream ? `upstream=${details.upstream}` : null,
+    details.status ? `status=${details.status}` : null,
+    details.contentType ? `contentType=${details.contentType}` : null,
+    details.selectedModel ? `selected=${details.selectedModel}` : null,
+    details.upstreamModel ? `model=${details.upstreamModel}` : null,
+    details.streaming != null ? `streaming=${details.streaming}` : null,
+    details.elapsed ? `elapsed=${details.elapsed}` : null,
+    details.events != null ? `events=${details.events}` : null,
+    details.visibleEvents != null ? `visible=${details.visibleEvents}` : null,
+    details.progressUpdates != null ? `progress=${details.progressUpdates}` : null,
+  ].filter(Boolean)
+  console.log(`[bridge:${diagnostics.requestId}] ${parts.join(' ')}`)
+}
+
+function formatStreamDiagnostics(diagnostics) {
+  if (!diagnostics) {
+    return 'no stream diagnostics'
+  }
+  const elapsed = formatDuration((Date.now() - diagnostics.startedAt) / 1000)
+  return compactPhrase([
+    `elapsed=${elapsed}`,
+    `provider=${diagnostics.providerId ?? 'unknown'}`,
+    diagnostics.selectedModel ? `selected=${diagnostics.selectedModel}` : null,
+    diagnostics.upstreamModel ? `model=${diagnostics.upstreamModel}` : null,
+    diagnostics.upstreamStatus ? `upstreamStatus=${diagnostics.upstreamStatus}` : null,
+    `events=${diagnostics.streamEvents}`,
+    `bytes=${diagnostics.streamBytes}`,
+    `visible=${diagnostics.visibleEvents}`,
+    `progress=${diagnostics.progressUpdates}`,
+    diagnostics.firstVisibleOutputMs != null
+      ? `firstVisible=${formatDuration(diagnostics.firstVisibleOutputMs / 1000)}`
+      : null,
+    diagnostics.lastProviderStatus
+      ? `lastStatus=${diagnostics.lastProviderStatus.phase}:${diagnostics.lastProviderStatus.summary}`
+      : null,
+  ])
+}
+
+function buildStreamFailureMessage(provider, error, diagnostics) {
+  const providerLabel = provider?.label ?? provider?.id ?? 'Local provider'
+  const model = diagnostics?.upstreamModel ?? 'the selected model'
+  const elapsed = diagnostics
+    ? formatDuration((Date.now() - diagnostics.startedAt) / 1000)
+    : 'unknown time'
+  const status = diagnostics?.lastProviderStatus
+  const statusText = status?.summary ? ` Last provider status: ${status.summary}.` : ''
+  const context = diagnostics
+    ? ` Elapsed: ${elapsed}; upstream model: ${model}; stream events: ${diagnostics.streamEvents}; progress updates: ${diagnostics.progressUpdates}.`
+    : ''
+  return `${providerLabel} stream closed unexpectedly while generating locally.${statusText}${context} Bridge error: ${formatError(error)}`
 }
 
 async function prepareRequestForProvider(pathname, rawBody) {
@@ -480,6 +593,7 @@ async function prepareRequestForProvider(pathname, rawBody) {
     )
   }
 
+  const selectedModel = payload.model
   payload.model = route.upstreamModelId
   if (isMessagesCreate && route.provider.type === 'openai') {
     return {
@@ -487,6 +601,8 @@ async function prepareRequestForProvider(pathname, rawBody) {
       upstreamPath: '/v1/chat/completions',
       body: Buffer.from(JSON.stringify(toOpenAiChatCompletion(payload)), 'utf8'),
       expectsStreamingResponse,
+      selectedModel,
+      upstreamModel: route.upstreamModelId,
     }
   }
 
@@ -495,6 +611,8 @@ async function prepareRequestForProvider(pathname, rawBody) {
     upstreamPath: pathname,
     body: Buffer.from(JSON.stringify(payload), 'utf8'),
     expectsStreamingResponse,
+    selectedModel,
+    upstreamModel: route.upstreamModelId,
     streamingWarmupMessage: expectsStreamingResponse
       ? anthropicStreamingWarmupMessage(route.upstreamModelId)
       : null,
@@ -2026,6 +2144,7 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
   const reader = upstreamBody.getReader()
   const decoder = new TextDecoder()
   const startedAt = Date.now()
+  const diagnostics = options.diagnostics
   let buffer = ''
   let skippedMessageStart = false
   let progressStarted = false
@@ -2059,6 +2178,10 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
         elapsedMs: Date.now() - startedAt,
         initial,
       })
+      if (diagnostics && progress?.status) {
+        diagnostics.lastProviderStatus = progress.status
+        diagnostics.lastProgressSummary = progress.status.summary
+      }
       if (
         !progress?.text ||
         progress.key === lastProgressKey ||
@@ -2070,6 +2193,9 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
         return
       }
       lastProgressKey = progress.key
+      if (diagnostics) {
+        diagnostics.progressUpdates += 1
+      }
       writeAnthropicSseEvent(res, 'content_block_delta', {
         type: 'content_block_delta',
         index: 0,
@@ -2132,10 +2258,16 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
       if (done) {
         break
       }
+      if (diagnostics) {
+        diagnostics.streamBytes += value.byteLength ?? 0
+      }
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split(/\r?\n\r?\n/)
       buffer = events.pop() ?? ''
       for (const event of events) {
+        if (diagnostics) {
+          diagnostics.streamEvents += 1
+        }
         if (!skippedMessageStart && isSseEvent(event, 'message_start')) {
           skippedMessageStart = true
           continue
@@ -2149,6 +2281,10 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
           continue
         }
         if (nextEvent.visibleOutput) {
+          if (diagnostics) {
+            diagnostics.visibleEvents += 1
+            diagnostics.firstVisibleOutputMs ??= Date.now() - diagnostics.startedAt
+          }
           sawVisibleOutput = true
           closeProgress()
         }
@@ -2166,6 +2302,10 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
       })
       if (!nextEvent.skip) {
         if (nextEvent.visibleOutput) {
+          if (diagnostics) {
+            diagnostics.visibleEvents += 1
+            diagnostics.firstVisibleOutputMs ??= Date.now() - diagnostics.startedAt
+          }
           closeProgress()
         }
         res.write(nextEvent.block)
@@ -2195,6 +2335,7 @@ async function buildVisibleProgressText({
   if (providerStatus) {
     return {
       key: providerStatus.key,
+      status: providerStatus,
       text: initial
         ? formatInitialProgressBlock({
             providerLabel,
@@ -2209,6 +2350,12 @@ async function buildVisibleProgressText({
   const key = `generic:${Math.floor(elapsedMs / 30000)}`
   return {
     key,
+    status: {
+      phase: 'generic',
+      title: initial ? 'Waiting for visible output' : 'Still waiting for visible output',
+      lines: [],
+      summary: `waiting ${elapsed} for visible model output`,
+    },
     text: initial
       ? formatInitialProgressBlock({
           providerLabel,
@@ -2459,6 +2606,7 @@ function formatMemoryPressure(memoryPressure) {
 function progressStatus({ phase, bucket, title, lines, summary }) {
   return {
     key: `${phase}:${bucket}`,
+    phase,
     title,
     lines,
     summary,

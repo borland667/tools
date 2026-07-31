@@ -400,6 +400,14 @@ fast responses. Disable with `CLAUDE_LOCAL_STREAM_PROGRESS=false` or by setting
 `streamingProgress.enabled` to `false`; disable provider status only with
 `streamingProgress.providerStatusEnabled=false`.
 
+Bridge logs include a short request id such as `[bridge:000a]` for each proxied
+request. On stream failures, the log records elapsed time, selected model,
+upstream model, SSE event/byte counts, visible-output count, progress-update
+count, and the last sampled OMLX provider status. Use that id with
+`tail -f "$HOME/Library/Logs/claude-local-bridge.log"` and the OMLX
+`server.log` timestamp to distinguish Claude UI timeouts from upstream model
+unloads or request aborts.
+
 ## Safety Notes
 
 - Use placeholder local tokens such as `local-bridge`; do not commit real

@@ -856,6 +856,13 @@ image parser errors. The OMLX dashboard log viewer at
 `http://127.0.0.1:8005/admin/dashboard?tab=logs` reads from the same log
 directory and rotates daily files like `server.log.2026-07-29`.
 
+Each proxied request also gets a short bridge request id in log lines, for
+example `[bridge:000a]`. Grep that id to follow one request from route
+selection through upstream response, progress updates, completion, or mid-stream
+failure. Stream-failure logs include elapsed time, selected Claude-facing model,
+upstream provider model, event/byte counts, visible-output count, progress
+update count, and the last sampled provider status from OMLX when available.
+
 ### If Claude Shows "Stream Idle Timeout"
 
 Claude Desktop may display `API Error: Stream idle timeout - no chunks
@@ -953,9 +960,11 @@ tail -f "$HOME/.omlx/logs/server.log"
 ```
 
 Look for bridge entries like `upstream stream failed ... Premature close`,
-which usually means Claude closed the request after waiting too long, and OMLX
-entries showing model load failures, request cancellations, or long hidden
-thinking phases without visible text deltas. If OMLX reports a model as
+which usually means the upstream stream closed before Anthropic SSE completed.
+The request id suffix includes details such as `lastStatus=prefill:...` or
+`lastStatus=activity:...`; pair that with OMLX entries showing model unloads,
+request cancellations, or long hidden thinking phases without visible text
+deltas. If OMLX reports a model as
 unavailable after a cached load failure, remove that model from
 `bridge.local.json` or remap its Claude alias to a known-working local model,
 then restart the launchd service.
