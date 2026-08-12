@@ -304,6 +304,12 @@ Provider fields:
   secrets in the plist or tracked docs.
 - `label`: human-readable provider label for picker entries and diagnostics.
 - `modelsFile`: optional fixture file for offline tests.
+- `toolCapable`: optional provider-wide structured tool-use policy. Set
+  `false` for providers or model aggregators that can chat but have not been
+  verified to return real Anthropic/OpenAI tool-call objects; this overrides
+  stale manual alias flags and lets tool requests fall back to `models.tool`.
+  Set `true` only for providers where every advertised conversation model is
+  known to support structured tool calls.
 
 Internally, the aggregate catalog uses provider-qualified route IDs, for example:
 
@@ -844,7 +850,9 @@ not used as a replacement list:
 - `anthropicFamilyTier`: optional Claude tier mapping for alias resolution.
 - `toolCapable`: optional boolean; when true, tool-shaped requests selected
   through this alias stay on this route instead of falling back to
-  `models.tool`.
+  `models.tool`. Provider-level `toolCapable: false` wins over this alias flag.
+  Keep this false or unset for models that write tool calls as literal text
+  such as `<tool_call>` instead of returning structured tool-use blocks.
 - `visionCapable`: optional boolean; when true, image requests selected through
   this alias stay on this route instead of falling back to `models.vision`.
 - `maxContextLength` / `max_model_len`: optional override for the advertised
@@ -903,6 +911,9 @@ When a request includes tools or image content and the requested model looks
 like an Anthropic alias, `CLAUDE_LOCAL_TOOL_MODEL` and
 `CLAUDE_LOCAL_VISION_MODEL` can force more reliable capability-specific models.
 Tool fallback is skipped when the selected route is marked `toolCapable: true`.
+Set provider-level `toolCapable: false` for aggregators whose model catalog
+does not reliably distinguish structured tool support; otherwise Claude may
+display raw tool-call text instead of executing tools.
 Vision fallback is skipped when the selected route is already marked or
 detected as vision-capable. This is bridge behavior, not an Anthropic provider
 config key.

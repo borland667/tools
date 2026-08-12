@@ -1350,7 +1350,7 @@ function normalizeClaudeDesktopModels(routesById) {
       upstreamModelId: route.upstreamModelId,
       label,
       description,
-      toolCapable: alias.toolCapable === true || route.toolCapable === true,
+      toolCapable: isToolCapableAliasRoute(alias, route),
       visionCapable: alias.visionCapable === true || route.visionCapable === true,
       maxContextLength: firstNumber(alias.maxContextLength, alias.max_model_len) ?? route.maxContextLength,
     }
@@ -1360,7 +1360,7 @@ function normalizeClaudeDesktopModels(routesById) {
         routeId: name,
         upstreamModelId: route.upstreamModelId,
         provider: route.provider,
-        toolCapable: alias.toolCapable === true || route.toolCapable === true,
+        toolCapable: isToolCapableAliasRoute(alias, route),
         visionCapable: alias.visionCapable === true || route.visionCapable === true,
         maxContextLength: option.maxContextLength,
       },
@@ -1371,6 +1371,13 @@ function normalizeClaudeDesktopModels(routesById) {
   return options.sort((a, b) => {
     return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
   })
+}
+
+function isToolCapableAliasRoute(alias, route) {
+  if (route?.provider?.toolCapable === false) {
+    return false
+  }
+  return alias?.toolCapable === true || route?.toolCapable === true
 }
 
 function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configuredAliases) {
@@ -1650,9 +1657,8 @@ function normalizeModelOption(model, provider = providers[0]) {
   if (model?.loaded === true || Array.isArray(model?.loaded_instances)) {
     descriptionParts.push(isLoaded ? 'loaded' : 'not loaded')
   }
-  if (
-    isToolCapableModel(model)
-  ) {
+  const toolCapable = isToolCapableModelForProvider(model, provider)
+  if (toolCapable) {
     descriptionParts.push('tool use')
   }
   if (
@@ -1673,10 +1679,20 @@ function normalizeModelOption(model, provider = providers[0]) {
     upstreamModelId: id,
     label,
     description,
-    toolCapable: isToolCapableModel(model),
+    toolCapable,
     visionCapable: isVisionCapableModel(model, id),
     maxContextLength,
   }
+}
+
+function isToolCapableModelForProvider(model, provider) {
+  if (provider?.toolCapable === false) {
+    return false
+  }
+  if (provider?.toolCapable === true) {
+    return true
+  }
+  return isToolCapableModel(model)
 }
 
 function isToolCapableModel(model) {
@@ -1887,6 +1903,7 @@ async function reloadProviders({ force = false } = {}) {
       authScheme: provider.authScheme,
       modelsFile: provider.modelsFile,
       enabled: provider.enabled,
+      toolCapable: provider.toolCapable,
     })),
   )
 
@@ -2024,8 +2041,30 @@ function normalizeProvider(provider, index) {
     authScheme: normalizeAuthScheme(provider?.authScheme ?? provider?.auth_scheme ?? 'auto'),
     anthropicVersion: firstString(provider?.anthropicVersion, provider?.anthropic_version),
     modelsFile: firstString(provider?.modelsFile, provider?.models_file),
+    toolCapable: normalizeOptionalBoolean(
+      provider?.toolCapable ??
+        provider?.tool_capable ??
+        provider?.supportsTools ??
+        provider?.supports_tools,
+    ),
     enabled: provider?.enabled !== false,
   }
+}
+
+function normalizeOptionalBoolean(value) {
+  if (value === true || value === false) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['true', '1', 'yes', 'on'].includes(normalized)) {
+      return true
+    }
+    if (['false', '0', 'no', 'off'].includes(normalized)) {
+      return false
+    }
+  }
+  return null
 }
 
 function sanitizeProviderId(value) {

@@ -43,6 +43,7 @@
       "apiKeyEnv": "AGGREGATOR_API_KEY",
       "anthropicVersion": "2023-06-01",
       "label": "gateway Anthropic",
+      "toolCapable": false,
       "enabled": false
     },
     {
@@ -52,6 +53,7 @@
       "authScheme": "bearer",
       "apiKeyEnv": "AGGREGATOR_API_KEY",
       "label": "gateway OpenAI",
+      "toolCapable": false,
       "enabled": false
     }
   ]
