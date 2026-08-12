@@ -312,10 +312,11 @@ Provider fields:
   known to support structured tool calls.
 - `toolFormat`: optional provider-wide tool response format. Use `text` only
   for providers where tool-enabled responses are known to return text tags such
-  as `<tool_call>{"name":"Bash","arguments":{...}}`; the bridge will parse
-  those tags, validate the tool name against the request, and return structured
-  Anthropic `tool_use` blocks to Claude. Leave unset for native Anthropic or
-  OpenAI tool-call objects.
+  as `<tool_call>{"name":"Bash","arguments":{...}}</tool_call>` or
+  `<function=Read>{"file_path":"..."}</function>`; the bridge will parse those
+  tags, validate the tool name and required input fields against the request,
+  and return structured Anthropic `tool_use` blocks to Claude. Leave unset for
+  native Anthropic or OpenAI tool-call objects.
 
 Internally, the aggregate catalog uses provider-qualified route IDs, for example:
 
@@ -927,8 +928,10 @@ display raw tool-call text instead of executing tools.
 If a specific model can use tools but returns a different format, prefer a
 manual alias with `toolFormat: "text"` instead of marking the entire provider
 tool-capable. The bridge only parses text tool calls when the request includes
-tools and validates the parsed name against the declared tool list before
-returning a `tool_use` block.
+tools and validates the parsed name and required input fields against the
+declared tool list before returning a `tool_use` block. Empty or incomplete
+tool tags such as `<function=Read></function>` are consumed instead of being
+forwarded to Claude as broken tool calls.
 Vision fallback is skipped when the selected route is already marked or
 detected as vision-capable. This is bridge behavior, not an Anthropic provider
 config key.

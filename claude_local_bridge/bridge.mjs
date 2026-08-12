@@ -70,6 +70,10 @@ async function main() {
       printEnvBlock(bridgeBaseUrl)
       return
     }
+    case 'self-test': {
+      runSelfTests()
+      return
+    }
     case 'serve':
       // Keep the local endpoint available while a backend is restarting.
       // Periodic syncs and request handling will recover once it is reachable.
@@ -84,7 +88,7 @@ async function main() {
       return
     default:
       throw new Error(
-        `unknown command "${command}". Use "serve", "sync-models", or "print-env".`,
+        `unknown command "${command}". Use "serve", "sync-models", "self-test", or "print-env".`,
       )
   }
 }
@@ -95,6 +99,7 @@ function printHelp() {
 Usage:
   node bridge.mjs serve
   node bridge.mjs sync-models
+  node bridge.mjs self-test
   node bridge.mjs print-env
 
 Configuration:
@@ -1220,12 +1225,18 @@ function normalizeTextToolCallsInAnthropicMessage(message, requestTools = []) {
       .map(tool => tool?.name)
       .filter(name => typeof name === 'string' && name.length > 0),
   )
+  const toolSchemasByName = new Map(
+    requestTools
+      .filter(tool => typeof tool?.name === 'string' && tool.name.length > 0)
+      .map(tool => [tool.name, tool.input_schema ?? {}]),
+  )
   if (allowedToolNames.size === 0) {
     return message
   }
 
   const nextContent = []
   let convertedToolCalls = 0
+  let consumedToolMarkup = 0
 
   for (const block of message.content) {
     if (block?.type !== 'text' || typeof block.text !== 'string') {
@@ -1233,64 +1244,143 @@ function normalizeTextToolCallsInAnthropicMessage(message, requestTools = []) {
       continue
     }
 
-    const parsedBlocks = parseTextToolCallBlocks(block.text, allowedToolNames)
+    const parsedBlocks = parseTextToolCallBlocks(block.text, allowedToolNames, toolSchemasByName)
     if (!parsedBlocks) {
       nextContent.push(block)
       continue
     }
 
-    for (const parsedBlock of parsedBlocks) {
+    for (const parsedBlock of parsedBlocks.blocks) {
       nextContent.push(parsedBlock)
       if (parsedBlock.type === 'tool_use') {
         convertedToolCalls += 1
       }
     }
+    if (parsedBlocks.consumedMarkup) {
+      consumedToolMarkup += 1
+    }
   }
 
-  if (convertedToolCalls === 0) {
+  if (convertedToolCalls === 0 && consumedToolMarkup === 0) {
     return message
   }
 
   return {
     ...message,
     content: nextContent,
-    stop_reason: 'tool_use',
+    stop_reason: convertedToolCalls > 0 ? 'tool_use' : message.stop_reason,
   }
 }
 
-function parseTextToolCallBlocks(text, allowedToolNames) {
-  const marker = '<tool_call>'
+function parseTextToolCallBlocks(text, allowedToolNames, toolSchemasByName = new Map()) {
+  const markerPattern = /<tool_call>|<function=([A-Za-z_][A-Za-z0-9_-]*)>/g
   let cursor = 0
   const blocks = []
   let converted = 0
+  let consumedMalformedToolMarkup = 0
 
   while (cursor < text.length) {
-    const markerIndex = text.indexOf(marker, cursor)
-    if (markerIndex === -1) {
+    markerPattern.lastIndex = cursor
+    const match = markerPattern.exec(text)
+    if (!match) {
       appendTextBlock(blocks, text.slice(cursor))
       break
     }
 
+    const markerIndex = match.index
     appendTextBlock(blocks, text.slice(cursor, markerIndex))
-    const jsonStart = skipWhitespace(text, markerIndex + marker.length)
-    const parsed = parseBalancedJsonObject(text, jsonStart)
+    const parsed =
+      match[0] === '<tool_call>'
+        ? parseToolCallTag(text, markerPattern.lastIndex, allowedToolNames, toolSchemasByName)
+        : parseFunctionTag(text, markerPattern.lastIndex, match[1], allowedToolNames, toolSchemasByName)
     if (!parsed) {
       return null
     }
-    const toolUse = textToolCallObjectToAnthropicBlock(parsed.value, allowedToolNames)
-    if (!toolUse) {
-      return null
+    if (parsed.block) {
+      blocks.push(parsed.block)
+      converted += 1
+    } else {
+      consumedMalformedToolMarkup += 1
     }
-    blocks.push(toolUse)
-    converted += 1
+    cursor = parsed.end
+  }
 
-    cursor = skipWhitespace(text, parsed.end)
+  return converted > 0 || consumedMalformedToolMarkup > 0
+    ? {
+        blocks,
+        consumedMarkup: converted > 0 || consumedMalformedToolMarkup > 0,
+      }
+    : null
+}
+
+function parseToolCallTag(text, contentStart, allowedToolNames, toolSchemasByName = new Map()) {
+  const jsonStart = skipWhitespace(text, contentStart)
+  const parsed = parseBalancedJsonObject(text, jsonStart)
+  if (!parsed) {
+    return null
+  }
+  const toolUse = textToolCallObjectToAnthropicBlock(parsed.value, allowedToolNames, toolSchemasByName)
+  if (!toolUse) {
+    let cursor = skipWhitespace(text, parsed.end)
     if (text.startsWith('</tool_call>', cursor)) {
       cursor += '</tool_call>'.length
+      return {
+        block: null,
+        end: cursor,
+      }
+    }
+    return null
+  }
+
+  let cursor = skipWhitespace(text, parsed.end)
+  if (text.startsWith('</tool_call>', cursor)) {
+    cursor += '</tool_call>'.length
+  }
+  return {
+    block: toolUse,
+    end: cursor,
+  }
+}
+
+function parseFunctionTag(text, contentStart, toolName, allowedToolNames, toolSchemasByName = new Map()) {
+  const closeTag = '</function>'
+  const closeIndex = text.indexOf(closeTag, contentStart)
+  if (closeIndex === -1) {
+    return null
+  }
+
+  const rawContent = text.slice(contentStart, closeIndex).trim()
+  const end = closeIndex + closeTag.length
+  if (!allowedToolNames.has(toolName)) {
+    return {
+      block: null,
+      end,
+    }
+  }
+  if (!rawContent) {
+    return {
+      block: null,
+      end,
     }
   }
 
-  return converted > 0 ? blocks : null
+  const jsonStart = skipWhitespace(text, contentStart)
+  const parsed = parseBalancedJsonObject(text, jsonStart)
+  if (!parsed || parsed.end > closeIndex) {
+    return {
+      block: null,
+      end,
+    }
+  }
+
+  const toolUse = textToolCallObjectToAnthropicBlock({
+    name: toolName,
+    arguments: parsed.value,
+  }, allowedToolNames, toolSchemasByName)
+  return {
+    block: toolUse,
+    end,
+  }
 }
 
 function appendTextBlock(blocks, text) {
@@ -1351,7 +1441,7 @@ function parseBalancedJsonObject(text, start) {
   return null
 }
 
-function textToolCallObjectToAnthropicBlock(value, allowedToolNames) {
+function textToolCallObjectToAnthropicBlock(value, allowedToolNames, toolSchemasByName = new Map()) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null
   }
@@ -1383,6 +1473,10 @@ function textToolCallObjectToAnthropicBlock(value, allowedToolNames) {
             ? functionCall.arguments
             : input
 
+  if (!inputSatisfiesToolSchema(name, objectInput, toolSchemasByName)) {
+    return null
+  }
+
   return {
     type: 'tool_use',
     id: firstString(value.id, value.tool_call_id) ?? `toolu_text_${Math.random().toString(36).slice(2)}`,
@@ -1391,6 +1485,15 @@ function textToolCallObjectToAnthropicBlock(value, allowedToolNames) {
       ? objectInput
       : {},
   }
+}
+
+function inputSatisfiesToolSchema(name, input, toolSchemasByName) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return false
+  }
+  const schema = toolSchemasByName.get(name)
+  const required = Array.isArray(schema?.required) ? schema.required : []
+  return required.every(field => Object.prototype.hasOwnProperty.call(input, field))
 }
 
 function writeAnthropicMessageContentAsSse(res, message) {
@@ -1424,6 +1527,96 @@ function writeAnthropicMessageContentAsSse(res, message) {
   })
   writeAnthropicSseEvent(res, 'message_stop', { type: 'message_stop' })
   res.end()
+}
+
+function runSelfTests() {
+  const tools = [
+    {
+      name: 'Bash',
+      input_schema: {
+        type: 'object',
+        properties: {
+          command: { type: 'string' },
+          description: { type: 'string' },
+        },
+        required: ['command'],
+      },
+    },
+    {
+      name: 'Read',
+      input_schema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string' },
+        },
+        required: ['file_path'],
+      },
+    },
+  ]
+
+  assertTextToolCallTest({
+    name: 'json tool_call converts to tool_use',
+    text: '<tool_call>{"name":"Bash","arguments":{"command":"pwd","description":"Print cwd"}}</tool_call>',
+    tools,
+    expectedTypes: ['tool_use'],
+    expectedToolName: 'Bash',
+    expectedStopReason: 'tool_use',
+  })
+  assertTextToolCallTest({
+    name: 'empty function tag is consumed',
+    text: '<function=Read></function>',
+    tools,
+    expectedTypes: [],
+    expectedStopReason: 'end_turn',
+  })
+  assertTextToolCallTest({
+    name: 'invalid tool_call missing required input is consumed',
+    text: '<tool_call>{"name":"Bash","arguments":{"description":"missing command"}}</tool_call>',
+    tools,
+    expectedTypes: [],
+    expectedStopReason: 'end_turn',
+  })
+  assertTextToolCallTest({
+    name: 'function tag with json converts to tool_use',
+    text: '<function=Read>{"file_path":"/tmp/example.txt"}</function>',
+    tools,
+    expectedTypes: ['tool_use'],
+    expectedToolName: 'Read',
+    expectedStopReason: 'tool_use',
+  })
+
+  console.log('[bridge] self-test passed')
+}
+
+function assertTextToolCallTest({
+  name,
+  text,
+  tools,
+  expectedTypes,
+  expectedToolName = null,
+  expectedStopReason,
+}) {
+  const message = normalizeTextToolCallsInAnthropicMessage({
+    id: `msg_test_${Date.now()}`,
+    type: 'message',
+    role: 'assistant',
+    model: 'test',
+    content: [{ type: 'text', text }],
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  }, tools)
+
+  const actualTypes = message.content.map(block => block.type)
+  if (JSON.stringify(actualTypes) !== JSON.stringify(expectedTypes)) {
+    throw new Error(`${name}: expected content types ${JSON.stringify(expectedTypes)}, got ${JSON.stringify(actualTypes)}`)
+  }
+  if (message.stop_reason !== expectedStopReason) {
+    throw new Error(`${name}: expected stop_reason ${expectedStopReason}, got ${message.stop_reason}`)
+  }
+  if (expectedToolName && message.content[0]?.name !== expectedToolName) {
+    throw new Error(`${name}: expected tool ${expectedToolName}, got ${message.content[0]?.name}`)
+  }
 }
 
 function parseJsonObject(value) {
