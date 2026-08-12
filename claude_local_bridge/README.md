@@ -307,6 +307,8 @@ omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
 lmstudio/qwen/qwen3-coder-30b
 openai/gpt-4.1-mini
 anthropic/claude-sonnet-4-5
+aggregator-anthropic/<model-id>
+aggregator-openai/<model-id>
 ```
 
 Claude Code and direct bridge callers can use those route IDs. Claude
@@ -327,6 +329,39 @@ OpenAI `/v1/chat/completions`. When Claude requests streaming for an OpenAI
 provider, the bridge asks the upstream for a non-streaming chat completion and
 then emits Anthropic-shaped SSE events. That preserves Claude client
 compatibility, but it is buffered rather than token-by-token streaming.
+
+### gateway
+
+`providers.example.json` includes disabled gateway templates for both
+compatibility surfaces:
+
+- `aggregator-anthropic`: Anthropic-compatible `/v1/messages` routing.
+- `aggregator-openai`: OpenAI-compatible `/v1/chat/completions` routing.
+
+Both use `https://api.aggregator.ai` as the provider root. Do not append `/v1`; the
+bridge probes the standard model-list paths for the selected provider type.
+
+To enable gateway locally, edit ignored local files only. Put the real key in
+`bridge.local.json`:
+
+```json
+{
+  "env": {
+    "AGGREGATOR_API_KEY": "replace-with-your-real-local-key"
+  }
+}
+```
+
+Then set one or both gateway provider entries in `providers.local.json` to
+`"enabled": true`. Prefer enabling `aggregator-anthropic` first if gateway's
+Anthropic-compatible surface is available, because that route requires less
+translation for Claude Desktop/Cowork. After changing the file:
+
+```bash
+curl -X POST http://127.0.0.1:1245/sync-models
+curl http://127.0.0.1:1245/healthz
+curl http://127.0.0.1:1245/v1/models
+```
 
 ## Tool And Vision Routing
 

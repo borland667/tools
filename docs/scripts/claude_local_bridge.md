@@ -261,6 +261,8 @@ omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX
 lmstudio/qwen/qwen3-coder-30b
 openai/gpt-4.1-mini
 anthropic/claude-sonnet-4-5
+aggregator-anthropic/<model-id>
+aggregator-openai/<model-id>
 ```
 
 Direct bridge callers can use those IDs. The bridge exposes every discovered
@@ -280,6 +282,32 @@ multiple local models share the same `anthropicFamilyTier`, use different
 version aliases inside that tier, such as `claude-opus-4-5` and
 `claude-opus-4-1`. The OMLX refresh helper validates this before writing
 config.
+
+## gateway Provider
+
+`providers.example.json` includes disabled gateway templates:
+
+- `aggregator-anthropic` for Anthropic-compatible `/v1/messages`.
+- `aggregator-openai` for OpenAI-compatible `/v1/chat/completions`.
+
+Both use `https://api.aggregator.ai` as the root provider URL. Do not append `/v1` in
+the config; the bridge appends and probes the standard model-list paths itself.
+
+To use gateway on this machine, keep the real key in ignored local JSON:
+
+```json
+{
+  "env": {
+    "AGGREGATOR_API_KEY": "replace-with-your-real-local-key"
+  }
+}
+```
+
+Then edit `providers.local.json` and set the desired gateway entry to
+`"enabled": true`. Start with `aggregator-anthropic` if gateway's Anthropic-compatible
+surface is available, because that path requires less request translation for
+Claude Desktop/Cowork. Run `/sync-models` or wait for the next sync interval,
+then confirm with `/healthz` and `/v1/models`.
 
 Example:
 
