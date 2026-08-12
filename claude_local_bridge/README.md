@@ -802,7 +802,8 @@ not used as a replacement list:
     {
       "name": "claude-sonnet-4-5",
       "target": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
-      "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
+      "labelOverride": "OMLX: Qwen3.5 Sushi Coder 9B",
+      "description": "OMLX source model: Qwen3.5-9b-Sushi-Coder-RL-MLX",
       "anthropicFamilyTier": "sonnet",
       "isFamilyDefault": true
     }
@@ -812,7 +813,13 @@ not used as a replacement list:
 
 - `name`: Claude-facing model ID returned by `/v1/models`.
 - `target`: provider-qualified local route ID or raw upstream model ID.
-- `labelOverride`: local model label shown in Claude's picker.
+- `labelOverride`: local model label shown in Claude's picker. Prefer
+  `<Provider>: <Real upstream model>` so the picker shows both the source
+  provider and the original model identity.
+- `description`: optional longer source note. Prefer
+  `<Provider> source model: <exact upstream model id>` so diagnostics and
+  generated profile JSON preserve the exact route behind the Claude-compatible
+  alias.
 - `anthropicFamilyTier`: optional Claude tier mapping for alias resolution.
 - `toolCapable`: optional boolean; when true, tool-shaped requests selected
   through this alias stay on this route instead of falling back to
