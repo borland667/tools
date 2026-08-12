@@ -310,6 +310,12 @@ Provider fields:
   stale manual alias flags and lets tool requests fall back to `models.tool`.
   Set `true` only for providers where every advertised conversation model is
   known to support structured tool calls.
+- `toolFormat`: optional provider-wide tool response format. Use `text` only
+  for providers where tool-enabled responses are known to return text tags such
+  as `<tool_call>{"name":"Bash","arguments":{...}}`; the bridge will parse
+  those tags, validate the tool name against the request, and return structured
+  Anthropic `tool_use` blocks to Claude. Leave unset for native Anthropic or
+  OpenAI tool-call objects.
 
 Internally, the aggregate catalog uses provider-qualified route IDs, for example:
 
@@ -853,6 +859,10 @@ not used as a replacement list:
   `models.tool`. Provider-level `toolCapable: false` wins over this alias flag.
   Keep this false or unset for models that write tool calls as literal text
   such as `<tool_call>` instead of returning structured tool-use blocks.
+- `toolFormat`: optional alias-level format override. Set `text` for a specific
+  model that writes `<tool_call>` JSON blocks; this opt-in is stronger than
+  provider-level `toolCapable: false` and enables bridge-side normalization for
+  that alias only.
 - `visionCapable`: optional boolean; when true, image requests selected through
   this alias stay on this route instead of falling back to `models.vision`.
 - `maxContextLength` / `max_model_len`: optional override for the advertised
@@ -914,6 +924,11 @@ Tool fallback is skipped when the selected route is marked `toolCapable: true`.
 Set provider-level `toolCapable: false` for aggregators whose model catalog
 does not reliably distinguish structured tool support; otherwise Claude may
 display raw tool-call text instead of executing tools.
+If a specific model can use tools but returns a different format, prefer a
+manual alias with `toolFormat: "text"` instead of marking the entire provider
+tool-capable. The bridge only parses text tool calls when the request includes
+tools and validates the parsed name against the declared tool list before
+returning a `tool_use` block.
 Vision fallback is skipped when the selected route is already marked or
 detected as vision-capable. This is bridge behavior, not an Anthropic provider
 config key.

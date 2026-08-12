@@ -318,6 +318,8 @@ async function proxyToUpstream(req, res, url) {
   const headers = copyIncomingHeaders(req.headers)
   let expectsStreamingResponse = false
   let streamingWarmupMessage = null
+  let toolResponseFormat = 'native'
+  let requestTools = []
   let sseKeepalive = null
   const diagnostics = {
     requestId,
@@ -348,6 +350,8 @@ async function proxyToUpstream(req, res, url) {
     upstreamPath = prepared.upstreamPath ?? upstreamPath
     expectsStreamingResponse = prepared.expectsStreamingResponse
     streamingWarmupMessage = prepared.streamingWarmupMessage ?? null
+    toolResponseFormat = prepared.toolResponseFormat ?? 'native'
+    requestTools = prepared.requestTools ?? []
     diagnostics.selectedModel = prepared.selectedModel ?? null
     diagnostics.upstreamModel = prepared.upstreamModel ?? streamingWarmupMessage?.model ?? null
   }
@@ -465,7 +469,22 @@ async function proxyToUpstream(req, res, url) {
   )
 
   try {
-    if (isSseResponse && streamingWarmupMessage) {
+    if (
+      provider.type === 'anthropic' &&
+      url.pathname === '/v1/messages' &&
+      toolResponseFormat === 'text'
+    ) {
+      if (expectsStreamingResponse && isSseResponse) {
+        await pipeAnthropicTextToolCallSseAfterWarmup(upstream.body, res, {
+          requestTools,
+          diagnostics,
+        })
+      } else if (expectsStreamingResponse) {
+        await writeAnthropicTextToolCallsAsSse(upstream, res, provider, requestTools)
+      } else {
+        await writeAnthropicTextToolCallsAsJson(upstream, res, provider, requestTools)
+      }
+    } else if (isSseResponse && streamingWarmupMessage) {
       await pipeAnthropicSseAfterWarmup(upstream.body, res, {
         visibleProgress: shouldSendVisibleStreamProgress(),
         provider,
@@ -615,6 +634,11 @@ async function prepareRequestForProvider(pathname, rawBody) {
 
   const selectedModel = payload.model
   payload.model = route.upstreamModelId
+  const toolResponseFormat =
+    isMessagesCreate && payloadHasTools(payload)
+      ? route.toolFormat ?? route.provider.toolFormat ?? 'native'
+      : 'native'
+  const requestTools = Array.isArray(payload.tools) ? payload.tools : []
   if (isMessagesCreate && route.provider.type === 'openai') {
     return {
       provider: route.provider,
@@ -623,6 +647,8 @@ async function prepareRequestForProvider(pathname, rawBody) {
       expectsStreamingResponse,
       selectedModel,
       upstreamModel: route.upstreamModelId,
+      toolResponseFormat,
+      requestTools,
     }
   }
 
@@ -633,6 +659,8 @@ async function prepareRequestForProvider(pathname, rawBody) {
     expectsStreamingResponse,
     selectedModel,
     upstreamModel: route.upstreamModelId,
+    toolResponseFormat,
+    requestTools,
     streamingWarmupMessage: expectsStreamingResponse
       ? anthropicStreamingWarmupMessage(route.upstreamModelId)
       : null,
@@ -1097,7 +1125,7 @@ function openAiChatToAnthropicMessage(payload, provider) {
         type: 'tool_use',
         id: toolCall.id ?? `toolu_${Math.random().toString(36).slice(2)}`,
         name: fn.name ?? 'tool',
-        input: parseJsonObject(fn.arguments),
+        input: parseJsonObject(fn.arguments) ?? {},
       })
     }
   }
@@ -1130,17 +1158,288 @@ function openAiFinishReasonToAnthropic(reason) {
   return reason ?? 'end_turn'
 }
 
+async function writeAnthropicTextToolCallsAsJson(upstream, res, provider, requestTools) {
+  const payload = await readAnthropicJsonResponse(upstream, res, provider)
+  if (!payload) {
+    return
+  }
+  if (!upstream.ok) {
+    return writeJson(res, upstream.status, payload)
+  }
+  return writeJson(
+    res,
+    200,
+    normalizeTextToolCallsInAnthropicMessage(payload, requestTools),
+  )
+}
+
+async function writeAnthropicTextToolCallsAsSse(upstream, res, provider, requestTools) {
+  const payload = await readAnthropicJsonResponse(upstream, res, provider)
+  if (!payload) {
+    return
+  }
+  if (!upstream.ok) {
+    writeAnthropicSseError(
+      res,
+      upstream.status,
+      payload?.error?.message ?? `${provider.label} request failed`,
+    )
+    return
+  }
+
+  writeAnthropicMessageContentAsSse(
+    res,
+    normalizeTextToolCallsInAnthropicMessage(payload, requestTools),
+  )
+}
+
+async function readAnthropicJsonResponse(upstream, res, provider) {
+  const text = await upstream.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    if (res.headersSent) {
+      writeAnthropicSseError(res, upstream.status || 502, `${provider.label} returned non-JSON Anthropic response`)
+      return null
+    }
+    res.writeHead(upstream.status, {
+      'content-type': upstream.headers.get('content-type') ?? 'text/plain',
+    })
+    res.end(text)
+    return null
+  }
+}
+
+function normalizeTextToolCallsInAnthropicMessage(message, requestTools = []) {
+  if (!message || typeof message !== 'object' || !Array.isArray(message.content)) {
+    return message
+  }
+
+  const allowedToolNames = new Set(
+    requestTools
+      .map(tool => tool?.name)
+      .filter(name => typeof name === 'string' && name.length > 0),
+  )
+  if (allowedToolNames.size === 0) {
+    return message
+  }
+
+  const nextContent = []
+  let convertedToolCalls = 0
+
+  for (const block of message.content) {
+    if (block?.type !== 'text' || typeof block.text !== 'string') {
+      nextContent.push(block)
+      continue
+    }
+
+    const parsedBlocks = parseTextToolCallBlocks(block.text, allowedToolNames)
+    if (!parsedBlocks) {
+      nextContent.push(block)
+      continue
+    }
+
+    for (const parsedBlock of parsedBlocks) {
+      nextContent.push(parsedBlock)
+      if (parsedBlock.type === 'tool_use') {
+        convertedToolCalls += 1
+      }
+    }
+  }
+
+  if (convertedToolCalls === 0) {
+    return message
+  }
+
+  return {
+    ...message,
+    content: nextContent,
+    stop_reason: 'tool_use',
+  }
+}
+
+function parseTextToolCallBlocks(text, allowedToolNames) {
+  const marker = '<tool_call>'
+  let cursor = 0
+  const blocks = []
+  let converted = 0
+
+  while (cursor < text.length) {
+    const markerIndex = text.indexOf(marker, cursor)
+    if (markerIndex === -1) {
+      appendTextBlock(blocks, text.slice(cursor))
+      break
+    }
+
+    appendTextBlock(blocks, text.slice(cursor, markerIndex))
+    const jsonStart = skipWhitespace(text, markerIndex + marker.length)
+    const parsed = parseBalancedJsonObject(text, jsonStart)
+    if (!parsed) {
+      return null
+    }
+    const toolUse = textToolCallObjectToAnthropicBlock(parsed.value, allowedToolNames)
+    if (!toolUse) {
+      return null
+    }
+    blocks.push(toolUse)
+    converted += 1
+
+    cursor = skipWhitespace(text, parsed.end)
+    if (text.startsWith('</tool_call>', cursor)) {
+      cursor += '</tool_call>'.length
+    }
+  }
+
+  return converted > 0 ? blocks : null
+}
+
+function appendTextBlock(blocks, text) {
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    return
+  }
+  blocks.push({ type: 'text', text })
+}
+
+function skipWhitespace(text, index) {
+  let cursor = index
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor += 1
+  }
+  return cursor
+}
+
+function parseBalancedJsonObject(text, start) {
+  if (text[start] !== '{') {
+    return null
+  }
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+    } else if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        const rawJson = text.slice(start, index + 1)
+        try {
+          return {
+            value: JSON.parse(rawJson),
+            end: index + 1,
+          }
+        } catch {
+          return null
+        }
+      }
+    }
+  }
+  return null
+}
+
+function textToolCallObjectToAnthropicBlock(value, allowedToolNames) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const functionCall = value.function && typeof value.function === 'object'
+    ? value.function
+    : null
+  const name = firstString(
+    value.name,
+    value.tool,
+    value.tool_name,
+    functionCall?.name,
+  )
+  if (!name || !allowedToolNames.has(name)) {
+    return null
+  }
+
+  const input =
+    parseJsonObject(value.arguments) ??
+    parseJsonObject(functionCall?.arguments)
+  const objectInput =
+    value.input && typeof value.input === 'object' && !Array.isArray(value.input)
+      ? value.input
+      : value.args && typeof value.args === 'object' && !Array.isArray(value.args)
+        ? value.args
+        : value.arguments && typeof value.arguments === 'object' && !Array.isArray(value.arguments)
+          ? value.arguments
+          : functionCall?.arguments && typeof functionCall.arguments === 'object' && !Array.isArray(functionCall.arguments)
+            ? functionCall.arguments
+            : input
+
+  return {
+    type: 'tool_use',
+    id: firstString(value.id, value.tool_call_id) ?? `toolu_text_${Math.random().toString(36).slice(2)}`,
+    name,
+    input: objectInput && typeof objectInput === 'object' && !Array.isArray(objectInput)
+      ? objectInput
+      : {},
+  }
+}
+
+function writeAnthropicMessageContentAsSse(res, message) {
+  for (const [index, block] of (message.content ?? []).entries()) {
+    writeAnthropicSseEvent(res, 'content_block_start', {
+      type: 'content_block_start',
+      index,
+      content_block: block.type === 'text' ? { type: 'text', text: '' } : block,
+    })
+    if (block.type === 'text') {
+      writeAnthropicSseEvent(res, 'content_block_delta', {
+        type: 'content_block_delta',
+        index,
+        delta: { type: 'text_delta', text: block.text },
+      })
+    }
+    writeAnthropicSseEvent(res, 'content_block_stop', {
+      type: 'content_block_stop',
+      index,
+    })
+  }
+  writeAnthropicSseEvent(res, 'message_delta', {
+    type: 'message_delta',
+    delta: {
+      stop_reason: message.stop_reason ?? 'end_turn',
+      stop_sequence: message.stop_sequence ?? null,
+    },
+    usage: {
+      output_tokens: message.usage?.output_tokens ?? 0,
+    },
+  })
+  writeAnthropicSseEvent(res, 'message_stop', { type: 'message_stop' })
+  res.end()
+}
+
 function parseJsonObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value
+  }
   if (typeof value !== 'string' || !value.trim()) {
-    return {}
+    return null
   }
   try {
     const parsed = JSON.parse(value)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? parsed
-      : {}
+      : null
   } catch {
-    return {}
+    return null
   }
 }
 
@@ -1184,6 +1483,7 @@ async function buildGatewayModelList() {
       description: option.description,
       upstream_model_id: option.upstreamModelId,
       tool_capable: option.toolCapable === true,
+      ...(option.toolFormat ? { tool_format: option.toolFormat } : {}),
       vision_capable: option.visionCapable === true,
       ...(option.maxContextLength ? { max_model_len: option.maxContextLength } : {}),
     })),
@@ -1351,6 +1651,7 @@ function normalizeClaudeDesktopModels(routesById) {
       label,
       description,
       toolCapable: isToolCapableAliasRoute(alias, route),
+      toolFormat: normalizeToolFormat(alias.toolFormat ?? alias.tool_format) ?? route.toolFormat,
       visionCapable: alias.visionCapable === true || route.visionCapable === true,
       maxContextLength: firstNumber(alias.maxContextLength, alias.max_model_len) ?? route.maxContextLength,
     }
@@ -1361,6 +1662,7 @@ function normalizeClaudeDesktopModels(routesById) {
         upstreamModelId: route.upstreamModelId,
         provider: route.provider,
         toolCapable: isToolCapableAliasRoute(alias, route),
+        toolFormat: option.toolFormat,
         visionCapable: alias.visionCapable === true || route.visionCapable === true,
         maxContextLength: option.maxContextLength,
       },
@@ -1374,10 +1676,17 @@ function normalizeClaudeDesktopModels(routesById) {
 }
 
 function isToolCapableAliasRoute(alias, route) {
+  const aliasToolFormat = normalizeToolFormat(alias?.toolFormat ?? alias?.tool_format)
+  if (aliasToolFormat === 'text' || route?.toolFormat === 'text') {
+    return true
+  }
   if (route?.provider?.toolCapable === false) {
     return false
   }
-  return alias?.toolCapable === true || route?.toolCapable === true
+  return Boolean(
+    alias?.toolCapable === true ||
+      route?.toolCapable === true,
+  )
 }
 
 function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configuredAliases) {
@@ -1412,7 +1721,8 @@ function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configure
       route,
       label: buildProviderSourceLabel(option, route),
       description: `${route.provider.label ?? route.provider.id} source model: ${route.upstreamModelId}`,
-      toolCapable: option.toolCapable === true || route.toolCapable === true,
+      toolCapable: option.toolCapable === true || route.toolCapable === true || route.toolFormat === 'text',
+      toolFormat: route.toolFormat,
       visionCapable: option.visionCapable === true || route.visionCapable === true,
       maxContextLength: option.maxContextLength ?? route.maxContextLength,
     }))
@@ -1429,6 +1739,7 @@ function createClaudeDesktopAliasOption({
   label,
   description,
   toolCapable,
+  toolFormat,
   visionCapable,
   maxContextLength,
 }) {
@@ -1439,6 +1750,7 @@ function createClaudeDesktopAliasOption({
     label,
     description,
     toolCapable,
+    toolFormat,
     visionCapable,
     maxContextLength,
   }
@@ -1449,6 +1761,7 @@ function createClaudeDesktopAliasOption({
       upstreamModelId: route.upstreamModelId,
       provider: route.provider,
       toolCapable,
+      toolFormat,
       visionCapable,
       maxContextLength,
     },
@@ -1680,12 +1993,16 @@ function normalizeModelOption(model, provider = providers[0]) {
     label,
     description,
     toolCapable,
+    toolFormat: normalizeToolFormat(model?.toolFormat ?? model?.tool_format ?? provider.toolFormat),
     visionCapable: isVisionCapableModel(model, id),
     maxContextLength,
   }
 }
 
 function isToolCapableModelForProvider(model, provider) {
+  if (provider?.toolFormat === 'text') {
+    return true
+  }
   if (provider?.toolCapable === false) {
     return false
   }
@@ -1904,6 +2221,7 @@ async function reloadProviders({ force = false } = {}) {
       modelsFile: provider.modelsFile,
       enabled: provider.enabled,
       toolCapable: provider.toolCapable,
+      toolFormat: provider.toolFormat,
     })),
   )
 
@@ -2047,8 +2365,23 @@ function normalizeProvider(provider, index) {
         provider?.supportsTools ??
         provider?.supports_tools,
     ),
+    toolFormat: normalizeToolFormat(provider?.toolFormat ?? provider?.tool_format),
     enabled: provider?.enabled !== false,
   }
+}
+
+function normalizeToolFormat(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-')
+  if (['text', 'text-tool-call', 'text-tool-calls', 'tool-call-text'].includes(normalized)) {
+    return 'text'
+  }
+  if (['native', 'anthropic', 'openai'].includes(normalized)) {
+    return 'native'
+  }
+  return null
 }
 
 function normalizeOptionalBoolean(value) {
@@ -2605,6 +2938,97 @@ async function pipeAnthropicSseAfterWarmup(upstreamBody, res, options = {}) {
     }
     closeProgress()
     reader.releaseLock()
+  }
+}
+
+async function pipeAnthropicTextToolCallSseAfterWarmup(upstreamBody, res, options = {}) {
+  const reader = upstreamBody.getReader()
+  const decoder = new TextDecoder()
+  const diagnostics = options.diagnostics
+  let buffer = ''
+  let text = ''
+  let model = options.upstreamModelId ?? diagnostics?.upstreamModel ?? 'local'
+  let messageId = `msg_${Date.now()}`
+  let stopReason = 'end_turn'
+  let usage = { input_tokens: 0, output_tokens: 0 }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      if (diagnostics) {
+        diagnostics.streamBytes += value.byteLength ?? 0
+      }
+      buffer += decoder.decode(value, { stream: true })
+      const events = buffer.split(/\r?\n\r?\n/)
+      buffer = events.pop() ?? ''
+      for (const event of events) {
+        if (diagnostics) {
+          diagnostics.streamEvents += 1
+        }
+        const parsed = parseAnthropicSseJsonEvent(event)
+        if (!parsed) {
+          continue
+        }
+        const { eventName, payload } = parsed
+        if (eventName === 'message_start') {
+          model = payload.message?.model ?? model
+          messageId = payload.message?.id ?? messageId
+        } else if (eventName === 'content_block_delta' && payload.delta?.type === 'text_delta') {
+          text += payload.delta.text ?? ''
+        } else if (eventName === 'message_delta') {
+          stopReason = payload.delta?.stop_reason ?? stopReason
+          usage = {
+            input_tokens: usage.input_tokens,
+            output_tokens: payload.usage?.output_tokens ?? usage.output_tokens,
+          }
+        }
+      }
+    }
+
+    buffer += decoder.decode()
+    if (buffer) {
+      const parsed = parseAnthropicSseJsonEvent(buffer)
+      if (parsed?.eventName === 'content_block_delta' && parsed.payload.delta?.type === 'text_delta') {
+        text += parsed.payload.delta.text ?? ''
+      }
+    }
+
+    const message = normalizeTextToolCallsInAnthropicMessage({
+      id: messageId,
+      type: 'message',
+      role: 'assistant',
+      model,
+      content: text ? [{ type: 'text', text }] : [],
+      stop_reason: stopReason,
+      stop_sequence: null,
+      usage,
+    }, options.requestTools)
+
+    if (diagnostics && message.content.some(block => block?.type === 'tool_use')) {
+      diagnostics.visibleEvents += 1
+      diagnostics.firstVisibleOutputMs ??= Date.now() - diagnostics.startedAt
+    }
+    writeAnthropicMessageContentAsSse(res, message)
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+function parseAnthropicSseJsonEvent(block) {
+  const data = sseEventData(block)
+  if (!data) {
+    return null
+  }
+  try {
+    return {
+      eventName: sseEventName(block),
+      payload: JSON.parse(data),
+    }
+  } catch {
+    return null
   }
 }
 
