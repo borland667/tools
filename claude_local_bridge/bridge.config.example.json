@@ -5,6 +5,7 @@
   },
   "providersFile": "providers.local.json",
   "modelSyncIntervalMs": 30000,
+  "modelDiscoveryTimeoutMs": 30000,
   "requestTimeoutMs": 600000,
   "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {

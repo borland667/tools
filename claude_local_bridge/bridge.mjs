@@ -105,6 +105,7 @@ Configuration:
   models.main / models.small              Default Claude-facing model aliases
   models.tool / models.vision             Tool and vision fallback models
   modelSyncIntervalMs                     Model sync interval in ms (default: 30000)
+  modelDiscoveryTimeoutMs                 Per-provider model-list timeout in ms (default: 30000)
   requestTimeoutMs                        Non-streaming upstream timeout in ms (default: 600000)
   streamRequestTimeoutMs                  Streaming upstream timeout in ms (default: 3600000; 0 disables)
   streamingProgress                       Visible heartbeat settings for timeout-risk streams
@@ -131,6 +132,7 @@ Legacy environment fallback:
   CLAUDE_LOCAL_BRIDGE_HOST                Loopback listen host only: 127.0.0.1, localhost, or ::1
   CLAUDE_LOCAL_BRIDGE_PORT                Bridge listen port (default: 1245)
   CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS     Model sync interval in ms (default: 30000)
+  CLAUDE_LOCAL_MODEL_DISCOVERY_TIMEOUT_MS Per-provider model-list timeout in ms (default: 30000)
   CLAUDE_LOCAL_REQUEST_TIMEOUT_MS         Non-streaming upstream timeout in ms (default: 600000)
   CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
@@ -1186,12 +1188,20 @@ async function syncModelOptions() {
   const results = await Promise.all(
     providers.filter(provider => provider.enabled).map(async provider => {
       try {
+        const payload = await fetchProviderModelsPayload(provider)
+        const models = coerceModelsArray(payload)
+        console.log(
+          `[bridge] discovered ${models.length} model(s) from ${provider.id}`,
+        )
         return {
           ok: true,
           provider,
-          payload: await fetchProviderModelsPayload(provider),
+          payload,
         }
       } catch (error) {
+        console.error(
+          `[bridge] model discovery failed for ${provider.id}: ${formatError(error)}`,
+        )
         return {
           ok: false,
           provider,
@@ -1398,7 +1408,7 @@ async function fetchProviderModelsPayload(provider) {
     try {
       const response = await fetch(new URL(candidate, provider.baseUrl), {
         headers: buildUpstreamHeaders(provider),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(getModelDiscoveryTimeoutMs()),
       })
 
       if (!response.ok) {
@@ -1910,6 +1920,15 @@ function getModelSyncIntervalMs() {
   return Number(
     configValue('modelSyncIntervalMs', process.env.CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS) ??
       '30000',
+  )
+}
+
+function getModelDiscoveryTimeoutMs() {
+  return Number(
+    configValue(
+      'modelDiscoveryTimeoutMs',
+      process.env.CLAUDE_LOCAL_MODEL_DISCOVERY_TIMEOUT_MS,
+    ) ?? '30000',
   )
 }
 

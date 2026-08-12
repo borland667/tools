@@ -259,12 +259,17 @@ For multiple simultaneous providers, prefer a reloadable provider file:
 ```json
 {
   "providersFile": "providers.local.json",
-  "modelSyncIntervalMs": 30000
+  "modelSyncIntervalMs": 30000,
+  "modelDiscoveryTimeoutMs": 30000
 }
 ```
 
 The bridge re-reads `providersFile` on every model sync. The default sync
 interval is `30000` ms and can be changed with `modelSyncIntervalMs`.
+`modelDiscoveryTimeoutMs` is the per-provider timeout for `/v1/models`
+catalog fetches. Keep it comfortably above the slowest configured provider;
+cloud aggregators such as gateway can take longer than 5 seconds to return a
+large catalog.
 
 You can also embed static providers directly in `bridge.local.json`:
 
@@ -956,6 +961,7 @@ slow models usable, the local config enables a visible stream timeout guard:
 
 ```json
 {
+  "modelDiscoveryTimeoutMs": 30000,
   "requestTimeoutMs": 600000,
   "streamRequestTimeoutMs": 3600000,
   "streamingProgress": {
@@ -969,6 +975,8 @@ slow models usable, the local config enables a visible stream timeout guard:
 }
 ```
 
+`modelDiscoveryTimeoutMs` applies to provider model-list requests such as
+`/v1/models`, including the discovery that powers Claude model picker aliases.
 `requestTimeoutMs` applies to short non-streaming calls such as
 `/v1/messages/count_tokens`. `streamRequestTimeoutMs` applies to streaming
 `/v1/messages` generations after Claude is already connected to the bridge.
