@@ -318,9 +318,15 @@ aggregator-openai/<model-id>
 
 Claude Code and direct bridge callers can use those route IDs. Claude
 Desktop/Cowork 3P gateway discovery is stricter: expose Claude-compatible model
-IDs with `claudeDesktopModels[]`, then map each alias to the real route ID.
-This lets Claude see `claude-sonnet-4-5` while the bridge sends
-`omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX` upstream.
+IDs and map each alias to the real route ID. The bridge does this
+automatically by default for every discovered conversation model that does not
+already have a manual alias. This lets Claude see an alias such as
+`claude-sonnet-5-1001` while the bridge sends
+`provider-id/<real-model-id>` upstream.
+
+Manual `claudeDesktopModels[]` entries are still supported and win over
+automatic aliases. Use them for stable favorite names, family defaults, or
+capability overrides.
 
 For backward compatibility, if neither `providersFile` nor `providers` is set
 and the bridge is running in legacy single-provider mode, the bridge keeps
@@ -613,7 +619,8 @@ Model sources:
 
 - `bridge-config`: default; reads `claudeDesktopModels[]` from
   `bridge.local.json`.
-- `bridge-live`: fetches `GET /v1/models` from the bridge.
+- `bridge-live`: fetches `GET /v1/models` from the bridge and keeps only
+  Claude-compatible `claude-*` aliases, including automatic aliases.
 - `base`: reuses `inferenceModels` from the base config.
 - `file`: reads a JSON file containing `inferenceModels`, `data`, `models`, or
   `items`.
@@ -792,8 +799,22 @@ automatic fallback routing for tool/image requests and default-model selection.
 Anthropic-style model names that should route to one of those provider-qualified
 model IDs.
 
-For Claude Desktop/Cowork 3P, prefer `claudeDesktopModels[]` in
-`bridge.local.json`. These aliases are added alongside raw provider models,
+For Claude Desktop/Cowork 3P, automatic aliases are enabled by default:
+
+```json
+{
+  "autoClaudeDesktopAliases": true
+}
+```
+
+The bridge creates aliases only for discovered conversation models and skips
+non-chat entries such as embeddings, rerankers, and image-only models. Alias
+labels are provider-prefixed and descriptions preserve the exact upstream model
+ID. Set `autoClaudeDesktopAliases` to `false` if you want the picker to show
+only manually configured aliases.
+
+Use `claudeDesktopModels[]` in `bridge.local.json` for hand-curated aliases.
+These aliases are added alongside raw provider models and automatic aliases,
 not used as a replacement list:
 
 ```json

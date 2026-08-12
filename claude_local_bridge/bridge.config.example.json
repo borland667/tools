@@ -4,6 +4,7 @@
     "port": 1245
   },
   "providersFile": "providers.local.json",
+  "autoClaudeDesktopAliases": true,
   "modelSyncIntervalMs": 30000,
   "modelDiscoveryTimeoutMs": 30000,
   "requestTimeoutMs": 600000,

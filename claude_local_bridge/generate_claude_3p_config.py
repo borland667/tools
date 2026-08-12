@@ -363,7 +363,7 @@ def resolve_inference_models(
         return normalize_models_payload(read_json_object(args.models_file))
     if source == "bridge-live":
         url = args.models_url or spec.get("modelsUrl") or f"{DEFAULT_BRIDGE_BASE_URL}/v1/models"
-        return normalize_models_payload(fetch_json(url, args.api_key, args.api_key_header))
+        return normalize_models_payload(fetch_json(url, args.api_key, args.api_key_header), claude_only=True)
     if source == "bridge-config":
         bridge_config = read_json_object(args.bridge_config)
         aliases = bridge_config.get("claudeDesktopModels")
@@ -373,26 +373,30 @@ def resolve_inference_models(
     raise SystemExit(f"error: unsupported models source: {source}")
 
 
-def normalize_models_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def normalize_models_payload(payload: dict[str, Any], claude_only: bool = False) -> list[dict[str, Any]]:
     if isinstance(payload.get("inferenceModels"), list):
-        return normalize_inference_models(payload["inferenceModels"])
+        return normalize_inference_models(payload["inferenceModels"], claude_only=claude_only)
     items = payload.get("data") or payload.get("models") or payload.get("items") or []
-    return normalize_inference_models(items)
+    return normalize_inference_models(items, claude_only=claude_only)
 
 
-def normalize_inference_models(models: list[Any]) -> list[dict[str, Any]]:
+def normalize_inference_models(models: list[Any], claude_only: bool = False) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     seen: set[str] = set()
     for model in models:
         if not isinstance(model, dict):
             continue
         name = first_string(model.get("name"), model.get("id"), model.get("model"))
+        if claude_only and not is_claude_compatible_model_name(name):
+            continue
         if not name or name in seen:
             continue
         seen.add(name)
         next_model: dict[str, Any] = {"name": name}
+        label = first_string(model.get("labelOverride"), model.get("label"), model.get("displayName"))
+        if label:
+            next_model["labelOverride"] = label
         for key in (
-            "labelOverride",
             "anthropicFamilyTier",
             "isFamilyDefault",
             "supports1m",
@@ -404,6 +408,10 @@ def normalize_inference_models(models: list[Any]) -> list[dict[str, Any]]:
                 next_model[key] = model[key]
         normalized.append(next_model)
     return normalized
+
+
+def is_claude_compatible_model_name(name: str | None) -> bool:
+    return bool(name and name.startswith("claude-"))
 
 
 def validate_config(config: dict[str, Any]) -> None:

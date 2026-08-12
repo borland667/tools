@@ -104,6 +104,7 @@ Configuration:
   singleProvider                          Legacy one-provider config object
   models.main / models.small              Default Claude-facing model aliases
   models.tool / models.vision             Tool and vision fallback models
+  autoClaudeDesktopAliases                Auto-add Claude-compatible aliases for discovered chat models (default: true)
   modelSyncIntervalMs                     Model sync interval in ms (default: 30000)
   modelDiscoveryTimeoutMs                 Per-provider model-list timeout in ms (default: 30000)
   requestTimeoutMs                        Non-streaming upstream timeout in ms (default: 600000)
@@ -133,6 +134,7 @@ Legacy environment fallback:
   CLAUDE_LOCAL_BRIDGE_PORT                Bridge listen port (default: 1245)
   CLAUDE_LOCAL_MODEL_SYNC_INTERVAL_MS     Model sync interval in ms (default: 30000)
   CLAUDE_LOCAL_MODEL_DISCOVERY_TIMEOUT_MS Per-provider model-list timeout in ms (default: 30000)
+  CLAUDE_LOCAL_AUTO_CLAUDE_DESKTOP_ALIASES Auto-add Claude-compatible discovered model aliases (default: true)
   CLAUDE_LOCAL_REQUEST_TIMEOUT_MS         Non-streaming upstream timeout in ms (default: 600000)
   CLAUDE_LOCAL_MAIN_MODEL                 Override default mapped main model
   CLAUDE_LOCAL_SMALL_MODEL                Override default mapped small/haiku model
@@ -1178,6 +1180,11 @@ async function buildGatewayModelList() {
       object: 'model',
       created: 0,
       owned_by: option.providerId ?? 'local',
+      label: option.label,
+      description: option.description,
+      upstream_model_id: option.upstreamModelId,
+      tool_capable: option.toolCapable === true,
+      vision_capable: option.visionCapable === true,
       ...(option.maxContextLength ? { max_model_len: option.maxContextLength } : {}),
     })),
   }
@@ -1258,7 +1265,16 @@ async function syncModelOptions() {
     throw new Error('no configured provider returned any usable LLM models')
   }
 
-  const claudeDesktopOptions = normalizeClaudeDesktopModels(routesById)
+  const configuredClaudeDesktopOptions = normalizeClaudeDesktopModels(routesById)
+  const automaticClaudeDesktopOptions = normalizeAutomaticClaudeDesktopModels(
+    rawOptions,
+    routesById,
+    configuredClaudeDesktopOptions,
+  )
+  const claudeDesktopOptions = [
+    ...configuredClaudeDesktopOptions,
+    ...automaticClaudeDesktopOptions,
+  ]
   const optionsByPublicId = new Map(rawOptions.map(option => [option.value, option]))
   for (const alias of claudeDesktopOptions) {
     optionsByPublicId.set(alias.value, alias)
@@ -1355,6 +1371,143 @@ function normalizeClaudeDesktopModels(routesById) {
   return options.sort((a, b) => {
     return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
   })
+}
+
+function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configuredAliases) {
+  if (!shouldAutoGenerateClaudeDesktopAliases()) {
+    return []
+  }
+
+  const usedNames = new Set([
+    ...routesById.keys(),
+    ...configuredAliases.map(option => option.value),
+  ])
+  const manuallyAliasedTargets = new Set(
+    configuredAliases.map(option => `${option.providerId}/${option.upstreamModelId}`),
+  )
+  const counters = seedClaudeAliasCounters(usedNames)
+  const aliases = []
+
+  for (const option of rawOptions) {
+    const route = routesById.get(option.value)
+    if (!route || !isAutoAliasCandidate(option, route)) {
+      continue
+    }
+    if (manuallyAliasedTargets.has(`${route.provider.id}/${route.upstreamModelId}`)) {
+      continue
+    }
+
+    const familyTier = inferClaudeFamilyTier(option, route)
+    const name = chooseAutomaticClaudeAliasName(option, familyTier, usedNames, counters)
+    usedNames.add(name)
+    aliases.push(createClaudeDesktopAliasOption({
+      name,
+      route,
+      label: buildProviderSourceLabel(option, route),
+      description: `${route.provider.label ?? route.provider.id} source model: ${route.upstreamModelId}`,
+      toolCapable: option.toolCapable === true || route.toolCapable === true,
+      visionCapable: option.visionCapable === true || route.visionCapable === true,
+      maxContextLength: option.maxContextLength ?? route.maxContextLength,
+    }))
+  }
+
+  return aliases.sort((a, b) => {
+    return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
+  })
+}
+
+function createClaudeDesktopAliasOption({
+  name,
+  route,
+  label,
+  description,
+  toolCapable,
+  visionCapable,
+  maxContextLength,
+}) {
+  const option = {
+    value: name,
+    providerId: route.provider.id,
+    upstreamModelId: route.upstreamModelId,
+    label,
+    description,
+    toolCapable,
+    visionCapable,
+    maxContextLength,
+  }
+  Object.defineProperty(option, 'route', {
+    enumerable: false,
+    value: {
+      routeId: name,
+      upstreamModelId: route.upstreamModelId,
+      provider: route.provider,
+      toolCapable,
+      visionCapable,
+      maxContextLength,
+    },
+  })
+  return option
+}
+
+function isAutoAliasCandidate(option, route) {
+  const idText = `${option.value} ${route.upstreamModelId} ${option.label} ${option.description}`
+  return !isNonConversationModelId(idText)
+}
+
+function chooseAutomaticClaudeAliasName(option, familyTier, usedNames, counters) {
+  const upstream = option.upstreamModelId ?? ''
+  if (upstream.startsWith('claude-') && !usedNames.has(upstream)) {
+    return upstream
+  }
+
+  do {
+    counters[familyTier] += 1
+    const candidate = `claude-${familyTier}-5-${String(counters[familyTier]).padStart(4, '0')}`
+    if (!usedNames.has(candidate)) {
+      return candidate
+    }
+  } while (true)
+}
+
+function seedClaudeAliasCounters(usedNames) {
+  const counters = {
+    opus: 1000,
+    sonnet: 1000,
+    haiku: 1000,
+  }
+  for (const name of usedNames) {
+    const match = String(name).match(/^claude-(opus|sonnet|haiku)-5-(\d+)$/)
+    if (!match) {
+      continue
+    }
+    const tier = match[1]
+    const value = Number(match[2])
+    if (Number.isFinite(value)) {
+      counters[tier] = Math.max(counters[tier], value)
+    }
+  }
+  return counters
+}
+
+function inferClaudeFamilyTier(option, route) {
+  const text = `${option.value} ${route.upstreamModelId} ${option.label}`.toLowerCase()
+  if (/(opus|o3|gpt-5|gpt-oss|kimi-k2\.6|kimi-k3|pro|reasoning|r1)/.test(text)) {
+    return 'opus'
+  }
+  if (/(haiku|flash|mini|8b|instant|4b)/.test(text)) {
+    return 'haiku'
+  }
+  return 'sonnet'
+}
+
+function buildProviderSourceLabel(option, route) {
+  const providerLabel = route.provider.label ?? route.provider.id
+  const rawLabel = String(option.label ?? '').trim()
+  const providerPrefix = `${providerLabel}: `
+  if (rawLabel.startsWith(providerPrefix)) {
+    return rawLabel
+  }
+  return `${providerLabel}: ${prettifyModelId(route.upstreamModelId)}`
 }
 
 function routeForTargetModelWithRoutes(routesById, candidate) {
@@ -1929,6 +2082,16 @@ function getModelDiscoveryTimeoutMs() {
       'modelDiscoveryTimeoutMs',
       process.env.CLAUDE_LOCAL_MODEL_DISCOVERY_TIMEOUT_MS,
     ) ?? '30000',
+  )
+}
+
+function shouldAutoGenerateClaudeDesktopAliases() {
+  return parseBoolean(
+    configValue(
+      'autoClaudeDesktopAliases',
+      process.env.CLAUDE_LOCAL_AUTO_CLAUDE_DESKTOP_ALIASES,
+    ),
+    true,
   )
 }
 
