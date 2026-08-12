@@ -93,7 +93,7 @@
     "banner": null,
     "deploymentDisplayName": "Local Claude Bridge",
     "deploymentDisplaySubtitle": "Single-user permissive 3P profile",
-    "enduserAttribution": true,
+    "endUserAttribution": true,
     "disableFeatureDiscovery": false
   },
   "updates": {

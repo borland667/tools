@@ -301,7 +301,11 @@ def build_config(
     assign_if_present(config, "banner", appearance.get("banner"))
     assign_if_present(config, "deploymentDisplayName", appearance.get("deploymentDisplayName"))
     assign_if_present(config, "deploymentDisplaySubtitle", appearance.get("deploymentDisplaySubtitle"))
-    assign_if_present(config, "enduserAttribution", appearance.get("enduserAttribution"))
+    assign_if_present(
+        config,
+        "endUserAttribution",
+        appearance.get("endUserAttribution", appearance.get("enduserAttribution")),
+    )
     assign_if_present(config, "disableFeatureDiscovery", appearance.get("disableFeatureDiscovery"))
     assign_if_present(config, "disableAutoUpdates", updates.get("disableAutoUpdates"))
     assign_if_present(config, "autoUpdaterEnforcementHours", updates.get("autoUpdaterEnforcementHours"))
@@ -502,7 +506,7 @@ def order_config(config: dict[str, Any]) -> dict[str, Any]:
         "banner",
         "deploymentDisplayName",
         "deploymentDisplaySubtitle",
-        "enduserAttribution",
+        "endUserAttribution",
         "disableFeatureDiscovery",
         "disableAutoUpdates",
         "autoUpdaterEnforcementHours",
