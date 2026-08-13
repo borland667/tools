@@ -323,6 +323,7 @@ async function proxyToUpstream(req, res, url) {
   const headers = copyIncomingHeaders(req.headers)
   let expectsStreamingResponse = false
   let streamingWarmupMessage = null
+  let visibleProgressTimeoutRisk = false
   let toolResponseFormat = 'native'
   let requestTools = []
   let sseKeepalive = null
@@ -355,6 +356,7 @@ async function proxyToUpstream(req, res, url) {
     upstreamPath = prepared.upstreamPath ?? upstreamPath
     expectsStreamingResponse = prepared.expectsStreamingResponse
     streamingWarmupMessage = prepared.streamingWarmupMessage ?? null
+    visibleProgressTimeoutRisk = prepared.timeoutRisk === true
     toolResponseFormat = prepared.toolResponseFormat ?? 'native'
     requestTools = prepared.requestTools ?? []
     diagnostics.selectedModel = prepared.selectedModel ?? null
@@ -491,7 +493,7 @@ async function proxyToUpstream(req, res, url) {
       }
     } else if (isSseResponse && streamingWarmupMessage) {
       await pipeAnthropicSseAfterWarmup(upstream.body, res, {
-        visibleProgress: shouldSendVisibleStreamProgress(),
+        visibleProgress: shouldSendVisibleStreamProgress() && visibleProgressTimeoutRisk,
         provider,
         upstreamModelId: streamingWarmupMessage.model,
         diagnostics,
@@ -652,6 +654,7 @@ async function prepareRequestForProvider(pathname, rawBody) {
       expectsStreamingResponse,
       selectedModel,
       upstreamModel: route.upstreamModelId,
+      timeoutRisk: isTimeoutRiskRoute(route),
       toolResponseFormat,
       requestTools,
     }
@@ -664,6 +667,7 @@ async function prepareRequestForProvider(pathname, rawBody) {
     expectsStreamingResponse,
     selectedModel,
     upstreamModel: route.upstreamModelId,
+    timeoutRisk: isTimeoutRiskRoute(route),
     toolResponseFormat,
     requestTools,
     streamingWarmupMessage: expectsStreamingResponse
@@ -861,6 +865,10 @@ function isVisionCapableRoute(route) {
 
 function isToolCapableRoute(route) {
   return Boolean(route?.toolCapable)
+}
+
+function isTimeoutRiskRoute(route) {
+  return Boolean(route?.timeoutRisk)
 }
 
 function isStrongVisionModelId(route) {
@@ -1584,8 +1592,42 @@ function runSelfTests() {
     expectedToolName: 'Read',
     expectedStopReason: 'tool_use',
   })
+  assertTimeoutRiskMetadataTest()
 
   console.log('[bridge] self-test passed')
+}
+
+function assertTimeoutRiskMetadataTest() {
+  const localProvider = normalizeProvider({
+    id: 'fixture-local',
+    backend: 'openai',
+    type: 'openai',
+    baseUrl: 'http://127.0.0.1:1234',
+  }, 0)
+  if (localProvider.local !== true || localProvider.timeoutRisk !== true) {
+    throw new Error('loopback providers should default to local timeout-risk routes')
+  }
+
+  const cloudProvider = normalizeProvider({
+    id: 'fixture-cloud',
+    backend: 'anthropic',
+    type: 'anthropic',
+    baseUrl: 'https://api.example.com',
+  }, 0)
+  if (cloudProvider.local === true || cloudProvider.timeoutRisk === true) {
+    throw new Error('remote providers should not default to timeout-risk routes')
+  }
+
+  const slowCloudProvider = normalizeProvider({
+    id: 'fixture-slow-cloud',
+    backend: 'anthropic',
+    type: 'anthropic',
+    baseUrl: 'https://api.example.com',
+    slow: true,
+  }, 0)
+  if (slowCloudProvider.slow !== true || slowCloudProvider.timeoutRisk !== true) {
+    throw new Error('slow providers should opt into timeout-risk routes')
+  }
 }
 
 function assertTextToolCallTest({
@@ -1675,6 +1717,9 @@ async function buildGatewayModelList() {
       label: option.label,
       description: option.description,
       upstream_model_id: option.upstreamModelId,
+      local: option.local === true,
+      slow: option.slow === true,
+      timeout_risk: option.timeoutRisk === true,
       tool_capable: option.toolCapable === true,
       ...(option.toolFormat ? { tool_format: option.toolFormat } : {}),
       vision_capable: option.visionCapable === true,
@@ -1745,6 +1790,9 @@ async function syncModelOptions() {
         provider,
         toolCapable: option.toolCapable,
         visionCapable: option.visionCapable,
+        local: option.local,
+        slow: option.slow,
+        timeoutRisk: option.timeoutRisk,
         maxContextLength: option.maxContextLength,
       })
     }
@@ -1846,6 +1894,9 @@ function normalizeClaudeDesktopModels(routesById) {
       toolCapable: isToolCapableAliasRoute(alias, route),
       toolFormat: normalizeToolFormat(alias.toolFormat ?? alias.tool_format) ?? route.toolFormat,
       visionCapable: alias.visionCapable === true || route.visionCapable === true,
+      local: isLocalAliasRoute(alias, route),
+      slow: isSlowAliasRoute(alias, route),
+      timeoutRisk: isTimeoutRiskAliasRoute(alias, route),
       maxContextLength: firstNumber(alias.maxContextLength, alias.max_model_len) ?? route.maxContextLength,
     }
     Object.defineProperty(option, 'route', {
@@ -1857,6 +1908,9 @@ function normalizeClaudeDesktopModels(routesById) {
         toolCapable: isToolCapableAliasRoute(alias, route),
         toolFormat: option.toolFormat,
         visionCapable: alias.visionCapable === true || route.visionCapable === true,
+        local: option.local,
+        slow: option.slow,
+        timeoutRisk: option.timeoutRisk,
         maxContextLength: option.maxContextLength,
       },
     })
@@ -1880,6 +1934,35 @@ function isToolCapableAliasRoute(alias, route) {
     alias?.toolCapable === true ||
       route?.toolCapable === true,
   )
+}
+
+function isLocalAliasRoute(alias, route) {
+  return Boolean(
+    normalizeOptionalBoolean(alias?.local ?? alias?.isLocal ?? alias?.is_local) ??
+      route?.local ??
+      route?.provider?.local,
+  )
+}
+
+function isSlowAliasRoute(alias, route) {
+  return Boolean(
+    normalizeOptionalBoolean(alias?.slow ?? alias?.isSlow ?? alias?.is_slow) ??
+      route?.slow ??
+      route?.provider?.slow,
+  )
+}
+
+function isTimeoutRiskAliasRoute(alias, route) {
+  const explicit = normalizeOptionalBoolean(
+    alias?.timeoutRisk ??
+      alias?.timeout_risk ??
+      alias?.streamingProgress ??
+      alias?.streaming_progress,
+  )
+  if (explicit !== null) {
+    return explicit
+  }
+  return Boolean(isLocalAliasRoute(alias, route) || isSlowAliasRoute(alias, route) || route?.timeoutRisk)
 }
 
 function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configuredAliases) {
@@ -1917,6 +2000,9 @@ function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configure
       toolCapable: option.toolCapable === true || route.toolCapable === true || route.toolFormat === 'text',
       toolFormat: route.toolFormat,
       visionCapable: option.visionCapable === true || route.visionCapable === true,
+      local: option.local === true || route.local === true,
+      slow: option.slow === true || route.slow === true,
+      timeoutRisk: option.timeoutRisk === true || route.timeoutRisk === true,
       maxContextLength: option.maxContextLength ?? route.maxContextLength,
     }))
   }
@@ -1934,6 +2020,9 @@ function createClaudeDesktopAliasOption({
   toolCapable,
   toolFormat,
   visionCapable,
+  local,
+  slow,
+  timeoutRisk,
   maxContextLength,
 }) {
   const option = {
@@ -1945,6 +2034,9 @@ function createClaudeDesktopAliasOption({
     toolCapable,
     toolFormat,
     visionCapable,
+    local,
+    slow,
+    timeoutRisk,
     maxContextLength,
   }
   Object.defineProperty(option, 'route', {
@@ -1956,6 +2048,9 @@ function createClaudeDesktopAliasOption({
       toolCapable,
       toolFormat,
       visionCapable,
+      local,
+      slow,
+      timeoutRisk,
       maxContextLength,
     },
   })
@@ -2188,8 +2283,38 @@ function normalizeModelOption(model, provider = providers[0]) {
     toolCapable,
     toolFormat: normalizeToolFormat(model?.toolFormat ?? model?.tool_format ?? provider.toolFormat),
     visionCapable: isVisionCapableModel(model, id),
+    local: isLocalModelForProvider(model, provider),
+    slow: isSlowModelForProvider(model, provider),
+    timeoutRisk: isTimeoutRiskModelForProvider(model, provider),
     maxContextLength,
   }
+}
+
+function isLocalModelForProvider(model, provider) {
+  return Boolean(
+    normalizeOptionalBoolean(model?.local ?? model?.isLocal ?? model?.is_local) ??
+      provider?.local,
+  )
+}
+
+function isSlowModelForProvider(model, provider) {
+  return Boolean(
+    normalizeOptionalBoolean(model?.slow ?? model?.isSlow ?? model?.is_slow) ??
+      provider?.slow,
+  )
+}
+
+function isTimeoutRiskModelForProvider(model, provider) {
+  const explicit = normalizeOptionalBoolean(
+    model?.timeoutRisk ??
+      model?.timeout_risk ??
+      model?.streamingProgress ??
+      model?.streaming_progress,
+  )
+  if (explicit !== null) {
+    return explicit
+  }
+  return Boolean(isLocalModelForProvider(model, provider) || isSlowModelForProvider(model, provider))
 }
 
 function isToolCapableModelForProvider(model, provider) {
@@ -2415,6 +2540,9 @@ async function reloadProviders({ force = false } = {}) {
       enabled: provider.enabled,
       toolCapable: provider.toolCapable,
       toolFormat: provider.toolFormat,
+      local: provider.local,
+      slow: provider.slow,
+      timeoutRisk: provider.timeoutRisk,
     })),
   )
 
@@ -2552,6 +2680,9 @@ function normalizeProvider(provider, index) {
     authScheme: normalizeAuthScheme(provider?.authScheme ?? provider?.auth_scheme ?? 'auto'),
     anthropicVersion: firstString(provider?.anthropicVersion, provider?.anthropic_version),
     modelsFile: firstString(provider?.modelsFile, provider?.models_file),
+    local: isLocalProvider(provider, backend, baseUrl),
+    slow: isSlowProvider(provider),
+    timeoutRisk: isTimeoutRiskProvider(provider, backend, baseUrl),
     toolCapable: normalizeOptionalBoolean(
       provider?.toolCapable ??
         provider?.tool_capable ??
@@ -2560,6 +2691,40 @@ function normalizeProvider(provider, index) {
     ),
     toolFormat: normalizeToolFormat(provider?.toolFormat ?? provider?.tool_format),
     enabled: provider?.enabled !== false,
+  }
+}
+
+function isLocalProvider(provider, backend, baseUrl) {
+  const explicit = normalizeOptionalBoolean(provider?.local ?? provider?.isLocal ?? provider?.is_local)
+  if (explicit !== null) {
+    return explicit
+  }
+  return backend === 'omlx' || backend === 'lmstudio' || isLoopbackUrl(baseUrl)
+}
+
+function isSlowProvider(provider) {
+  return Boolean(normalizeOptionalBoolean(provider?.slow ?? provider?.isSlow ?? provider?.is_slow))
+}
+
+function isTimeoutRiskProvider(provider, backend, baseUrl) {
+  const explicit = normalizeOptionalBoolean(
+    provider?.timeoutRisk ??
+      provider?.timeout_risk ??
+      provider?.streamingProgress ??
+      provider?.streaming_progress,
+  )
+  if (explicit !== null) {
+    return explicit
+  }
+  return isLocalProvider(provider, backend, baseUrl) || isSlowProvider(provider)
+}
+
+function isLoopbackUrl(value) {
+  try {
+    const { hostname } = new URL(value)
+    return ['127.0.0.1', 'localhost', '::1'].includes(hostname)
+  } catch {
+    return false
   }
 }
 

@@ -304,6 +304,17 @@ Provider fields:
   secrets in the plist or tracked docs.
 - `label`: human-readable provider label for picker entries and diagnostics.
 - `modelsFile`: optional fixture file for offline tests.
+- `local`: optional boolean. Defaults to `true` for loopback providers such as
+  `127.0.0.1`, `localhost`, OMLX, and LM Studio. Local routes are treated as
+  timeout-risk by default because they may spend long periods loading,
+  pre-filling, or thinking before visible text appears.
+- `slow`: optional boolean. Set `true` for any provider whose first visible
+  token can arrive late enough to trigger Claude Desktop's stream-idle
+  watchdog, even if the provider is remote.
+- `timeoutRisk`: optional boolean. This is the direct switch for the visible
+  stream timeout guard. If unset, it inherits from `local || slow`. Set
+  `false` on a local provider/model only if you explicitly do not want the
+  bridge to emit visible progress heartbeats for that route.
 - `toolCapable`: optional provider-wide structured tool-use policy. Set
   `false` for providers or model aggregators that can chat but have not been
   verified to return real Anthropic/OpenAI tool-call objects; this overrides
@@ -866,6 +877,9 @@ not used as a replacement list:
   that alias only.
 - `visionCapable`: optional boolean; when true, image requests selected through
   this alias stay on this route instead of falling back to `models.vision`.
+- `local`, `slow`, `timeoutRisk`: optional alias-level overrides for the
+  visible timeout guard. These inherit from the target route by default. Use
+  them when a single alias needs different behavior from its provider.
 - `maxContextLength` / `max_model_len`: optional override for the advertised
   alias context window; by default aliases inherit the target model's upstream
   context metadata.
@@ -1064,12 +1078,15 @@ visible-progress behavior. The bridge does not synthesize private chain of
 thought for models that do not emit Anthropic thinking events; it only forwards
 what the upstream provider actually streams.
 
-When enabled, the bridge applies this to every Anthropic-compatible streaming
-model, not just the known slow aliases. It waits `delayMs` for upstream visible
-text or tool output. If none arrives, the request is considered at risk of
-Claude's stream idle timeout: the bridge emits the smallest visible heartbeat it
-can, then appends occasional one-line italic updates until the real upstream
-text/tool output begins.
+When enabled, the bridge applies this only to streaming routes marked
+`timeoutRisk: true`. Providers or models marked `local: true` or `slow: true`
+inherit `timeoutRisk: true` unless they explicitly override it. This keeps cloud
+providers from showing local prefill/status text by default, while still
+protecting OMLX, LM Studio, and other slow local routes from Claude's stream
+idle watchdog. For timeout-risk routes, the bridge waits `delayMs` for upstream
+visible text or tool output. If none arrives, it emits the smallest visible
+heartbeat it can, then appends occasional one-line italic updates until the real
+upstream text/tool output begins.
 
 `idleHeartbeatMs` is the important idle limit. Status updates are still
 deduplicated when OMLX reports the same phase/progress bucket, but once the
@@ -1094,9 +1111,13 @@ best-effort and bounded by `providerStatusTimeoutMs`, so it cannot block or fail
 the model stream. Repeated updates are deduplicated by provider phase and coarse
 progress bucket unless the idle heartbeat limit has elapsed, so Claude does not
 render a long wall of near-identical status lines. This intentionally trades a
-tiny visible heartbeat for reliable long-running local inference. Set
-`"streamingProgress": {"enabled": false}` to disable the visible timeout guard;
-set `"providerStatusEnabled": false` to keep the guard but use generic messages.
+tiny visible heartbeat for reliable long-running local inference. If you see a
+line such as `_Local model: prefill ..._` while a cloud model is selected, check
+the bridge log for a capability fallback such as `route model "..." ->
+omlx/...`; the selected alias likely fell back to a local `models.tool` or
+`models.vision` route. Set `"streamingProgress": {"enabled": false}` to disable
+the visible timeout guard; set `"providerStatusEnabled": false` to keep the
+guard but use generic messages.
 If the error still appears:
 
 ```bash

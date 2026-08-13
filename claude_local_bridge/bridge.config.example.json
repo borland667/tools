@@ -36,6 +36,9 @@
       "labelOverride": "Qwen3.5 Sushi Coder 9B via Local Bridge",
       "anthropicFamilyTier": "sonnet",
       "toolCapable": true,
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": true
     },
     {
@@ -43,6 +46,9 @@
       "target": "omlx/Qwen3-Next-80B-A3B-Instruct-4bit",
       "labelOverride": "Qwen3 Next 80B A3B Instruct 4-bit via Local Bridge",
       "anthropicFamilyTier": "opus",
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": true
     },
     {
@@ -50,6 +56,9 @@
       "target": "omlx/Qwen3-Next-80B-A3B-Thinking-4bit",
       "labelOverride": "Qwen3 Next 80B A3B Thinking 4-bit via Local Bridge",
       "anthropicFamilyTier": "mythos",
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": true
     },
     {
@@ -59,6 +68,9 @@
       "anthropicFamilyTier": "sonnet",
       "toolCapable": true,
       "visionCapable": true,
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": false
     },
     {
@@ -66,6 +78,9 @@
       "target": "omlx/Qwen3.6-35B-A3B-MLX-4bit",
       "labelOverride": "Qwen3.6 35B A3B 4-bit via Local Bridge",
       "anthropicFamilyTier": "opus",
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": false
     },
     {
@@ -73,6 +88,9 @@
       "target": "omlx/gemma-4-12b-coder-fable5-composer2.5-8bit",
       "labelOverride": "Gemma 4 12B Coder Fable via Local Bridge",
       "anthropicFamilyTier": "fable",
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": true
     },
     {
@@ -80,6 +98,9 @@
       "target": "omlx/gemma-4-e4b-it-4bit",
       "labelOverride": "Gemma 4 E4B IT 4-bit via Local Bridge",
       "anthropicFamilyTier": "haiku",
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": true
     },
     {
@@ -87,6 +108,9 @@
       "target": "omlx/Qwen3-VL-4B-Instruct-4bit",
       "labelOverride": "Qwen3 VL 4B Instruct 4-bit via Local Bridge",
       "anthropicFamilyTier": "haiku",
+      "local": true,
+      "slow": true,
+      "timeoutRisk": true,
       "isFamilyDefault": false
     }
   ],
