@@ -1,7 +1,7 @@
 # Dev-flow skill package
 
-`skills/dev-flow/` is the maintained tools-repo distribution of the personal
-development workflow. Copy the entire folder: its entrypoint needs the review,
+`skills/dev-flow/` is a standalone development workflow package.
+Copy the entire folder: its entrypoint needs the review,
 gate, evidence and bootstrap references beside it. The bundled `LICENSE` keeps
 the repository's MIT license with a standalone copy.
 
@@ -14,8 +14,8 @@ the repository's MIT license with a standalone copy.
 | `review-agents.md` | Review coverage, independence, prompts and launch recipes |
 | `deterministic-gates.md` | Authoring and proving hooks and other repeatable gates |
 | `evidence-and-learning.md` | Resume, baseline, revision-bound evidence and handoff |
-| `bootstrap-agents.md` | Preserve existing guidance and adapt the bootstrap |
-| `assets/AGENTS.md.template` | Copy/adapt source for a repo guide; not active instructions |
+| `bootstrap-agents.md` | Author a fresh guide from target requirements and verified facts |
+| `assets/AGENTS.md.template` | Standalone repo-guide template; not active instructions |
 
 Full workflow execution requires Git, the Beads `bd` CLI, a configured task
 workspace and the target repo's build/test dependencies. Guide-only authoring
@@ -44,7 +44,7 @@ using the active profile's documented scope. These local paths do not install
 the skill into Cowork/cloud sessions. See [Claude Code skills](https://code.claude.com/docs/en/skills).
 
 First inspect the chosen location and any other active skill named `dev-flow`,
-including an older personal installation. Preserve local edits and choose the
+including another local installation. Preserve local edits and choose the
 source to keep before changing a link; duplicate installations are not merged.
 Preparing this package does not change an existing installation automatically.
 

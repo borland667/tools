@@ -1,10 +1,10 @@
 # Repo contract template
 
-Paste this section into a repo's `AGENTS.md` and fill it in. Delete rows that
+Use this section in a fresh repo guide and fill it in. Delete rows that
 do not apply. Keep it to commands and facts; process lives in the `dev-flow`
 skill.
 
-For a new agent guide or an existing guide that needs consolidation, use
+For a new standalone agent guide, use
 [bootstrap-agents.md](bootstrap-agents.md) and its asset around this contract.
 This remains the single contract template; do not maintain a second copy.
 

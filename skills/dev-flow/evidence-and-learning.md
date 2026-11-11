@@ -175,10 +175,3 @@ This protocol changes no required review coverage or model preferences.
   or faster generation does not establish delivery-quality or throughput gains.
   Propose retaining, simplifying or expanding the topology from the evidence;
   preserve required coverage until a change is authorized.
-
-Research background: the transferable ideas come from
-[Superpowers debugging](https://github.com/obra/superpowers/blob/main/skills/systematic-debugging/SKILL.md),
-[GSD outcome verification](https://github.com/gsd-build/get-shit-done/blob/main/agents/gsd-verifier.md),
-[Anthropic's harness experiments](https://www.anthropic.com/research/harness-design-long-running-apps)
-and [OpenAI's workflow iteration recipe](https://developers.openai.com/cookbook/examples/codex/iterating-development-workflows-with-codex).
-These sources motivate the procedure; they do not validate this skill's results.

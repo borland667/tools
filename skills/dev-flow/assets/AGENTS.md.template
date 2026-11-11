@@ -7,12 +7,13 @@ This template does not grant permissions or install tools/hooks. -->
 
 ## Start here
 
-This is the repo's operating guide. Keep detailed product, architecture and
-setup information in the source-of-truth docs linked below.
+This guide records the repo's operating bindings. Follow project documentation
+linked below when provided; keep detailed design and setup material in its
+owning documentation.
 
 {{DOCUMENTATION_MAP_WITH_WHEN_TO_READ_EACH_LINK}}
 
-{{GUIDANCE_OWNERSHIP_AND_NESTED_SCOPE}}
+{{GUIDE_SCOPE_AND_COMPONENT_BOUNDARIES}}
 
 ## Code boundaries
 
@@ -35,7 +36,7 @@ or have run in this checkout.
 
 ## Git and delivery
 
-{{EXISTING_AUTHORIZATION_SCOPE_AND_EXCEPTIONS}}
+{{AUTHORIZED_ACTIONS_AND_REQUIRED_DECISIONS}}
 
 Preserve unrelated work and inspect the intended diff before staging. Keep
 implementation edits in the contract's workspace; review and verify the final

@@ -74,13 +74,14 @@ These hold in every repo, whatever its contract says.
 
 ## Repo contract
 
-Read the effective repo guidance and its canonical references for these
-bindings, including applicable `AGENTS.md`, overrides and linked `CLAUDE.md`.
-When setting up a repo or creating/consolidating its agent guide, read
-[bootstrap-agents.md](bootstrap-agents.md) and adapt the linked bootstrap asset.
-For a missing binding, inspect the Makefile, package scripts, hook config or CI;
-distinguish verified facts from inference. Use [repo-contract.md](repo-contract.md)
-to record bindings when setup is authorized; otherwise propose the addition.
+Use a target-specific contract for these bindings, established from explicit
+requirements and verified implementation/configuration facts. Active repo/user
+instructions govern execution. To create a fresh guide, read
+[bootstrap-agents.md](bootstrap-agents.md) and its bundled template; do not
+derive the output from another project's instructions. For an unknown binding,
+inspect build/package scripts, hook config or CI and distinguish facts from
+inference. Use [repo-contract.md](repo-contract.md) when setup is authorized;
+otherwise propose the addition.
 
 | Binding | Meaning |
 |---|---|
@@ -440,7 +441,6 @@ Load Herdr's own skill (`herdr --skill`) for command syntax.
 
 Package validation checks structure, bundled references and portability; it
 does not qualify a host, validate project code or establish workflow quality.
-Prior development-machine sandbox probes are not target-host evidence.
 Record actual runs and limitations on the task's bead. A full end-to-end task,
 the preferred multi-model topology, direct mode and hook tiers still require
 qualification in real tasks; no measured productivity benefit is claimed.
