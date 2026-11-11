@@ -22,6 +22,7 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | `scripts/run_worker.py` / `worker-launcher.md` | Bounded Claude/Codex jobs with per-task profile selection |
 | `deterministic-gates.md` | Authoring and proving hooks and other repeatable gates |
 | `evidence-and-learning.md` | Resume, baseline, revision-bound evidence and handoff |
+| `tmp-docs.md` / `assets/TMP.md.template` | Categorized local working docs, Beads links, promotion, archive and retention |
 | `bootstrap-agents.md` | Author a fresh guide from target requirements and verified facts |
 | `assets/AGENTS.md.template` | Standalone repo-guide template; not active instructions |
 

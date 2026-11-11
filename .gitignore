@@ -92,6 +92,7 @@ coverage/
 # -------------------------------
 # Test and local scratch outputs
 # -------------------------------
+/TMP_FILES/
 tmp/
 tmp_test/
 .tmp/

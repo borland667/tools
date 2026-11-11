@@ -41,6 +41,11 @@ through Hermes and another harness does not create independence.
    justified, reruns affected gates, and records coverage and remaining gaps.
    Integration/release still requires its own authority.
 
+Use [tmp-docs.md](tmp-docs.md) for substantial plans, analysis and review
+evidence. The coordinator maintains the bead links and summaries; each worker
+gets a separate authorized artifact location. TMP reports do not create a
+second task ledger or replace observed gate results.
+
 Use [scripts/run_worker.py](scripts/run_worker.py), documented in
 [worker-launcher.md](worker-launcher.md), for one-shot CLI jobs. It selects the
 literal launcher, imposes a wall deadline, records artifacts and excludes

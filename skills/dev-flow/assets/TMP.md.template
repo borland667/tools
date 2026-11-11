@@ -1,0 +1,40 @@
+<!-- Optional working-document template. Replace fields and remove unused sections.
+Keep this document in the target's ignored scratch root; Beads owns task state. -->
+# TMP — <task-id> — <purpose>
+
+Bead / team ticket: <durable task reference(s)>
+Owner: <single document writer>
+Scope: <repo/worktree or participating repos; allowed operations>
+Updated: <date/time with timezone>
+Evidence identity: <branch + revision/diff fingerprint, environment and run/pass>
+
+## Objective and boundaries
+
+<Outcome, relevant contract and non-goals. Accepted scope/decisions also live
+on the bead; this document contains supporting technical detail.>
+
+## Technical detail
+
+<Keep what this purpose needs: approach/alternatives for a plan; requirements,
+edge-case matrix and test ids for test design; reproduction/measurements for
+analysis; findings and their dispositions for a review. No parallel task list.>
+
+## Observations and evidence
+
+| Claim or case | Planned check and expectation | Actual result / not run + reason | Revision/run and artifact |
+|---|---|---|---|
+| <claim> | <procedure> | <observed red/green, failure or unverified> | <identity/path> |
+
+<Preserve earlier attempts; identify which claims are stale after changes.
+Use the workflow's evidence format for any detail beyond this summary.>
+
+## Decisions and unresolved questions
+
+<Rationale and finding dispositions. Record material accepted decisions,
+blockers and next actions on the bead and link to them here.>
+
+## Handoff and retention
+
+<Durable bead handoff reference; retained artifact locations and why needed;
+target permanent-doc destination if promotion is needed; archive/retention
+policy or unresolved binding. The bead remains resumable without this file.>

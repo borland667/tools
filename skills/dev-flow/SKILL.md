@@ -69,7 +69,8 @@ These hold in every repo, whatever its contract says.
 
 1. **State lives in the bead, never in the conversation.** Every stage ends
    with a next step on the bead that another agent could execute from a fresh
-   clone.
+   clone. TMP documents may hold supporting detail; accepted decisions and
+   resumable state remain on the bead.
 2. **One writing agent per checkout.** Any other agent in the same checkout
    keeps project files and Git read-only. Parallel writing means separate
    beads and worktrees, which only worktree mode allows.
@@ -115,6 +116,7 @@ otherwise propose the addition.
 | Local second opinion | Optional host profile, read-only transport and limits; advisory only |
 | Engineering | Target language/tooling, architecture ownership, applicable rules and declared module budgets |
 | Scratch | Where bulky notes and analysis go, if anywhere |
+| TMP docs | Scratch root, document owner, ignore/export policy and retention; see [tmp-docs.md](tmp-docs.md) |
 | Release gate | What ships to production and who triggers it |
 | Tracker | External tracker (Jira, Linear) if the team requires one |
 
@@ -209,14 +211,16 @@ deeper lane changes investigation/verification needs, not the approved scope.
 
 - Read code and read-only data. Measure; do not assume.
 - Findings go on the bead; bulky output goes to the repo's scratch location.
+  Use [tmp-docs.md](tmp-docs.md) for categorized investigations and evidence.
 
 **Exit:** every claim the plan will rest on is measured or cited.
 
 ### 3. Plan
 
-- Write the plan into the bead's design field (`--design` or
-  `--design-file`). It must stand alone: no references to chat or to other
-  scratch documents.
+- Write the executable plan into the bead's design field (`--design` or
+  `--design-file`). It must stand alone without chat or local files. Substantial
+  technical detail may live in linked TMP documents under
+  [tmp-docs.md](tmp-docs.md); do not create a second task ledger.
 - Refine the acceptance checks against the actual code and commands. Keep
   planned verification separate from observed results. If discoveries change
   the design, update the bead and assess whether they exceed approved scope.
@@ -394,6 +398,9 @@ as authorized; the bead and handoff state which actually occurred.
   processes needing them; never force removal to finish a task. Preserve dirty
   or unintegrated work and report its location/retention reason. Stop only
   task-owned processes whose shutdown is authorized; leave shared services alone.
+- Apply the bound TMP lifecycle: promote lasting knowledge, archive or retain
+  local evidence, and refresh bead links before removing its worktree. Follow
+  [tmp-docs.md](tmp-docs.md); ignored documents can still be the only copy.
 - Record the final tested revision/environment, actual delivery state, gaps,
   follow-up beads, retained work and concrete next action before closing.
   Close with `bd close <id> --reason "..." --json` only when acceptance is

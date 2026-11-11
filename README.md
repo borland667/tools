@@ -55,6 +55,9 @@ These rules apply to all current and future scripts, regardless of language.
   - safety notes,
   - known limitations.
 - Update docs in the same change whenever behavior or flags change.
+- Keep local working documents under ignored `TMP_FILES/`, following the
+  [TMP conventions](skills/dev-flow/tmp-docs.md). Beads owns task state;
+  promote lasting content to the owning permanent docs before discarding drafts.
 
 ### Quality and Validation
 
@@ -188,6 +191,8 @@ These rules apply to all current and future scripts, regardless of language.
   and an AGENTS.md bootstrap; Herdr and local models are optional. Includes
   supervised Flash/oMLX/Splash second opinions with deterministic gates authoritative.
   New APIs and substantive behavior use contract and edge-case tests before implementation.
+  [TMP working docs](./skills/dev-flow/tmp-docs.md) organize plans, analysis,
+  review and verification drafts alongside the durable Beads record.
   Workflow references, templates and setup docs live together in that folder;
   local installations link to it. Host setup stays in its ignored `local.md`.
   Hermes can coordinate bounded Claude Code/Codex workers with per-task Claude

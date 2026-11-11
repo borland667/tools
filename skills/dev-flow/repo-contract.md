@@ -26,6 +26,7 @@ This remains the single contract template; do not maintain a second copy.
 | Local second opinion | `<host profile / disabled>`; `<read-only HTTP packet / isolated harness>`; `<request/token/wall limits>`; advisory only |
 | Engineering | `<target language/runtime/tooling; section/path for applicable architecture rules, module budgets and exceptions>` |
 | Scratch | `<path, gitignored>` or none |
+| TMP docs | `<scratch root; per-task document owner; ignore/export rules; archive/retention policy>` or none with reason |
 | Release gate | `<tag / deploy / apply>` — triggered by `<who>` |
 | Tracker | `<Jira project / Linear team>` or none; beads is local `<stealth / committed>` |
 

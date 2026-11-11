@@ -20,6 +20,8 @@ REQUIRED_FILES = (
     "assets/hermes-coordinator.md",
     "deterministic-gates.md",
     "evidence-and-learning.md",
+    "tmp-docs.md",
+    "assets/TMP.md.template",
     "bootstrap-agents.md",
     "assets/AGENTS.md.template",
     "LICENSE",

@@ -3,7 +3,9 @@
 Use this reference when framing acceptance checks, recording verification,
 refreshing a review, closing a task or considering a review-topology change.
 Keep durable records on the bead; large logs belong in the repo's approved
-scratch location. These formats are examples, not additional tracking files.
+scratch location. Use [tmp-docs.md](tmp-docs.md) for categorized local working
+documents and their lifecycle. These formats are examples, not additional
+tracking files; TMP documents supplement the bead's resumable state.
 
 ## Start, resume and handoff
 

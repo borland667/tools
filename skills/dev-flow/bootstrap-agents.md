@@ -35,6 +35,7 @@ not authorize rollout, configuration changes or tracker initialization.
 | Dev flow contract | Fill the fenced Markdown section in this package's [repo-contract.md](repo-contract.md) and insert it at `{{DEV_FLOW_CONTRACT_FROM_REPO_CONTRACT_MD}}`. Keep one contract; delete inapplicable rows. |
 | Git and delivery | Explicitly authorized actions and decisions still needed: edit, commit, local integration, remote publication, hosted merge and release. Record mode, base branch and sync behavior in the contract; identify CI/deployment effects. |
 | Task state | Chosen tracker, its bootstrap/resume commands and where acceptance, evidence and handoff are recorded. Keep guide-only authoring separate from adopting the full workflow. |
+| TMP documents | Bind the target's approved scratch root, document owner, ignore/export and archive/retention rules using [tmp-docs.md](tmp-docs.md). Supporting technical documents do not replace the chosen tracker. Do not create directories or install ignore rules as a side effect of guide-only authoring. |
 
 The template grants no authority. Use applicable user authorization for each
 delivery action; choosing a profile cannot create permission. A consequential

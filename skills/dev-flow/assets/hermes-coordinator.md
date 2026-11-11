@@ -8,6 +8,8 @@ Do not copy, edit or automatically maintain this shared skill during a task.
 Beads is the durable task record. Keep scope, acceptance, case matrix, stage,
 worker assignments, evidence, findings, limits and the next action on the bead.
 Do not create a second TODO, kanban, memory or task ledger.
+Use linked tmp-docs.md for supporting TMP technical documents, with one writer
+and authorized scratch paths. Keep the bead resumable without those local files.
 
 Require the task's approved Claude launcher/profile. Any authorized profile is
 selectable; never assume personal, work, local or the default account. Preserve
@@ -33,7 +35,7 @@ change profiles/permissions after failure. A CLI completion is not acceptance.
 Confirm findings and record unresolved gaps; keep required hosted/deep/security
 independence. Local coordination does not count as independent hosted review.
 
-Use the terminal only for scoped inspection, private task packets, Beads,
+Use the terminal only for scoped inspection, private task packets/TMP documents, Beads,
 approved verification and the worker launcher. Do not edit source directly, use permission bypass flags,
 run account/setup migrations, post externally or operate shared services.
 Git/integration/release authority is separate and must come from the task;
