@@ -18,6 +18,8 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | `test-first.md` | Initial contract/edge-case tests, red-to-green checkpoints and blocking test gates |
 | `review-agents.md` | Review coverage, independence, prompts and launch recipes |
 | `local-second-opinions.md` | Supervised Flash/oMLX/Splash review, limits and gate authority |
+| `hermes-coordinator.md` / `assets/hermes-coordinator.md` | Hermes coordinator protocol and linked profile instructions |
+| `scripts/run_worker.py` / `worker-launcher.md` | Bounded Claude/Codex jobs with per-task profile selection |
 | `deterministic-gates.md` | Authoring and proving hooks and other repeatable gates |
 | `evidence-and-learning.md` | Resume, baseline, revision-bound evidence and handoff |
 | `bootstrap-agents.md` | Author a fresh guide from target requirements and verified facts |
@@ -77,6 +79,12 @@ If this machine already discovers a legacy `~/.codex/skills/dev-flow` link,
 keep that installed entry pointed at this same source rather than creating
 another independent copy or an unnecessary duplicate discovery entry.
 
+For a Hermes coordinator profile, link its `skills/dev-flow` to this folder
+and its `SOUL.md` to `assets/hermes-coordinator.md`. Use a dedicated profile
+rather than cloning credentials or changing existing Hermes defaults. Follow
+[hermes-coordinator.md](hermes-coordinator.md); Claude profiles remain selectable
+for each task. Installed CLI support and a real delegation need separate probes.
+
 For Claude Code terminal sessions, link `~/.claude/skills/dev-flow` or the
 intended profile's skills directory to this source. Existing profile directories
 that share the main skills directory inherit its link. These paths do not
@@ -130,9 +138,12 @@ folder's `installation.md` and `validation.md` respectively.
 Read `local.md` only as host-specific bindings and recorded results, subject to
 the user's current authority. Keep credentials in their existing credential
 store; host setup may reference them but should not contain secret values.
-The private file is ignored and excluded from portable checks/export. Never
-export an installed folder wholesale: distribute only the portable resources,
-excluding `local.md`. Static package validation is not a staged-secret audit.
+Private `local.md` and optional `local.hermes.yaml` are ignored and excluded from
+portable checks/export. Never export an installed folder wholesale: distribute
+only portable resources, excluding both files, all `__pycache__` directories
+and `.pyc`/`.pyo` bytecode. Bytecode can embed machine paths; runtime caches are
+ignored by validation, so a successful check does not certify export contents.
+Static package validation is not a staged-secret audit.
 
 Confirm the installed references, then verify discovery in a fresh target
 session when available. Invoke `$dev-flow` in Codex or `/dev-flow` in Claude
@@ -161,7 +172,7 @@ This is an offline manual package gate. It checks required resources, the
 entrypoint identity/metadata fields, relative-link completeness/confinement,
 internal symlinks, the declared private-file ignore rule and known machine/account
 binding patterns. Installation-directory symlinks resolve to this source; only
-the root regular `local.md` is omitted from portable content checks. It returns 1
+the root regular `local.md` and `local.hermes.yaml` files are omitted from portable content checks. It returns 1
 on a violation and 0 on success. It does not install hooks, parse every YAML
 feature, validate Markdown anchors, scan arbitrary credential formats or check
 remote links. Audit the staged diff for secrets separately. It neither needs

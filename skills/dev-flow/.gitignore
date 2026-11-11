@@ -1,1 +1,4 @@
 /local.md
+/local.hermes.yaml
+__pycache__/
+*.py[cod]

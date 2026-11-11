@@ -254,6 +254,11 @@ on the bead; the optional protocol does not authorize extra passes.
 
 ## Launching
 
+For Hermes-coordinated tasks, follow
+[hermes-coordinator.md](hermes-coordinator.md) and its worker launcher. Preserve
+these same acceptance, role, account and independent-model requirements; Hermes
+children are not automatically external Claude Code/Codex workers.
+
 Inside Herdr: split a pane in the same checkout, start the agent there, and
 send the prompt. For a local model, start opencode, pi or hermes through
 oMLX in that pane (see Engines).

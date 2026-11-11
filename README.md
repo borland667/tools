@@ -190,6 +190,8 @@ These rules apply to all current and future scripts, regardless of language.
   New APIs and substantive behavior use contract and edge-case tests before implementation.
   Workflow references, templates and setup docs live together in that folder;
   local installations link to it. Host setup stays in its ignored `local.md`.
+  Hermes can coordinate bounded Claude Code/Codex workers with per-task Claude
+  profile selection; see [coordinator setup](skills/dev-flow/hermes-coordinator.md).
   See [installation and validation](./docs/skills/dev-flow.md).
 
 ## Optional Libraries (media_carver)

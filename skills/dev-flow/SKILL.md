@@ -34,6 +34,8 @@ When present, read `local.md` beside this file for the host's account profiles,
 harnesses, selected model and qualification record. It is private and ignored;
 never copy its contents into portable instructions or an exported package.
 Use [local.example.md](local.example.md) when a needed host binding is missing.
+The optional Hermes coordinator's private runtime settings live in
+`local.hermes.yaml`; the dedicated Hermes profile links to that file.
 Preserve an existing account choice; ask only for a binding the task actually
 needs. Installing or moving this skill does not grant workflow actions.
 
@@ -427,6 +429,11 @@ or installing a gate. Use the repo's declared budgets; these are defaults.
   from several worktrees at once (no fixed ports, no shared database).
 
 ## Multi-agent (Herdr)
+
+When Hermes is selected as coordinator, use
+[hermes-coordinator.md](hermes-coordinator.md) for bounded delegation to actual
+Claude Code/Codex CLI workers and per-task Claude profile selection. Herdr
+remains an optional pane/worktree interface, not a required second coordinator.
 
 Launch agents only under applicable explicit or standing authorization and the
 host's active limits. A lane or preferred-pass table alone grants no launch

@@ -26,8 +26,12 @@ python3 -B -m unittest discover -s tests/dev_flow -v
 
 See [installation.md](installation.md) for installation, check
 scope and limitations. Root installation symlinks are followed; internal
-symlinks are rejected. Only the root regular `local.md` is excluded from portable
-content checks, and `.gitignore` must declare `/local.md`. This verifies the
-declaration, not Git index state or arbitrary secret formats. Portable test
-fixtures exclude the private file; nested files named `local.md` remain checked. The command is manual; this change does not install a
+symlinks are rejected. Only root regular `local.md` and `local.hermes.yaml` are
+excluded from portable checks; `.gitignore` must declare both paths. This verifies
+the declaration, not Git index state or arbitrary secret formats. Portable test
+fixtures exclude both files; nested files with either name remain checked.
+Generated `__pycache__` contents and `.pyc`/`.pyo` files are runtime artifacts,
+ignored by the package and excluded from portable fixture copies. Internal
+symlinks are rejected even inside a cache directory.
+The command is manual; this change does not install a
 Git hook or claim CI enforcement.

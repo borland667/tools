@@ -2,6 +2,12 @@
 
 Helper scripts for repository maintenance and automation.
 
+## Dev-flow workers
+
+The canonical [worker launcher](../skills/dev-flow/scripts/run_worker.py) runs
+bounded Claude Code/Codex jobs for Hermes coordination. See
+[usage and limits](../skills/dev-flow/worker-launcher.md).
+
 ## Local model evaluation
 
 `evaluate_local_models.py` runs fixed developer tasks and bounded performance/

@@ -24,7 +24,9 @@ class PackageValidationTests(unittest.TestCase):
         source = REPO / "skills" / "dev-flow"
         shutil.copytree(
             source, self.package,
-            ignore=lambda directory, names: ["local.md"] if Path(directory) == source else [],
+            ignore=lambda directory, names: [name for name in names
+                if name == '__pycache__' or Path(name).suffix in {'.pyc', '.pyo'}
+                or (Path(directory) == source and name in VALIDATOR.PRIVATE_LOCAL_FILES)],
         )
 
     def run_cli(self):
@@ -94,12 +96,31 @@ class PackageValidationTests(unittest.TestCase):
         (self.package / ".gitignore").write_text("# no private host exclusion\n")
         self.assertTrue(any("local.md" in e and "ignore" in e for e in VALIDATOR.validate(self.package)))
 
+    def test_private_hermes_config_is_excluded_but_requires_its_ignore_rule(self):
+        config = self.package / 'local.hermes.yaml'
+        config.write_text('profile_path: /Users/fixture-user/private\n')
+        with (self.package / '.gitignore').open('a') as f:
+            f.write('/local.hermes.yaml\n')
+        self.assertEqual(VALIDATOR.validate(self.package), [])
+        (self.package / '.gitignore').write_text('/local.md\n')
+        self.assertTrue(any('local.hermes.yaml' in e and 'ignore' in e for e in VALIDATOR.validate(self.package)))
+
     def test_unreadable_ignore_encoding_reports_a_diagnostic(self):
         (self.package / ".gitignore").write_bytes(b"\xff")
         result = self.run_cli()
         self.assertEqual(result.returncode, 1)
         self.assertIn("cannot read UTF-8 package resource", result.stdout)
         self.assertNotIn("Traceback", result.stderr)
+
+    def test_bytecode_cache_is_not_portable_content_but_symlinks_still_fail(self):
+        cache = self.package / 'scripts/__pycache__'
+        cache.mkdir(parents=True)
+        (cache / 'run_worker.cpython-39.pyc').write_bytes(b'\xff\x00runtime cache')
+        self.assertEqual(VALIDATOR.validate(self.package), [])
+        external = self.package.parent / 'external.pyc'
+        external.write_bytes(b'cache')
+        (cache / 'linked.pyc').symlink_to(external)
+        self.assertTrue(any('symlinks' in e for e in VALIDATOR.validate(self.package)))
 
     def test_machine_path_fails_without_echoing_private_content(self):
         private_path = "/Users/fixture-user/private/config"

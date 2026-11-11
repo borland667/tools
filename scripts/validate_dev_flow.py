@@ -14,6 +14,10 @@ REQUIRED_FILES = (
     "test-first.md",
     "review-agents.md",
     "local-second-opinions.md",
+    "hermes-coordinator.md",
+    "worker-launcher.md",
+    "scripts/run_worker.py",
+    "assets/hermes-coordinator.md",
     "deterministic-gates.md",
     "evidence-and-learning.md",
     "bootstrap-agents.md",
@@ -29,6 +33,7 @@ PRIVATE_BINDING = re.compile(
     r"|claude-(?:work|personal|local)\b"
 )
 LOCAL_LINK = re.compile(r"\]\(([^)\n]+)\)")
+PRIVATE_LOCAL_FILES = frozenset({"local.md", "local.hermes.yaml"})
 
 
 def has_description(header: str) -> bool:
@@ -62,19 +67,23 @@ def validate(skill_dir: Path) -> list[str]:
         if path.is_symlink():
             errors.append(f"{relative}: package must contain files, not symlinks")
             continue
-        if relative == Path("local.md"):
+        if str(relative) in PRIVATE_LOCAL_FILES:
             if not path.is_file():
-                errors.append("local.md: private host setup must be a regular file")
+                errors.append(f"{relative}: private host setup must be a regular file")
             continue
         if not path.is_file():
+            continue
+        if '__pycache__' in relative.parts or path.suffix in {'.pyc', '.pyo'}:
             continue
         try:
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
             errors.append(f"{relative}: cannot read UTF-8 package resource")
             continue
-        if relative == Path(".gitignore") and "/local.md" not in content.splitlines():
-            errors.append(".gitignore: must ignore /local.md private host setup")
+        if relative == Path(".gitignore"):
+            for private in sorted(PRIVATE_LOCAL_FILES):
+                if "/" + private not in content.splitlines():
+                    errors.append(f".gitignore: must ignore /{private} private host setup")
         if PRIVATE_BINDING.search(content):
             errors.append(f"{relative}: contains a machine/account binding")
         if path.name == "SKILL.md":
