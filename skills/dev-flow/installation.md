@@ -49,7 +49,7 @@ cases; new discoveries add tests before fixes. Coverage percentages and model
 opinions do not establish test adequacy. Installing this skill does not install
 hooks or CI enforcement; each target binds and proves those separately.
 
-Herdr orchestration and oMLX/local harnesses are optional. They need separate
+Herdr or Hermes coordination (interchangeable) and oMLX/local harnesses are optional. They need separate
 installation, host support, authentication/model setup and authorization.
 Without them, use native Git worktrees and the documented independent review
 handoff/fallback. Missing required model independence keeps review pending;

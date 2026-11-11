@@ -26,6 +26,9 @@ Herdr key bindings: `<binding> <profile>`, or none.
 
 Default pairing: `<who leads and builds; who reviews and plans second>`.
 
+Coordinator: `<herdr / hermes / none>` by default; Hermes profile
+`<coordinator profile name>` if used.
+
 ## Local models
 
 - **Server:** `<server and address>`, or none.

@@ -23,6 +23,7 @@ This remains the single contract template; do not maintain a second copy.
 | Base sync | `<local-only: use local base / remote and base-update command>` |
 | Autonomy | `<propose / commit-local / commit-push>` |
 | Review catalogs | `<paths to anti-pattern lists / bot rule files / checklists>` or none |
+| Coordinator | `<herdr / hermes / none>` default for multi-agent passes; interchangeable, per-task override on the bead |
 | Local second opinion | `<host profile / disabled>`; `<read-only HTTP packet / isolated harness>`; `<request/token/wall limits>`; advisory only |
 | Engineering | `<target language/runtime/tooling; section/path for applicable architecture rules, module budgets and exceptions>` |
 | Scratch | `<path, gitignored>` or none |

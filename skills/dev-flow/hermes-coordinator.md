@@ -6,6 +6,10 @@ become the production-code writer or override test/review gates. Claude Code
 and Codex remain separate CLI workers using their own selected authentication.
 Hermes' `delegate_task` creates Hermes children, not Claude Code/Codex workers.
 
+Hermes and Herdr are interchangeable coordinators: the shared rules in
+"Multi-agent coordination" in [SKILL.md](SKILL.md) apply to both, and the bead's
+`coordinator` field names the one dispatching workers for the task.
+
 ## Task binding
 
 Record these on the bead before dispatch: workspace, acceptance criteria,

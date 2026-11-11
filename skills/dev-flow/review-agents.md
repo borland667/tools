@@ -254,17 +254,22 @@ on the bead; the optional protocol does not authorize extra passes.
 
 ## Launching
 
-For Hermes-coordinated tasks, follow
-[hermes-coordinator.md](hermes-coordinator.md) and its worker launcher. Preserve
-these same acceptance, role, account and independent-model requirements; Hermes
-children are not automatically external Claude Code/Codex workers.
+Use the bead's coordinator (Herdr or Hermes; see "Multi-agent coordination"
+in [SKILL.md](SKILL.md)). Either one runs the same passes with the same
+prompt, roles, acceptance, account and independent-model requirements.
 
-Inside Herdr: split a pane in the same checkout, start the agent there, and
-send the prompt. For a local model, start opencode, pi or hermes through
-oMLX in that pane (see Engines).
+- **Herdr:** split a pane in the same checkout, start the agent there, and
+  send the prompt (recipe below). For a local model, start opencode, pi or
+  hermes through oMLX in that pane (see Engines).
+- **Hermes:** dispatch a read-only `review` job through the worker launcher,
+  per [hermes-coordinator.md](hermes-coordinator.md), with the review prompt as
+  the job's prompt file. Hermes' own children are not external Claude
+  Code/Codex workers and do not count as a different model.
+- **Neither:** use a fresh session of a different agent, or the host's own
+  read-only subagent, with the same prompt.
 
-Outside Herdr: use a fresh session of a different agent, or the host's own
-read-only subagent, with the same prompt.
+Whichever runs it, record on the bead which coordinator, harness, profile and
+model produced each pass.
 
 ### Herdr recipe
 

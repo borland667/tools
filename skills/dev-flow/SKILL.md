@@ -3,8 +3,9 @@ name: dev-flow
 description: >-
   End-to-end development workflow for any repo: Beads task record,
   one worktree per task, staged plan/build/verify/review/integrate with exit
-  conditions, optional multi-agent planning and review through Herdr, and
-  optional local models served by oMLX as second opinions. Use when asked to
+  conditions, optional multi-agent planning and review coordinated through
+  Herdr or Hermes (interchangeable), and optional local models served by
+  oMLX as second opinions. Use when asked to
   "use the dev flow", start or resume a task with the workflow, set a repo up
   for it (including an AGENTS.md bootstrap), or run a multi-agent plan or
   review. Do not use for one-off questions or quick reads.
@@ -54,11 +55,11 @@ tracker initialization follow the repo/user's authority; this package installs
 neither. If a required dependency is missing, record the gap and continue only
 independent authorized preparation.
 
-Herdr, oMLX and the named agent harnesses below are optional integrations.
+Herdr, Hermes, oMLX and the named agent harnesses below are optional integrations.
 Check availability, authentication, configured model identity and permissions
 on the target host; installing this folder establishes none of them. Without
-Herdr, use native Git worktrees and an authorized fresh reviewer session or
-host subagent. Unavailable model passes follow the review fallback rules;
+a coordinator, use native Git worktrees and an authorized fresh reviewer
+session or host subagent. Unavailable model passes follow the review fallback rules;
 required independence/coverage remains pending until satisfied or explicitly
 changed. Local model ids and memory limits are host/repo bindings, not bundled
 defaults.
@@ -435,33 +436,37 @@ or installing a gate. Use the repo's declared budgets; these are defaults.
 - The full local run and CI should call one script, and must be safe to run
   from several worktrees at once (no fixed ports, no shared database).
 
-## Multi-agent (Herdr)
+## Multi-agent coordination
 
-When Hermes is selected as coordinator, use
-[hermes-coordinator.md](hermes-coordinator.md) for bounded delegation to actual
-Claude Code/Codex CLI workers and per-task Claude profile selection. Herdr
-remains an optional pane/worktree interface, not a required second coordinator.
+Herdr and Hermes are interchangeable coordinators for the same workflow. The
+coordinator changes how helpers are started and watched, never the stages,
+gates, roles or review independence. Record the choice on the bead as
+`coordinator: herdr | hermes | none`; use the repo contract or host binding
+default when set, otherwise ask. Do not switch coordinators mid-segment; finish
+or hand off the running jobs first and record the switch on the bead.
+
+| | Herdr | Hermes |
+|---|---|---|
+| Style | Interactive: one visible pane per agent | Headless: bounded one-shot worker jobs |
+| Fits | Watching, steering, answering prompts | Handing off a whole task segment |
+| Workers | Agents started in panes | Claude Code/Codex via the worker launcher |
+| Evidence | Read the pane | Worker artifacts and exit status |
+| Details | Below and [review-agents.md](review-agents.md) | [hermes-coordinator.md](hermes-coordinator.md) |
 
 Launch agents only under applicable explicit or standing authorization and the
 host's active limits. A lane or preferred-pass table alone grants no launch
 authority. Without it, use the review handoff path above. Keep the preferred
 topology until an authorized comparison supports changing its defaults;
 role-combining fallbacks retain required coverage and record omitted passes.
-Requires running inside a Herdr pane: `test "${HERDR_ENV:-}" = 1`. If that
-fails, say so and use a fresh session or the host's own subagents instead.
-Load Herdr's own skill (`herdr --skill`) for command syntax.
 
-- **Topology:** one Herdr workspace per worktree, one pane per agent.
-  Create the worktree with
-  `herdr worktree create --cwd <repo> --branch <name> --base <ref> --path <dir> --label "<bead> <title>" --no-focus`.
+Rules for either coordinator:
+
 - **Fan-out limits:** at most two planners per bead. Review agents follow
   the passes in `review-agents.md`: one on the fast lane, two on standard,
   and at most four on deep.
-- **Start and prompt:** `herdr pane split`, then
-  `herdr agent start <name> --kind <agent> --pane <id>`, then
-  `herdr agent prompt <name> "<text>" --wait`.
-- **Check before trusting status.** Read the pane after starting an agent; a
-  login or first-run screen can be reported as idle.
+- **One writer per checkout.** Planners and reviewers are read-only.
+- **Check before trusting status.** A done/idle signal or a worker's claim is
+  not evidence; read the pane or the job artifacts, and rerun gates yourself.
 - **Coordinate through the bead.** Give each helper the bead id and its role.
   Helpers report findings on that bead when authorized; otherwise the lead
   records their returned findings. Helpers do not edit project files or change
@@ -472,6 +477,35 @@ Load Herdr's own skill (`herdr --skill`) for command syntax.
 - **Accounts:** preserve the task's account/profile binding. When multiple
   profiles are available and none is bound, ask which one applies; do not pick
   credentials. Start the intended profile launcher rather than a default binary.
+- **Independence:** the coordinator adds none. Hermes' own `delegate_task`
+  children are not Claude Code/Codex workers, and the same model run through
+  either coordinator is still the same model.
+- **Unavailable coordinator:** say so and use the other one if bound, else a
+  fresh session or the host's own subagents. Never bypass gates to compensate.
+
+### With Herdr
+
+Requires running inside a Herdr pane: `test "${HERDR_ENV:-}" = 1`. Load
+Herdr's own skill (`herdr --skill`) for command syntax.
+
+- **Topology:** one Herdr workspace per worktree, one pane per agent.
+  Create the worktree with
+  `herdr worktree create --cwd <repo> --branch <name> --base <ref> --path <dir> --label "<bead> <title>" --no-focus`.
+- **Start and prompt:** `herdr pane split`, then
+  `herdr agent start <name> --kind <agent> --pane <id>`, then
+  `herdr agent prompt <name> "<text>" --wait`.
+- Read the pane after starting an agent; a login or first-run screen can be
+  reported as idle.
+
+### With Hermes
+
+Run the dedicated coordinator profile from the task workspace and follow
+[hermes-coordinator.md](hermes-coordinator.md): it dispatches `tests`, `build`,
+`review` and `plan` jobs through [scripts/run_worker.py](scripts/run_worker.py)
+with a per-task Claude profile, finite budgets and recorded artifacts. Create
+the worktree with native Git (or Herdr, if also in use) before launching it.
+Hermes can also run inside a Herdr pane; the bead's `coordinator` still names
+the one that dispatches workers.
 
 ## Local models
 
