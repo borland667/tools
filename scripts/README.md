@@ -2,6 +2,19 @@
 
 Helper scripts for repository maintenance and automation.
 
+## `validate_dev_flow.py`
+
+Run the offline dev-flow package check with Python 3.9+:
+
+```bash
+python3 scripts/validate_dev_flow.py
+python3 scripts/validate_dev_flow.py --skill-dir /path/to/copied/dev-flow
+```
+
+No agents, models, network or tracker access is needed. See
+[script usage and limitations](../docs/scripts/validate_dev_flow.md) and the
+[skill package guide](../docs/skills/dev-flow.md).
+
 ## `install-to-bin.sh`
 
 Install one or more repository scripts into `$HOME/bin` so they are runnable from

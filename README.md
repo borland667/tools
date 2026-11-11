@@ -81,6 +81,9 @@ These rules apply to all current and future scripts, regardless of language.
 - `docs/scripts/_template.md` — template for documenting new scripts.
 - `scripts/install-to-bin.sh` — install scripts into `$HOME/bin`.
 - `scripts/README.md` — documentation for helper scripts.
+- `skills/dev-flow/` — reusable development workflow with review, gates and an AGENTS bootstrap.
+- `docs/skills/dev-flow.md` — skill dependencies, local installation and validation.
+- `scripts/validate_dev_flow.py` — offline skill-package validation.
 - `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
 - `tests/enacom_mcp/` — tests for the ENACOM tracker reader/writer.
 - `.github/pull_request_template.md` — default PR checklist/template.
@@ -165,6 +168,16 @@ These rules apply to all current and future scripts, regardless of language.
   companion doc also covers Gateway auth, local-only model backends, and safer
   Docker sandbox defaults. See
   [`docs/scripts/openclaw_local_gateway.md`](./docs/scripts/openclaw_local_gateway.md).
+- [`scripts/validate_dev_flow.py`](./scripts/validate_dev_flow.py): offline
+  validation of the dev-flow skill's resources, metadata, local links and
+  portability. See [`docs/scripts/validate_dev_flow.md`](./docs/scripts/validate_dev_flow.md).
+
+## Skills
+
+- [`dev-flow`](./skills/dev-flow/SKILL.md): staged development with Beads task
+  state, repo-owned commands, deterministic gates, independent review and
+  explicit delivery authority. Includes an AGENTS.md bootstrap; Herdr and local
+  models are optional. See [installation and validation](./docs/skills/dev-flow.md).
 
 ## Optional Libraries (media_carver)
 

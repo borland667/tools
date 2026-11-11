@@ -1,0 +1,53 @@
+<!-- Bootstrap source: adapt with bootstrap-agents.md in the dev-flow skill.
+Resolve every {{FIELD}}, remove inapplicable sections and this comment before use.
+This template does not grant permissions or install tools/hooks. -->
+# Agent guide — {{PROJECT_NAME}}
+
+{{PROJECT_PURPOSE_AND_SCOPE}}
+
+## Start here
+
+This is the repo's operating guide. Keep detailed product, architecture and
+setup information in the source-of-truth docs linked below.
+
+{{DOCUMENTATION_MAP_WITH_WHEN_TO_READ_EACH_LINK}}
+
+{{GUIDANCE_OWNERSHIP_AND_NESTED_SCOPE}}
+
+## Code boundaries
+
+{{ENFORCED_ARCHITECTURE_AND_DATA_BOUNDARIES}}
+
+{{CONTRACT_OR_GENERATION_ORDER_AND_GENERATED_FILE_OWNERSHIP}}
+
+{{LOCAL_DATA_SECRETS_AND_SCRATCH_RULES}}
+
+## Local setup and verification
+
+{{SETUP_COMMANDS_WITH_CWD_AND_PREREQUISITES_OR_SETUP_DOC_LINK}}
+
+Use the contract below for verification commands, gate triggers and Git
+bindings. Report checks that could not run and the exact missing prerequisite.
+Versioned hook configuration alone does not establish that hooks are installed
+or have run in this checkout.
+
+{{DEV_FLOW_CONTRACT_FROM_REPO_CONTRACT_MD}}
+
+## Git and delivery
+
+{{EXISTING_AUTHORIZATION_SCOPE_AND_EXCEPTIONS}}
+
+Preserve unrelated work and inspect the intended diff before staging. Keep
+implementation edits in the contract's workspace; review and verify the final
+change before the permitted delivery step. Do not bypass blocking hooks.
+Local integration, remote publication and release follow their declared
+authority and gates, including CI actions triggered by a push or merge.
+
+## Task state and handoff
+
+{{TRACKER_LOCATION_BOOTSTRAP_AND_TEAM_RECORD_BINDING}}
+
+Resume from the task record and actual checkout state. Record acceptance
+evidence, the tested revision/environment, delivery state, remaining work and
+the next action in the chosen tracker. Report retained worktrees or data with
+their location and reason; close only when the requested acceptance is met.
