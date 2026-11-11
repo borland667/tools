@@ -21,6 +21,9 @@ keep the reasoning and any lane change on the bead.
 
 ## Design: establish what to build
 
+- Establish the target's existing practices before choosing an approach. Reuse
+  its architecture, tooling and conventions; justify any departure with the
+  evidence/reference protocol in [engineering-practices.md](engineering-practices.md).
 - State the problem, intended users/callers, outcome, non-goals and constraints.
   Inspect the existing implementation and contracts where they exist. Separate
   verified facts, explicit requirements and unresolved assumptions.

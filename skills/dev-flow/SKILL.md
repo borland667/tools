@@ -19,6 +19,12 @@ plus a small per-repo contract
 that supplies the commands. The loop never names a repo-specific tool; the
 contract does. Repo and user instructions always win over this skill.
 
+Follow the target repository's existing practices by default. A claim that a
+practice is wrong or unsuitable needs local evidence and applicable reference
+documentation under [engineering-practices.md](engineering-practices.md).
+Personal preference or a generic best-practice label is insufficient. Apply
+this independently in every repository involved in the task.
+
 For guide-only/bootstrap authoring, follow
 [bootstrap-agents.md](bootstrap-agents.md) with the repo's existing tracker and
 authority. That request alone does not adopt the full workflow, initialize

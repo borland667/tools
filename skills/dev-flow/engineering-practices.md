@@ -6,6 +6,62 @@ and bind them to the target's code and tools. No framework, directory layout,
 object model or service topology is prescribed. A small CLI or library can
 satisfy this baseline without an API, container, database or queue.
 
+## Follow established repository practices by default
+
+Use the target repository's existing architecture, ownership boundaries,
+language idioms, dependencies, naming/style, test runner, hooks and delivery
+conventions. Inspect applicable instructions, project documentation,
+configuration and representative code before choosing an approach. Distinguish
+an established convention from an isolated legacy example or a documented
+exception. Resolve disagreement between docs and code with evidence; neither
+automatically establishes that the other is wrong.
+
+Apply the baseline below through those existing mechanisms. Do not replace
+tools, impose a preferred architecture, or demand consistency with another
+project simply because it is familiar or newer. Across repositories, establish
+each repository's practices independently and change only the shared contracts
+needed by the task; do not standardize their internals as a side effect.
+
+Challenge a practice when evidence shows a defect, incompatibility, security
+problem, requirement conflict or meaningful suitability tradeoff. Before
+calling it wrong or recommending a departure, record a proportional rationale
+on the bead, with supporting TMP detail only when useful:
+
+```text
+Existing practice: <affected convention, owning instruction/config/code>
+Problem: <specific failure, constraint or cost in this task's actual context>
+Evidence: <reproduction, measurements or traced mechanism; uncertainty>
+Reference: <project contract/decision or authoritative documentation, section
+            and link/path; relevant version and applicability>
+Alternative: <smallest scoped change; compatibility and maintenance tradeoffs>
+Verification/disposition: <checks, decision and remaining gaps>
+```
+
+For technical best-practice claims, consult the actual primary reference:
+language/framework/tool documentation for the target version, an applicable
+standard or security advisory, or an established engineering source with
+stated applicability. A reproduced defect may be grounded in the project's
+own documented contract; it need not acquire an unrelated external citation.
+Explain how the source supports the local claim. Separate mandatory constraints
+from recommendations, and measured facts from inference. A generic article,
+an uninspected link, model opinion, or the phrase "best practice" alone does
+not establish that a working repository convention is unsuitable.
+
+If support is missing, label the concern unconfirmed and gather evidence or
+retain the established practice; do not turn preference into a blocking finding
+or silently replace the convention. Evidence supports a proposal or scoped fix,
+not authority to override active instructions, weaken tests/gates, expand the
+task or change other repos. Continue within existing authority; obtain a new
+decision only where scope or an applicable instruction requires one.
+
+Supporting rationale: Google's engineering review guidance prioritizes
+technical evidence over preference and existing consistency where no stronger
+rule applies, while allowing demonstrated improvements to code health. Its
+[review standard](https://google.github.io/eng-practices/review/reviewer/standard.html)
+and [style/consistency guidance](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+support this policy; they do not import Google's tooling, style guides or
+approval structure into the target repository.
+
 ## Language-independent baseline
 
 - **Implement the current requirement.** Prefer the smallest coherent change

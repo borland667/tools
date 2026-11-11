@@ -15,6 +15,12 @@ available: code, schemas, build/package scripts, CI, hook configuration and
 tracker configuration. For an empty repo, record the decisions that remain
 open rather than borrowing another project's conventions.
 
+For an established target, preserve its verified architecture, tools and
+conventions in the fresh guide. Claims that a practice should change need
+local evidence and applicable references using
+[engineering-practices.md](engineering-practices.md). Fresh authoring does not
+authorize replacing existing practices or importing another project's guide.
+
 Active user and repository instructions still govern the authoring task.
 Following them does not make them content to import into the generated guide.
 If the output destination is occupied, preserve it and prepare the fresh draft

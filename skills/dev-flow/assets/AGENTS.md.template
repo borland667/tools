@@ -27,6 +27,13 @@ owning documentation.
 
 {{APPLICABLE_ENGINEERING_RULES_AND_LANGUAGE_SPECIFICS}}
 
+Follow this repository's established practices by default. Support claims that
+a practice is wrong or unsuitable with a concrete local problem and applicable
+project or authoritative reference documentation. Explain the scoped alternative,
+tradeoffs and verification; distinguish requirements from recommendations and
+facts from assumptions. Unsupported preferences do not justify replacing a
+convention. Evidence does not override active instructions or delivery authority.
+
 ## Local setup and verification
 
 {{SETUP_COMMANDS_WITH_CWD_AND_PREREQUISITES_OR_SETUP_DOC_LINK}}

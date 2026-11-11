@@ -188,8 +188,9 @@ These rules apply to all current and future scripts, regardless of language.
 - [`dev-flow`](./skills/dev-flow/SKILL.md): staged development with Beads task
   state, repo-owned commands, deterministic gates, independent review and
   explicit delivery authority. Includes portable architecture/engineering rules
-  and an AGENTS.md bootstrap; Herdr or Hermes (interchangeable coordinators)
-  and local models are optional. Includes
+  and an AGENTS.md bootstrap. Follows existing repository practices by default;
+  departures require evidence and applicable reference documentation.
+  Herdr or Hermes (interchangeable coordinators) and local models are optional. Includes
   supervised Flash/oMLX/Splash second opinions with deterministic gates authoritative.
   New APIs and substantive behavior use contract and edge-case tests before implementation.
   An [initial design or diagnosis](./skills/dev-flow/task-intake.md) follows the

@@ -78,6 +78,13 @@ Use the applicable architecture and language rules in
 [engineering-practices.md](engineering-practices.md), bound to the target's
 actual requirements and tools. Apply triggered specifics; do not impose a
 service architecture, language profile or unchosen budget on unrelated code.
+Existing repo practices are the default. A finding that calls a convention
+wrong or unsuitable must identify the local problem, cite an applicable
+project/primary reference and explain its relevance and tradeoffs under that
+reference's exception protocol. Unsupported preference is not a blocker;
+pre-existing problems still follow the assigned review scope and the rule
+above that findings must be introduced by the reviewed change. A citation
+does not grant authority to change policy.
 
 For new APIs/substantive behavior, the `tests` lens checks
 [test-first.md](test-first.md): initial contract/edge-case matrix, independently
