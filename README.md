@@ -188,9 +188,9 @@ These rules apply to all current and future scripts, regardless of language.
 - [`dev-flow`](./skills/dev-flow/SKILL.md): staged development with Beads task
   state, repo-owned commands, deterministic gates, independent review and
   explicit delivery authority. Includes portable architecture/engineering rules
-  and [1:1 ticket mapping](skills/dev-flow/ticket-mapping.md) for Jira, Linear
-  or other trackers, with explicit field ownership and reconciliation authority,
-  and an AGENTS.md bootstrap. Follows existing repository practices by default;
+  and an AGENTS.md bootstrap. Beads is the primary tracker, with optional
+  [1:1 ticket mapping](skills/dev-flow/ticket-mapping.md) to Jira, Linear or
+  other systems. Follows existing repository practices by default;
   departures require evidence and applicable reference documentation.
   Herdr or Hermes (interchangeable coordinators) and local models are optional. Includes
   supervised Flash/oMLX/Splash second opinions with deterministic gates authoritative.

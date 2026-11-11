@@ -50,8 +50,8 @@ delivery action; choosing a profile cannot create permission. A consequential
 missing choice stays unresolved until the user decides it. Unknown commands,
 services or required gates remain explicit gaps, not invented passing checks.
 
-Full dev-flow execution uses Beads for working state and may link a required
-team ticket as described in Frame. A standalone guide can use the target's
+Full dev-flow execution uses Beads as the primary tracker and may optionally
+link a team ticket as described in Frame. A standalone guide can use the target's
 chosen tracker without adopting the full workflow. Do not initialize or
 replace a tracker as a side effect of authoring the guide.
 

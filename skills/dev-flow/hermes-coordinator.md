@@ -12,9 +12,10 @@ Hermes and Herdr are interchangeable coordinators: the shared rules in
 
 ## Task binding
 
-When a team tracker is bound, resolve the canonical 1:1 ticket/bead pair using
+When a task opts into external linking, resolve its canonical 1:1 ticket/bead pair using
 [ticket-mapping.md](ticket-mapping.md) before dispatch. Include both identities
-and current external acceptance in packets. Workers do not create duplicate
+and canonical Beads acceptance in packets, with any unresolved remote changes.
+Beads remains primary. Workers do not create duplicate
 task records or mutate the external ticket; authorized reconciliation remains
 the coordinator's responsibility, with pending changes recorded on the bead.
 

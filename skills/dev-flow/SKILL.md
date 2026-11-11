@@ -81,8 +81,9 @@ These hold in every repo, whatever its contract says.
    clone. TMP documents may hold supporting detail; accepted decisions and
    resumable state remain on the bead.
    When an external tracker is used, [ticket-mapping.md](ticket-mapping.md)
-   defines the 1:1 identity and field ownership; the bead does not supersede
-   the team's authoritative scope, acceptance or public status.
+   defines the optional 1:1 link. Beads remains the main tracker for canonical
+   scope, acceptance, status and execution evidence; external edits require
+   reconciliation rather than automatic replacement of task state.
 2. **One writing agent per checkout.** Any other agent in the same checkout
    keeps project files and Git read-only. Parallel writing means separate
    beads and worktrees, which only worktree mode allows.
@@ -131,7 +132,7 @@ otherwise propose the addition.
 | Scratch | Where bulky notes and analysis go, if anywhere |
 | TMP docs | Scratch root, document owner, ignore/export policy and retention; see [tmp-docs.md](tmp-docs.md) |
 | Release gate | What ships to production and who triggers it |
-| Tracker | External tracker (Jira, Linear, etc.), 1:1 identity, field/status mapping and connector authority; see [ticket-mapping.md](ticket-mapping.md) |
+| Tracker | Beads is primary; optional Jira/Linear/etc. 1:1 links, field/status mapping and connector authority follow [ticket-mapping.md](ticket-mapping.md) |
 
 For architecture decisions, implementation and review, use the applicable
 sections of [engineering-practices.md](engineering-practices.md). It owns the
@@ -206,11 +207,12 @@ deeper lane changes investigation/verification needs, not the approved scope.
   and evidence with current files and Git state. Continue at the first unmet
   exit condition, not automatically at Build. Use the resume/handoff record in
   [evidence-and-learning.md](evidence-and-learning.md).
-- Where a team tracker is required, the ticket must exist first; link it with
-  `--external-ref` and the scoped stable identity under
-  [ticket-mapping.md](ticket-mapping.md). Search open/closed mappings before
-  creating a bead; reuse the canonical pair, including across participating
-  repositories. The ticket is the public record; Beads holds execution state.
+- Beads is the main tracker; an external ticket is optional. If linking Jira,
+  Linear or another system, resolve `--external-ref` and scoped stable identity
+  under [ticket-mapping.md](ticket-mapping.md). Search open/closed mappings
+  before creating a duplicate and reuse the canonical bead across repositories.
+  Existing unlinked beads can be linked later; external availability is not a
+  prerequisite to creating or claiming a local task.
 - Create only if no existing task matches, then claim:
   `bd create "<title>" -t <bug|feature|task|chore> -p <0-4> --description "..." --acceptance "..." --design "Lane: <lane>. ..." --json`
   then `bd update <id> --claim --json`. For mapped tasks, include the resolved

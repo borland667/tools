@@ -1,10 +1,12 @@
 # One external ticket, one Beads task
 
-Use when the target already uses Jira, Linear or another ticket system. Keep
-that system and its established workflow. Bind the provider, tenant/workspace,
+Beads is the main tracker and canonical task record for dev-flow. Jira, Linear
+and other external systems are optional linked representations; using dev-flow
+does not require one. When linking a system, preserve its established workflow
+and bind the provider, tenant/workspace,
 project/team, identity fields, field ownership, status mapping and available
-connector in the repo contract. Local-only work can remain unmapped when the
-repo allows it. This reference defines the mapping protocol; it installs no
+connector in the repo contract. A bead may remain unlinked throughout its
+lifecycle. This reference defines the optional mapping protocol; it installs no
 connector, background sync or provider-side configuration.
 
 ## Identity and task boundaries
@@ -37,8 +39,8 @@ global mapping service or database uniqueness constraint.
 
 - An epic/parent is a different issue from each of its children. Map each
   participating issue once; preserve hierarchy and dependency direction.
-- Split independently tracked work into external child issues and matching
-  beads only within existing authority. Do not map several beads to the same
+- Split independently tracked work into child beads as needed. Optionally link
+  each to its own external child issue within existing authority. Do not map several beads to the same
   issue just to represent phases or repository-specific slices.
 - One ticket spanning several repos keeps one bead with per-repo workspaces,
   gates, changes and delivery state. Honor each repo's selected mode: one task
@@ -46,25 +48,28 @@ global mapping service or database uniqueness constraint.
   mode. Multiple repo worktrees for this one bead are permitted; keep one writer
   per checkout and the target's direct-mode task limits. Alternatively, use separately ticketed child tasks
   when the team's existing process requires independent ownership/delivery.
-- Discovered follow-ups follow the same rule. If an external ticket is
-  mandatory, obtain/create it under the target's authority before claiming a
-  mapped implementation task. An explicitly local draft can record preparation
-  and the missing binding; it must not masquerade as an established mapping.
+- Discovered follow-ups can begin as ordinary unlinked beads. Creating or
+  claiming a bead does not depend on an external ticket. If external tracking
+  is later enabled for that task, resolve/create the external issue under the
+  existing authority and attach it to the same bead. Until identity is verified,
+  record the proposed link as pending, not an established mapping.
 
 ## Field ownership
 
 | Information | Default authority and local representation |
 |---|---|
-| Public title, scope, acceptance, business priority, team assignee | External tracker; Beads holds a sourced working snapshot and records change proposals, not a competing definition |
-| External status, resolution, hierarchy and dependencies | External tracker; record exact provider identities and observed state, not guesses from display names |
-| Agent claim, phase, executable plan, test/review evidence, workspaces and next action | Beads; a local agent claim does not reassign the external human owner |
+| Canonical title, scope, acceptance, priority, task ownership, status, hierarchy and dependencies | Beads; optional external fields are mapped/public representations, not a second source of task truth |
+| Agent claim, phase, executable plan, test/review evidence, workspaces and next action | Beads; an agent claim does not automatically reassign an external human owner |
+| Actual external fields, assignee, status and resolution | Observe the provider's real state separately; record identity, revision and pending differences without treating them as canonical Beads decisions |
 | Commits, PRs, CI and release observations | Their actual source systems; summarize/link evidence in Beads and publish only the authorized team-facing portion |
 | Large analysis and draft material | Approved TMP storage linked from the bead; external tickets must not depend on private local TMP paths |
 
-Apply target-specific ownership where explicitly bound. Refresh the working
-acceptance snapshot before planning and after relevant remote edits. Reconcile
-changes against current tests/implementation and refresh affected evidence;
-never overwrite a teammate's edit with an older local description.
+Bind which Beads fields may be published and how external inputs are reviewed;
+the binding does not displace Beads as primary. External edits are proposed
+changes to reconcile against the canonical bead, current requirements and
+implementation evidence. Record accepted changes in Beads before dependent
+work and refresh affected tests/review. Do not blindly import remote edits or
+overwrite a teammate's remote change with an older local description.
 
 ## State mapping and reconciliation
 
@@ -81,8 +86,10 @@ external blockers even when their tickets have no local bead; `bd ready` alone
 does not establish external readiness, and no full backlog import is required.
 Preserve unmapped statuses as reconciliation gaps. Distinguish completed, canceled and
 duplicate resolutions; cancellation/duplication is not successful acceptance.
-Reopened work reuses the existing pair and invalidates affected completion
-claims; do not create a replacement bead to conceal the earlier result.
+Reopened work reuses the existing pair; an external reopen triggers review,
+not an automatic local status change. Confirm any regression or accepted scope
+change in Beads before revising affected completion claims. Do not create a
+replacement bead to conceal the earlier result.
 
 At start/resume, material remote edits, handoff and Close:
 
@@ -106,12 +113,14 @@ At start/resume, material remote edits, handoff and Close:
 Keep pending updates and failures on the bead, not a separate Markdown sync
 queue. Remote unavailability does not prove deletion or permit duplicate
 creation. Record missing credentials/connectivity without copying credentials;
-continue only work whose required scope/acceptance remains established.
+continue work whose scope/acceptance remains established in Beads; unavailable
+optional synchronization alone does not block local progress.
 
 Do not infer external Done from a local commit or closed bead, or verified
 completion from an external Done state. Check the requested endpoint and team
 definition of done against actual gates/reviews/integration/release evidence.
-If remote reconciliation is a required delivery step, keep the task unfinished
+Only when an explicit task/repo requirement makes remote reconciliation a
+delivery step, keep that requested endpoint unfinished
 until it is verified. Otherwise local completion may explicitly retain a
 pending external handoff; report local and remote states separately.
 

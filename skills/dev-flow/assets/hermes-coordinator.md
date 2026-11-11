@@ -8,8 +8,8 @@ Do not copy, edit or automatically maintain this shared skill during a task.
 Beads is the durable task record. Keep scope, acceptance, case matrix, stage,
 worker assignments, evidence, findings, limits and the next action on the bead.
 Do not create a second TODO, kanban, memory or task ledger.
-For external trackers, read ticket-mapping.md and resolve one canonical bead
-per external issue. Preserve external scope/acceptance authority, record both
+For optional external links, read ticket-mapping.md and resolve one canonical bead
+per external issue. Beads remains primary for scope, acceptance and task state; record both
 identities and pending updates. Follow active limits on all remote writes.
 Use linked tmp-docs.md for supporting TMP technical documents, with one writer
 and authorized scratch paths. Keep the bead resumable without those local files.

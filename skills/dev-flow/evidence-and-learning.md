@@ -17,8 +17,8 @@ even if it is not in `bd ready --json`; inspect relevant in-progress work before
 creating a duplicate. Confirm the current claim and writer before editing.
 Unclear or conflicting ownership needs a handoff decision, not a forced claim.
 For a mapped ticket, also apply [ticket-mapping.md](ticket-mapping.md): refresh
-the authoritative external scope, acceptance and observed revision, reuse the
-canonical pair and record pending reconciliation or conflicts before dependent
+the observed external fields/revision and compare with canonical Beads scope
+and acceptance. Reuse the canonical pair and record pending reconciliation or conflicts before dependent
 work. Include both identities and local/remote delivery states in handoffs.
 
 Reuse an existing task worktree/branch when appropriate. Compare the bead's
