@@ -5,6 +5,11 @@ Plan and implement the initial relevant tests before production behavior. Keep
 checks proportional: documentation-only edits and behavior-preserving mechanical
 changes use the applicable existing checks rather than inventing API tests.
 
+Begin with the applicable initial phase in [task-intake.md](task-intake.md):
+Design supplies the intended contract and case map; Diagnose supplies the
+supported failure mechanism and regression target. A written test plan alone
+does not satisfy the executable tests-ready checkpoint below.
+
 ## Contract and initial case coverage
 
 At Plan, define the public contract before writing its implementation: inputs,

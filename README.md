@@ -192,6 +192,8 @@ These rules apply to all current and future scripts, regardless of language.
   and local models are optional. Includes
   supervised Flash/oMLX/Splash second opinions with deterministic gates authoritative.
   New APIs and substantive behavior use contract and edge-case tests before implementation.
+  An [initial design or diagnosis](./skills/dev-flow/task-intake.md) follows the
+  task type before implementation planning; routine maintenance stays proportional.
   [TMP working docs](./skills/dev-flow/tmp-docs.md) organize plans, analysis,
   review and verification drafts alongside the durable Beads record.
   Workflow references, templates and setup docs live together in that folder;

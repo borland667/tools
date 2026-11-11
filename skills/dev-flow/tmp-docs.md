@@ -54,7 +54,9 @@ the shared skill or create a second maintained copy of the workflow.
 | Checkpoint | TMP content and durable update |
 |---|---|
 | Frame/resume | Find existing documents from the bead. Confirm owner, purpose, paths and revision before reuse; mark stale claims. Bind scratch/retention rules once per target. |
-| Understand/Plan | Capture measurements, alternatives, contract and applicable edge-case matrix. Put the executable accepted plan and material decisions on the bead; link supporting detail. |
+| Design | Capture the intended contract, approach, alternatives and initial case map in `plans/` when substantial; record the phase exit and decisions on the bead. |
+| Diagnose | Capture expected/actual behavior, reproduction, causal hypotheses and discriminating evidence in `analysis/` or `incidents/`; record supported cause or unresolved gaps on the bead. |
+| Plan | Turn the phase result into executable tests/build/verification steps on the bead; link technical detail without creating a second task ledger. |
 | Tests/Build | Record test identities and observed red before behavior implementation, then green/regression results. Keep the actual tests in the repo's test suite. Explain contract changes and refresh affected evidence. |
 | Verify/Review | Identify exact source/diff, environment, commands and results. Separate planned checks, actual observations and unverified claims; preserve earlier runs and finding dispositions. |
 | Handoff | Refresh the bead's stage, tested identity, gaps, retained paths and next action. Summarize enough for a new session even if local files are unavailable. |

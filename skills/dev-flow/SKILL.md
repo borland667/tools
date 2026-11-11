@@ -2,7 +2,8 @@
 name: dev-flow
 description: >-
   End-to-end development workflow for any repo: Beads task record,
-  one worktree per task, staged plan/build/verify/review/integrate with exit
+  one worktree per task, initial design or diagnosis by task type, then
+  plan/build/verify/review/integrate with exit
   conditions, optional multi-agent planning and review coordinated through
   Herdr or Hermes (interchangeable), and optional local models served by
   oMLX as second opinions. Use when asked to
@@ -13,7 +14,8 @@ description: >-
 
 # Dev flow
 
-A fixed loop of stages with exit conditions, plus a small per-repo contract
+A loop of stages with a task-specific initial phase and exit conditions,
+plus a small per-repo contract
 that supplies the commands. The loop never names a repo-specific tool; the
 contract does. Repo and user instructions always win over this skill.
 
@@ -107,6 +109,7 @@ otherwise propose the addition.
 | Mode | `worktree` (default) or `direct` (commit straight to the main branch) |
 | Verify (fast) | The command that must pass before any commit |
 | Verify (full) | Optional local full suite including integration tests |
+| Task intake | Target design/contract sources and diagnostic commands/prerequisites; [task-intake.md](task-intake.md) supplies the procedure |
 | Test-first | Applicable behavior/contract cases, test commands and tests-ready/red-to-green evidence |
 | Hooks | What runs on commit and on push, runner/config and local install command |
 | Deterministic gates | Repeatable commands, triggers, input scope and blocking/advisory status |
@@ -163,9 +166,15 @@ authority decision.
 
 | Lane | When | Stages |
 |---|---|---|
-| Fast | One obvious change; no schema, auth, payment, infra or contract | Frame, Build, Verify, local review pass, Integrate, Close |
-| Standard | A normal task | All except Understand |
-| Deep | Cross-repo, migration, production data, security, or unclear cause | All |
+| Fast | One obvious change; no schema, auth, payment, infra or contract | Frame, applicable initial phase/brief plan, Build, Verify, local review pass, Integrate, Close |
+| Standard | A normal task | All applicable stages; initial phase selected by task type |
+| Deep | Cross-repo, migration, production data, security, or unclear cause | All applicable stages with deeper investigation and review |
+
+Task type and lane are separate. New behavior starts with Design; defects and
+unexplained failures start with Diagnose. Mixed tasks diagnose first, then
+design the intentional change. Mechanical maintenance can record the initial
+phase as not applicable with a reason. Use [task-intake.md](task-intake.md);
+fast lane makes the phase smaller, not optional when its conditions apply.
 
 Release applies only when the requested endpoint includes shipping; an
 implementation-only task records release as not applicable. Promotion to a
@@ -195,6 +204,8 @@ deeper lane changes investigation/verification needs, not the approved scope.
   `--external-ref`. The ticket is the public record; the bead is the working
   state.
 - Record the outcome, requested completion endpoint, non-goals and constraints.
+  Classify the task and select Design, Diagnose, both in order, or not applicable
+  using [task-intake.md](task-intake.md). Record the reason independently of lane.
   Map each acceptance criterion to an observable check on the bead; even a
   fast-lane task needs this mapping.
   Read [evidence-and-learning.md](evidence-and-learning.md) for the compact
@@ -206,18 +217,28 @@ deeper lane changes investigation/verification needs, not the approved scope.
   task workspace. Establish it before edits in Build, using the guidance in
   [evidence-and-learning.md](evidence-and-learning.md).
 
-**Exit:** a claimed bead with a lane and acceptance-to-verification mapping.
+**Exit:** a claimed bead with task type, lane, initial phase and
+acceptance-to-verification mapping.
 
-### 2. Understand (deep lane)
+### 2. Design or Diagnose (by task type)
 
-- Read code and read-only data. Measure; do not assume.
-- Findings go on the bead; bulky output goes to the repo's scratch location.
-  Use [tmp-docs.md](tmp-docs.md) for categorized investigations and evidence.
+- Follow [task-intake.md](task-intake.md): Design establishes intended behavior
+  and a scoped approach; Diagnose establishes the symptom, causal evidence and
+  verification path before proposing a repair. Use both when the task needs it.
+- Keep decisions, phase evidence and the next action on the bead. TMP documents
+  hold supporting designs or investigations under [tmp-docs.md](tmp-docs.md).
+- Resolve the applicable phase before implementation planning. A small task
+  can combine its phase and plan in a concise record; unresolved decisions or
+  diagnosis remain gaps rather than permission for speculative implementation.
 
-**Exit:** every claim the plan will rest on is measured or cited.
+**Exit:** the applicable Design/Diagnose conditions are demonstrated, or the
+phase is explicitly inapplicable with a reason. Investigation-only outcomes
+follow the requested endpoint rather than forcing implementation.
 
 ### 3. Plan
 
+- Consume the initial phase's contract/approach or supported diagnosis. Plan
+  orders the tests, implementation and checks; it does not replace that phase.
 - Write the executable plan into the bead's design field (`--design` or
   `--design-file`). It must stand alone without chat or local files. Substantial
   technical detail may live in linked TMP documents under
@@ -260,12 +281,10 @@ where scope, risk or the repo's rules require it.
   tests, checked expectations and failures for the intended missing behavior.
   Then implement to green and refactor. Add newly discovered cases before their
   fixes; expected red does not authorize bypassing existing hooks or delivery gates.
-- For bugs or unexpected failures: reproduce the symptom, gather baseline
-  evidence, state one root-cause hypothesis and test the smallest change that
-  distinguishes it. Verify the original symptom after the fix; use a regression
-  test when warranted. Do not stack speculative fixes. Repeated attempts that
-  add no evidence trigger a different investigation or revised plan; involve
-  the user when a decision or scope change needs them.
+- If a new failure or material design uncertainty appears, return to the
+  applicable initial phase in [task-intake.md](task-intake.md), then refresh
+  the plan and tests. Verify the original symptom after its fix; do not stack
+  speculative repairs or treat a changed contract as an incidental cleanup.
 - Scope creep becomes a new bead:
   `bd create "..." --deps discovered-from:<id> --json`.
 - Add or strengthen repo-owned pre-commit hooks and other deterministic gates

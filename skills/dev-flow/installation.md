@@ -11,6 +11,7 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | Resource | Purpose |
 |---|---|
 | `SKILL.md` | Discovery, authority, stages, lanes and optional integrations |
+| `task-intake.md` | Task-type routing through initial Design or Diagnose, exit evidence and re-entry |
 | `installation.md` / `validation.md` | Canonical setup and package-check documentation |
 | `local.example.md` / `.gitignore` | Portable host-binding example and private-local exclusion |
 | `repo-contract.md` | Single template for repo commands and delivery bindings |

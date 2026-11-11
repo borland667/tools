@@ -16,6 +16,7 @@ This remains the single contract template; do not maintain a second copy.
 | Mode | `<worktree / direct>` — direct means commits go straight to `<main>` |
 | Verify (fast) | `<command>` — must pass before any commit |
 | Verify (full) | `<command>` — whole suite incl. integration; needs `<local services>`; or "CI only" |
+| Task intake | `<target design/contract sources; reproduction/diagnostic commands, environment and access prerequisites>` or explicit gaps |
 | Test-first | `<contract/case matrix location; initial tests/commands; tests-ready red evidence; final green and regression commands>` or not applicable with reason |
 | Hooks | runner/config: `<path>`; pre-commit/commit-msg: `<commands>`; pre-push: `<command>`; local install: `<command>` |
 | Deterministic gates | `<gate inventory below, or existing config path>` |

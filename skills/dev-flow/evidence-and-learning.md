@@ -115,6 +115,10 @@ describe an untested integration result as verified.
 
 ## Debugging without speculative fixes
 
+For defects and unexplained failures, start in Diagnose under
+[task-intake.md](task-intake.md) before planning a repair. These records also
+apply when a new failure sends an in-progress task back to that phase.
+
 Record the reproduction and baseline, the current hypothesis and why the
 evidence supports it, the smallest discriminating probe/change, and its result.
 If the original symptom cannot be reproduced, gather evidence and state that

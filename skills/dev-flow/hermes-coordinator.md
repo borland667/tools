@@ -13,7 +13,8 @@ Hermes and Herdr are interchangeable coordinators: the shared rules in
 ## Task binding
 
 Record these on the bead before dispatch: workspace, acceptance criteria,
-test-first stage, allowed writes, verification commands, worker roles/models,
+task type, initial phase and current evidence/gaps, test-first stage, allowed
+writes, verification commands, worker roles/models,
 Claude launcher/profile, optional Codex profile, limits and artifact location.
 Choose the Claude launcher for each task from the user's approved profiles.
 There is no hardcoded personal/work/default profile. Accept another executable
@@ -32,8 +33,16 @@ through Hermes and another harness does not create independence.
    contract, initial edge-case matrix, exact file/diff identity, scoped writes,
    expected results, repo rules and available check commands. Preserve the
    [test-first checkpoints](test-first.md).
-2. Delegate `tests` before production behavior. Confirm executable red evidence
-   for the intended missing behavior, then dispatch a bounded `build` job.
+2. Resolve the applicable [Design/Diagnose phase](task-intake.md) before
+   implementation planning and feature/repair jobs. Reasoning workers can use
+   the read-only `plan` role. During diagnosis, a bounded `tests` job may write
+   a reproducer, fixture or temporary instrumentation under explicit file,
+   observation and cleanup/retention limits. It may gather evidence before the
+   phase exit, never implement a speculative repair. Existing job budgets and
+   the one-writer rule apply. Delegate initial implementation `tests` before
+   production behavior. Confirm
+   executable red evidence for the intended missing behavior, then dispatch
+   a bounded `build` job.
 3. Run the repo's agreed deterministic checks and retain actual exit/output
    evidence. A worker's statement that tests passed is insufficient. Do not
    execute commands merely because a worker suggested them.

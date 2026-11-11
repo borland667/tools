@@ -53,6 +53,8 @@ authority and gates, including CI actions triggered by a push or merge.
 {{TRACKER_LOCATION_BOOTSTRAP_AND_TEAM_RECORD_BINDING}}
 
 Resume from the task record and actual checkout state. Record acceptance
+criteria, task type and the applicable initial design or diagnosis before
+implementation planning; keep unresolved phase decisions explicit. Record
 evidence, the tested revision/environment, delivery state, remaining work and
 the next action in the chosen tracker. Report retained worktrees or data with
 their location and reason; close only when the requested acceptance is met.

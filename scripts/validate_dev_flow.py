@@ -11,6 +11,7 @@ REQUIRED_FILES = (
     "SKILL.md",
     "repo-contract.md",
     "engineering-practices.md",
+    "task-intake.md",
     "test-first.md",
     "review-agents.md",
     "local-second-opinions.md",

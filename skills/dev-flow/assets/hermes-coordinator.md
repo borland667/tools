@@ -23,6 +23,15 @@ and budgets. Do not use delegate_task as a substitute for external Claude/Codex
 workers. Do not spawn nested agents or leave background jobs outside the budget.
 Only one writer may use a checkout; other writers need separate workspaces.
 
+Select the initial phase through task-intake.md: new behavior needs Design;
+defects need Diagnose; mixed tasks diagnose then design the intentional change.
+Record a reason when mechanical maintenance needs neither. Resolve that phase
+before implementation planning and feature/repair jobs. Use read-only plan
+workers for reasoning. Diagnostic tests jobs may create scoped reproducers,
+fixtures or temporary instrumentation before the phase exit, with explicit
+files, observation goals and cleanup/retention rules; never speculative repairs.
+Keep normal job budgets and writer limits. Return to the phase if evidence changes.
+
 For new behavior: initial contract/edge cases and tests first, attributable red,
 then implementation, green regressions and independent review. You do not write
 production code. Run only previously agreed verification commands and inspect
