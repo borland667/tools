@@ -43,8 +43,9 @@ test('aggregates all provider models and preserves duplicate route IDs', async t
     async bridge => {
       const response = await getJson(`${bridge.baseUrl}/v1/models`)
       const ids = response.data.map(item => item.id)
+      const rawRouteIds = ids.filter(id => id.includes('/'))
 
-      assert.deepEqual(ids.sort(), [
+      assert.deepEqual(rawRouteIds.sort(), [
         'lmstudio/Qwen3-Reranker-0.6B-4bit',
         'lmstudio/openai-only',
         'lmstudio/shared-model',
@@ -55,6 +56,20 @@ test('aggregates all provider models and preserves duplicate route IDs', async t
       ])
       assert.equal(response.data.find(item => item.id === 'omlx/shared-model').owned_by, 'omlx')
       assert.equal(response.data.find(item => item.id === 'lmstudio/shared-model').owned_by, 'lmstudio')
+
+      // autoClaudeDesktopAliases adds one Claude alias per conversation model
+      // and skips embedding, reranker, and image-quality models.
+      const aliases = response.data.filter(item => !item.id.includes('/'))
+      assert.ok(aliases.every(item => item.id.startsWith('claude-')))
+      assert.deepEqual(
+        aliases.map(item => `${item.owned_by}/${item.upstream_model_id}`).sort(),
+        [
+          'lmstudio/openai-only',
+          'lmstudio/shared-model',
+          'omlx/anthropic-only',
+          'omlx/shared-model',
+        ],
+      )
     },
   )
 })
@@ -491,12 +506,21 @@ test('isolates failed providers while keeping healthy provider models available'
     async bridge => {
       const health = await getJson(`${bridge.baseUrl}/healthz`)
       assert.equal(health.providerCount, 2)
-      assert.equal(health.models, 1)
+      // One raw route plus its auto-generated Claude alias.
+      assert.equal(health.models, 2)
       assert.equal(health.providers.find(item => item.id === 'omlx').ok, true)
       assert.equal(health.providers.find(item => item.id === 'broken').ok, false)
 
       const response = await getJson(`${bridge.baseUrl}/v1/models`)
-      assert.deepEqual(response.data.map(item => item.id), ['omlx/healthy-chat'])
+      assert.deepEqual(
+        response.data.filter(item => item.id.includes('/')).map(item => item.id),
+        ['omlx/healthy-chat'],
+      )
+      assert.ok(response.data.every(item => item.owned_by === 'omlx'))
+      assert.deepEqual(
+        response.data.map(item => item.upstream_model_id),
+        ['healthy-chat', 'healthy-chat'],
+      )
     },
   )
 })
