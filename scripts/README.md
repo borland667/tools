@@ -2,6 +2,16 @@
 
 Helper scripts for repository maintenance and automation.
 
+## Local model evaluation
+
+`evaluate_local_models.py` runs fixed developer tasks and bounded performance/
+compatibility probes. `evaluate_model_harness.py` checks a read-only OpenCode
+review against a disposable fixture. Reports stay outside Git; neither command
+changes existing harness configuration or installs a model.
+
+See [pilot setup](../docs/scripts/evaluate_local_models.md) and
+[harness setup](../docs/scripts/evaluate_model_harness.md) before real inference.
+
 ## `validate_dev_flow.py`
 
 Run the offline dev-flow package check with Python 3.9+:

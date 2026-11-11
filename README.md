@@ -84,6 +84,7 @@ These rules apply to all current and future scripts, regardless of language.
 - `skills/dev-flow/` — reusable development workflow with review, gates and an AGENTS bootstrap.
 - `docs/skills/dev-flow.md` — skill dependencies, local installation and validation.
 - `scripts/validate_dev_flow.py` — offline skill-package validation.
+- `local_model_eval/` — bounded local-model pilot, fixed fixtures and optional Strata transport.
 - `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
 - `tests/enacom_mcp/` — tests for the ENACOM tracker reader/writer.
 - `.github/pull_request_template.md` — default PR checklist/template.
@@ -171,6 +172,13 @@ These rules apply to all current and future scripts, regardless of language.
 - [`scripts/validate_dev_flow.py`](./scripts/validate_dev_flow.py): offline
   validation of the dev-flow skill's resources, metadata, local links and
   portability. See [`docs/scripts/validate_dev_flow.md`](./docs/scripts/validate_dev_flow.md).
+
+- [`scripts/evaluate_local_models.py`](./scripts/evaluate_local_models.py):
+  bounded local inference pilot with a fixed ten-case corpus, context/cache and
+  compatibility checks. See [usage and limitations](./docs/scripts/evaluate_local_models.md).
+- [`scripts/evaluate_model_harness.py`](./scripts/evaluate_model_harness.py):
+  read-only OpenCode integration probe with independent request/token limits.
+  See [usage and isolation scope](./docs/scripts/evaluate_model_harness.md).
 
 ## Skills
 

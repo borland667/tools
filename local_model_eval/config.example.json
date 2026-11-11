@@ -1,0 +1,13 @@
+{
+  "engines": [
+    {
+      "name": "omlx-small",
+      "kind": "http",
+      "base_url": "http://127.0.0.1:8005/v1",
+      "model": "replace-with-advertised-coding-model-id",
+      "checkpoint_files": [],
+      "request_defaults": {"chat_template_kwargs": {"enable_thinking": false}, "reasoning_effort": "none"},
+      "notes": "Record effective settings and engine version separately; do not assume these hints are honored."
+    }
+  ]
+}
