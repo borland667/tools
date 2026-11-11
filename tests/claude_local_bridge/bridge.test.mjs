@@ -227,6 +227,48 @@ test('adds Claude Desktop aliases without hiding raw provider models', async t =
   )
 })
 
+test('keeps automatic Claude alias names stable when other models change', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const models = [model('stable-chat'), model('other-chat')]
+  const anthropic = await startAnthropicProvider({ models })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const aliasFor = async upstreamModelId => {
+        const response = await getJson(`${bridge.baseUrl}/v1/models`)
+        return response.data.find(
+          item => !item.id.includes('/') && item.upstream_model_id === upstreamModelId,
+        )?.id
+      }
+
+      const before = await aliasFor('stable-chat')
+      assert.match(before, /^claude-(opus|sonnet|haiku)-5-\d{6}$/)
+
+      // Drop a model and add ones that sort before and after the stable one.
+      models.splice(0, models.length, model('aaa-new-chat'), model('stable-chat'), model('zzz-new-chat'))
+      await getJson(`${bridge.baseUrl}/sync-models`)
+
+      assert.equal(await aliasFor('aaa-new-chat') !== undefined, true)
+      assert.equal(await aliasFor('stable-chat'), before)
+
+      const response = await postJson(`${bridge.baseUrl}/v1/messages`, {
+        model: before,
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'hello' }],
+      })
+      assert.equal(response.model, 'stable-chat')
+      assert.equal(anthropic.requests.messages.at(-1).model, 'stable-chat')
+    },
+  )
+})
+
 test('routes Anthropic-family tool requests to configured tool model', async t => {
   const upstreams = []
   t.after(async () => {

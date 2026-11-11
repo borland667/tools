@@ -345,7 +345,7 @@ Desktop/Cowork 3P gateway discovery is stricter: expose Claude-compatible model
 IDs and map each alias to the real route ID. The bridge does this
 automatically by default for every discovered conversation model that does not
 already have a manual alias. This lets Claude see an alias such as
-`claude-sonnet-5-1001` while the bridge sends
+`claude-sonnet-5-482913` while the bridge sends
 `provider-id/<real-model-id>` upstream.
 
 Manual `claudeDesktopModels[]` entries are still supported and win over
@@ -836,6 +836,19 @@ non-chat entries such as embeddings, rerankers, and image-only models. Alias
 labels are provider-prefixed and descriptions preserve the exact upstream model
 ID. Set `autoClaudeDesktopAliases` to `false` if you want the picker to show
 only manually configured aliases.
+
+Automatic alias names are stable. The six-digit suffix is derived from a hash
+of `provider-id/<real-model-id>`, so a model keeps its alias when other models
+are added, removed, or reordered, and across bridge restarts. Upstream IDs that
+already look like `claude-*` keep that name when it is free. Only a hash
+collision within the same tier moves a name, to the next free suffix. The tier
+(`opus`, `sonnet`, `haiku`) is guessed from the model ID, so use a manual
+`claudeDesktopModels[]` entry when you want a specific tier or a friendlier
+name.
+
+Claude Desktop/Cowork profiles store a static `inferenceModels` list. Refresh it
+after the bridge's model list changes so new aliases appear in the picker, for
+example with `generate_claude_3p_config.py --models-source bridge-live`.
 
 Use `claudeDesktopModels[]` in `bridge.local.json` for hand-curated aliases.
 These aliases are added alongside raw provider models and automatic aliases,

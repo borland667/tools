@@ -336,7 +336,19 @@ claude-opus-4-1            -> omlx/Qwen3.6-35B-A3B-MLX-4bit
 claude-fable-5             -> omlx/gemma-4-12b-coder-fable5-composer2.5-8bit
 claude-haiku-4-5           -> omlx/gemma-4-e4b-it-4bit
 claude-haiku-4-5-20251001  -> omlx/Qwen3-VL-4B-Instruct-4bit
+claude-haiku-4-6           -> omlx/Qwen3.8-9B-mlx-8Bit
+claude-haiku-4-7           -> omlx/Huihui-Qwen3-VL-4B-Instruct-abliterated-4bit-mlx
+claude-sonnet-4-7          -> omlx/Qwen3.8-27B-Uncensored-OrcaRouter-MLX-4bit
+claude-sonnet-4-8          -> omlx/Qwimi3.5-9B-Kimik2.6-Opus-Distill-MLX-8Bit
+claude-opus-4-2            -> omlx/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-splash
 ```
+
+Models without a manual alias get an automatic one when
+`autoClaudeDesktopAliases` is on (the default). Automatic names such as
+`claude-sonnet-5-482913` are derived from a hash of the provider and upstream
+model ID, so they stay the same when other models are added or removed. After
+the model list changes, refresh the Claude Desktop/Cowork profile's
+`inferenceModels` so new aliases appear in its picker.
 
 Legacy single-provider mode without `CLAUDE_LOCAL_PROVIDERS_FILE` or
 `CLAUDE_LOCAL_PROVIDERS` still exposes raw upstream model IDs for compatibility

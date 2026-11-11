@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto'
 import http from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -1977,10 +1978,12 @@ function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configure
   const manuallyAliasedTargets = new Set(
     configuredAliases.map(option => `${option.providerId}/${option.upstreamModelId}`),
   )
-  const counters = seedClaudeAliasCounters(usedNames)
   const aliases = []
 
-  for (const option of rawOptions) {
+  // Assign names in route-ID order so the result does not depend on the order
+  // providers return their model lists.
+  const orderedOptions = [...rawOptions].sort((a, b) => String(a.value).localeCompare(String(b.value)))
+  for (const option of orderedOptions) {
     const route = routesById.get(option.value)
     if (!route || !isAutoAliasCandidate(option, route)) {
       continue
@@ -1990,7 +1993,7 @@ function normalizeAutomaticClaudeDesktopModels(rawOptions, routesById, configure
     }
 
     const familyTier = inferClaudeFamilyTier(option, route)
-    const name = chooseAutomaticClaudeAliasName(option, familyTier, usedNames, counters)
+    const name = chooseAutomaticClaudeAliasName(route, familyTier, usedNames)
     usedNames.add(name)
     aliases.push(createClaudeDesktopAliasOption({
       name,
@@ -2062,39 +2065,33 @@ function isAutoAliasCandidate(option, route) {
   return !isNonConversationModelId(idText)
 }
 
-function chooseAutomaticClaudeAliasName(option, familyTier, usedNames, counters) {
-  const upstream = option.upstreamModelId ?? ''
+const AUTO_ALIAS_SUFFIX_MIN = 100000
+const AUTO_ALIAS_SUFFIX_SPAN = 900000
+
+// Automatic alias names are derived from the provider and upstream model ID, so
+// a model keeps the same Claude alias when other models are added or removed.
+// Only a hash collision within the same tier moves a name, and only by probing
+// to the next free suffix.
+function chooseAutomaticClaudeAliasName(route, familyTier, usedNames) {
+  const upstream = route.upstreamModelId ?? ''
   if (upstream.startsWith('claude-') && !usedNames.has(upstream)) {
     return upstream
   }
 
-  do {
-    counters[familyTier] += 1
-    const candidate = `claude-${familyTier}-5-${String(counters[familyTier]).padStart(4, '0')}`
+  const start = automaticAliasSuffix(`${route.provider.id}/${upstream}`)
+  for (let offset = 0; offset < AUTO_ALIAS_SUFFIX_SPAN; offset += 1) {
+    const suffix = AUTO_ALIAS_SUFFIX_MIN + ((start + offset) % AUTO_ALIAS_SUFFIX_SPAN)
+    const candidate = `claude-${familyTier}-5-${suffix}`
     if (!usedNames.has(candidate)) {
       return candidate
     }
-  } while (true)
+  }
+  throw new Error(`no free automatic Claude alias for ${route.provider.id}/${upstream}`)
 }
 
-function seedClaudeAliasCounters(usedNames) {
-  const counters = {
-    opus: 1000,
-    sonnet: 1000,
-    haiku: 1000,
-  }
-  for (const name of usedNames) {
-    const match = String(name).match(/^claude-(opus|sonnet|haiku)-5-(\d+)$/)
-    if (!match) {
-      continue
-    }
-    const tier = match[1]
-    const value = Number(match[2])
-    if (Number.isFinite(value)) {
-      counters[tier] = Math.max(counters[tier], value)
-    }
-  }
-  return counters
+function automaticAliasSuffix(key) {
+  const digest = createHash('sha256').update(key).digest()
+  return digest.readUInt32BE(0) % AUTO_ALIAS_SUFFIX_SPAN
 }
 
 function inferClaudeFamilyTier(option, route) {
