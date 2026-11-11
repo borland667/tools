@@ -26,6 +26,7 @@ This remains the single contract template; do not maintain a second copy.
 | Review catalogs | `<paths to anti-pattern lists / bot rule files / checklists>` or none |
 | Coordinator | `<herdr / hermes / none>` default for multi-agent passes; interchangeable, per-task override on the bead |
 | Local second opinion | `<host profile / disabled>`; `<read-only HTTP packet / isolated harness>`; `<request/token/wall limits>`; advisory only |
+| Models by role | `<primary and approved alternate per role; harness/profile; identity evidence; effort/budgets; qualification limits>` using the skill's model-selection reference |
 | Engineering | `<target language/runtime/tooling; section/path for applicable architecture rules, module budgets and exceptions>` |
 | Scratch | `<path, gitignored>` or none |
 | TMP docs | `<scratch root; per-task document owner; ignore/export rules; archive/retention policy>` or none with reason |

@@ -192,6 +192,8 @@ These rules apply to all current and future scripts, regardless of language.
   [1:1 ticket mapping](skills/dev-flow/ticket-mapping.md) to Jira, Linear or
   other systems. Follows existing repository practices by default;
   departures require evidence and applicable reference documentation.
+  [Model recommendations](skills/dev-flow/model-selection.md) cover frontier
+  and local options by task/subagent role, with explicit qualification limits.
   Herdr or Hermes (interchangeable coordinators) and local models are optional. Includes
   supervised Flash/oMLX/Splash second opinions with deterministic gates authoritative.
   New APIs and substantive behavior use contract and edge-case tests before implementation.

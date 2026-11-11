@@ -56,6 +56,10 @@ publish remotely and release are separate; one does not imply the others.
 
 ## Requirements and optional integrations
 
+Use [model-selection.md](model-selection.md) for dated frontier/local choices
+by task and subagent role, effort/budget guidance and qualification limits.
+Preserve existing model/account bindings; recommendations do not change defaults.
+
 Running the full workflow requires Git, the Beads `bd` CLI and an available
 task workspace, plus the target repo's own tools. Guide-only authoring uses
 the existing tracker and does not require Beads. Dependency installation and

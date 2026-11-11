@@ -138,6 +138,10 @@ record that decision rather than assuming one.
 
 ## Engines
 
+Choose models by [model-selection.md](model-selection.md), then verify the
+required identity/independence and actual role qualification. Named options
+are recommendations, not installed engines or proof of review coverage.
+
 An engine is an agent harness plus a model. Hosted passes use Claude Code
 and Codex on their own models. Local passes use a harness that oMLX can
 launch against a local model.

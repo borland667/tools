@@ -12,6 +12,10 @@ Hermes and Herdr are interchangeable coordinators: the shared rules in
 
 ## Task binding
 
+Select role/model bindings using [model-selection.md](model-selection.md),
+preserving the approved profile, model independence and qualification limits.
+Local coordination does not qualify local planning, writing or gate approval.
+
 When a task opts into external linking, resolve its canonical 1:1 ticket/bead pair using
 [ticket-mapping.md](ticket-mapping.md) before dispatch. Include both identities
 and canonical Beads acceptance in packets, with any unresolved remote changes.

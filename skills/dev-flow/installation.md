@@ -19,6 +19,7 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | `engineering-practices.md` | Language-independent architecture/quality baseline and conditional stack specifics |
 | `test-first.md` | Initial contract/edge-case tests, red-to-green checkpoints and blocking test gates |
 | `review-agents.md` | Review coverage, independence, prompts and launch recipes |
+| `model-selection.md` | Dated frontier/local role recommendations, effort, independence and qualification limits |
 | `local-second-opinions.md` | Supervised Flash/oMLX/Splash review, limits and gate authority |
 | `hermes-coordinator.md` / `assets/hermes-coordinator.md` | Hermes coordinator protocol and linked profile instructions |
 | `scripts/run_worker.py` / `worker-launcher.md` | Bounded Claude/Codex jobs with per-task profile selection |

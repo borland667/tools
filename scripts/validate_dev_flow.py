@@ -15,6 +15,7 @@ REQUIRED_FILES = (
     "task-intake.md",
     "test-first.md",
     "review-agents.md",
+    "model-selection.md",
     "local-second-opinions.md",
     "hermes-coordinator.md",
     "worker-launcher.md",

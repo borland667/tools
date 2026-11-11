@@ -8,6 +8,9 @@ reviews. Reusing Flash for two passes does not create model independence.
 
 ## Host binding and scope
 
+Use [model-selection.md](model-selection.md) for frontier/local role choices;
+it preserves this profile's advisory scope and host-specific qualification.
+
 Keep the endpoint, exact advertised model id, confirmed backend, transport,
 credentials reference, resource limits and qualification evidence in private
 host setup, such as an existing untracked `local.md`. The repo contract may name

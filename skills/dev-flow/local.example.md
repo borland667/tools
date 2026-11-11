@@ -20,6 +20,11 @@ Herdr key bindings: `<binding> <profile>`, or none.
 
 ## Harnesses
 
+Role/model bindings: `<role; primary; approved alternate; requested/reported id;
+provider/harness/profile; effort and budgets; qualification/evidence>`.
+Use `model-selection.md` for recommendations; record exact local served ids
+and observed capabilities here without changing global defaults.
+
 | Harness | Use | Launch | Status |
 |---|---|---|---|
 | `<agent>` | `<lead / reviewer / local passes>` | `<command>` | `<works / needs sign-in / not tried>` |
