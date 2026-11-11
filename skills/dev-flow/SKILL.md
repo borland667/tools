@@ -80,6 +80,9 @@ These hold in every repo, whatever its contract says.
    with a next step on the bead that another agent could execute from a fresh
    clone. TMP documents may hold supporting detail; accepted decisions and
    resumable state remain on the bead.
+   When an external tracker is used, [ticket-mapping.md](ticket-mapping.md)
+   defines the 1:1 identity and field ownership; the bead does not supersede
+   the team's authoritative scope, acceptance or public status.
 2. **One writing agent per checkout.** Any other agent in the same checkout
    keeps project files and Git read-only. Parallel writing means separate
    beads and worktrees, which only worktree mode allows.
@@ -128,7 +131,7 @@ otherwise propose the addition.
 | Scratch | Where bulky notes and analysis go, if anywhere |
 | TMP docs | Scratch root, document owner, ignore/export policy and retention; see [tmp-docs.md](tmp-docs.md) |
 | Release gate | What ships to production and who triggers it |
-| Tracker | External tracker (Jira, Linear) if the team requires one |
+| Tracker | External tracker (Jira, Linear, etc.), 1:1 identity, field/status mapping and connector authority; see [ticket-mapping.md](ticket-mapping.md) |
 
 For architecture decisions, implementation and review, use the applicable
 sections of [engineering-practices.md](engineering-practices.md). It owns the
@@ -203,12 +206,15 @@ deeper lane changes investigation/verification needs, not the approved scope.
   and evidence with current files and Git state. Continue at the first unmet
   exit condition, not automatically at Build. Use the resume/handoff record in
   [evidence-and-learning.md](evidence-and-learning.md).
-- Create or claim:
-  `bd create "<title>" -t <bug|feature|task|chore> -p <0-4> --description "..." --acceptance "..." --design "Lane: <lane>. ..." --json`
-  then `bd update <id> --claim --json`.
 - Where a team tracker is required, the ticket must exist first; link it with
-  `--external-ref`. The ticket is the public record; the bead is the working
-  state.
+  `--external-ref` and the scoped stable identity under
+  [ticket-mapping.md](ticket-mapping.md). Search open/closed mappings before
+  creating a bead; reuse the canonical pair, including across participating
+  repositories. The ticket is the public record; Beads holds execution state.
+- Create only if no existing task matches, then claim:
+  `bd create "<title>" -t <bug|feature|task|chore> -p <0-4> --description "..." --acceptance "..." --design "Lane: <lane>. ..." --json`
+  then `bd update <id> --claim --json`. For mapped tasks, include the resolved
+  `--external-ref` and identity metadata at creation.
 - Record the outcome, requested completion endpoint, non-goals and constraints.
   Classify the task and select Design, Diagnose, both in order, or not applicable
   using [task-intake.md](task-intake.md). Record the reason independently of lane.
@@ -429,6 +435,9 @@ as authorized; the bead and handoff state which actually occurred.
   [tmp-docs.md](tmp-docs.md); ignored documents can still be the only copy.
 - Record the final tested revision/environment, actual delivery state, gaps,
   follow-up beads, retained work and concrete next action before closing.
+  For mapped tickets, reconcile scope/status and authorized public evidence
+  under [ticket-mapping.md](ticket-mapping.md). Record local and remote states
+  separately; required unverified remote updates keep delivery unfinished.
   Close with `bd close <id> --reason "..." --json` only when acceptance is
   satisfied.
   If handing off unfinished work, leave it open and record the next action and

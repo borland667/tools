@@ -15,6 +15,7 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | `installation.md` / `validation.md` | Canonical setup and package-check documentation |
 | `local.example.md` / `.gitignore` | Portable host-binding example and private-local exclusion |
 | `repo-contract.md` | Single template for repo commands and delivery bindings |
+| `ticket-mapping.md` | 1:1 external ticket identity, field/status ownership and authorized reconciliation protocol; no installed sync adapter |
 | `engineering-practices.md` | Language-independent architecture/quality baseline and conditional stack specifics |
 | `test-first.md` | Initial contract/edge-case tests, red-to-green checkpoints and blocking test gates |
 | `review-agents.md` | Review coverage, independence, prompts and launch recipes |

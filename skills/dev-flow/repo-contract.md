@@ -30,7 +30,8 @@ This remains the single contract template; do not maintain a second copy.
 | Scratch | `<path, gitignored>` or none |
 | TMP docs | `<scratch root; per-task document owner; ignore/export rules; archive/retention policy>` or none with reason |
 | Release gate | `<tag / deploy / apply>` — triggered by `<who>` |
-| Tracker | `<Jira project / Linear team>` or none; beads is local `<stealth / committed>` |
+| Tracker | `<provider + tenant/workspace + project/team>` or none; beads is local `<stealth / committed>` |
+| Ticket mapping | `<stable external id + URL/key; canonical Beads store/id and 1:1 lookup scope; field owners; status/transition/resolution map; connector and read/write authority; required reconciliation checkpoints>` or disabled/local-only |
 
 Worktree notes: `<anything that breaks in a worktree, e.g. fixed ports, path-derived names>`
 

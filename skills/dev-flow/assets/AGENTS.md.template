@@ -59,6 +59,13 @@ authority and gates, including CI actions triggered by a push or merge.
 
 {{TRACKER_LOCATION_BOOTSTRAP_AND_TEAM_RECORD_BINDING}}
 
+When external-to-local execution mapping is explicitly enabled, map each
+participating ticket to one canonical local task using scoped stable identity.
+An external tracker alone does not require a second local task record.
+Preserve public field ownership and
+record local execution evidence separately. Reuse existing mappings and report
+pending/conflicting updates; remote writes require their own authority.
+
 Resume from the task record and actual checkout state. Record acceptance
 criteria, task type and the applicable initial design or diagnosis before
 implementation planning; keep unresolved phase decisions explicit. Record
