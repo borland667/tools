@@ -37,8 +37,11 @@ satisfy this baseline without an API, container, database or queue.
   dumping ground. If the target prohibits growth of an oversized file, extract
   cohesive behavior instead. Do not invent a universal line limit or restructure
   unrelated code to satisfy a preferred pattern.
-- **Verify observable behavior.** Check outputs, boundary conditions and relevant
-  failures. Mock external boundaries; exercise real behavior where practical.
+- **Verify observable behavior.** For new APIs and substantive behavior changes,
+  follow [test-first.md](test-first.md): contract/case matrix, initial executable
+  tests before production behavior, attributable red, then green and refactor.
+  Check outputs, boundary conditions and relevant failures. Mock external
+  boundaries; exercise real behavior where practical.
   Use a reproducer that catches a regression rather than tests mirroring private
   implementation. Formatting, lint, types, contracts and builds belong in
   repeatable commands with meaningful failure exits. Use

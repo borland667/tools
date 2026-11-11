@@ -31,6 +31,13 @@ need not run on every keystroke or apply to every file type.
 
 ## Inputs, cost and preservation
 
+For new APIs and substantive behavior, use [test-first.md](test-first.md) to
+establish initial case coverage and observed red before production behavior.
+Required test gates must pass at delivery: red preparation evidence never waives
+a hook or CI check. Configure the runner to detect missing required test groups,
+zero collection and unexpected skips; code coverage alone does not prove the
+contract or its edge cases. Record required integration prerequisites explicitly.
+
 Pre-commit checks must validate the staged snapshot, including staged additions,
 renames and deletions, rather than assuming the working tree matches the index.
 Partially staged files can hide violations or create false failures if a check

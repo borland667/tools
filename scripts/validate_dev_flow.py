@@ -11,12 +11,18 @@ REQUIRED_FILES = (
     "SKILL.md",
     "repo-contract.md",
     "engineering-practices.md",
+    "test-first.md",
     "review-agents.md",
+    "local-second-opinions.md",
     "deterministic-gates.md",
     "evidence-and-learning.md",
     "bootstrap-agents.md",
     "assets/AGENTS.md.template",
     "LICENSE",
+    "installation.md",
+    "validation.md",
+    "local.example.md",
+    ".gitignore",
 )
 PRIVATE_BINDING = re.compile(
     r"/Users/[^/\s]+|/home/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+"
@@ -56,6 +62,10 @@ def validate(skill_dir: Path) -> list[str]:
         if path.is_symlink():
             errors.append(f"{relative}: package must contain files, not symlinks")
             continue
+        if relative == Path("local.md"):
+            if not path.is_file():
+                errors.append("local.md: private host setup must be a regular file")
+            continue
         if not path.is_file():
             continue
         try:
@@ -63,6 +73,8 @@ def validate(skill_dir: Path) -> list[str]:
         except (OSError, UnicodeError):
             errors.append(f"{relative}: cannot read UTF-8 package resource")
             continue
+        if relative == Path(".gitignore") and "/local.md" not in content.splitlines():
+            errors.append(".gitignore: must ignore /local.md private host setup")
         if PRIVATE_BINDING.search(content):
             errors.append(f"{relative}: contains a machine/account binding")
         if path.name == "SKILL.md":

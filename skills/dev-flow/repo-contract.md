@@ -16,12 +16,14 @@ This remains the single contract template; do not maintain a second copy.
 | Mode | `<worktree / direct>` — direct means commits go straight to `<main>` |
 | Verify (fast) | `<command>` — must pass before any commit |
 | Verify (full) | `<command>` — whole suite incl. integration; needs `<local services>`; or "CI only" |
+| Test-first | `<contract/case matrix location; initial tests/commands; tests-ready red evidence; final green and regression commands>` or not applicable with reason |
 | Hooks | runner/config: `<path>`; pre-commit/commit-msg: `<commands>`; pre-push: `<command>`; local install: `<command>` |
 | Deterministic gates | `<gate inventory below, or existing config path>` |
 | Integration | branch `<main>`; `<squash / rebase-and-merge / fast-forward>`; branch names `<pattern>`; local landing `<authorized / handoff>` |
 | Base sync | `<local-only: use local base / remote and base-update command>` |
 | Autonomy | `<propose / commit-local / commit-push>` |
 | Review catalogs | `<paths to anti-pattern lists / bot rule files / checklists>` or none |
+| Local second opinion | `<host profile / disabled>`; `<read-only HTTP packet / isolated harness>`; `<request/token/wall limits>`; advisory only |
 | Engineering | `<target language/runtime/tooling; section/path for applicable architecture rules, module budgets and exceptions>` |
 | Scratch | `<path, gitignored>` or none |
 | Release gate | `<tag / deploy / apply>` — triggered by `<who>` |

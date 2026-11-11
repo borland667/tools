@@ -22,6 +22,21 @@ authority. That request alone does not adopt the full workflow, initialize
 Beads or grant Git actions. The workflow invariants and stages below apply
 when adopting or executing dev-flow.
 
+## Canonical source and local setup
+
+Maintain this skill and its workflow references in the tools repo's
+`skills/dev-flow/` directory. Other local installations link to that retained
+directory; edit the source, not separate copies. Installation and maintenance
+instructions live in [installation.md](installation.md) and
+[validation.md](validation.md).
+
+When present, read `local.md` beside this file for the host's account profiles,
+harnesses, selected model and qualification record. It is private and ignored;
+never copy its contents into portable instructions or an exported package.
+Use [local.example.md](local.example.md) when a needed host binding is missing.
+Preserve an existing account choice; ask only for a binding the task actually
+needs. Installing or moving this skill does not grant workflow actions.
+
 Resolve scoped standing authorization before applying the defaults below.
 Record routine lane, plan and implementation decisions and continue within
 already approved scope. Ask only for a missing decision, material scope change
@@ -88,12 +103,14 @@ otherwise propose the addition.
 | Mode | `worktree` (default) or `direct` (commit straight to the main branch) |
 | Verify (fast) | The command that must pass before any commit |
 | Verify (full) | Optional local full suite including integration tests |
+| Test-first | Applicable behavior/contract cases, test commands and tests-ready/red-to-green evidence |
 | Hooks | What runs on commit and on push, runner/config and local install command |
 | Deterministic gates | Repeatable commands, triggers, input scope and blocking/advisory status |
 | Integration | Target branch, merge style and local integration authority |
 | Base sync | Local-only base or configured remote/base-update command |
 | Autonomy | `propose` / `commit-local` / `commit-push` |
 | Review catalogs | Anti-pattern lists, review-bot rule files or checklists the reviewers must apply |
+| Local second opinion | Optional host profile, read-only transport and limits; advisory only |
 | Engineering | Target language/tooling, architecture ownership, applicable rules and declared module budgets |
 | Scratch | Where bulky notes and analysis go, if anywhere |
 | Release gate | What ships to production and who triggers it |
@@ -201,6 +218,10 @@ deeper lane changes investigation/verification needs, not the approved scope.
 - Refine the acceptance checks against the actual code and commands. Keep
   planned verification separate from observed results. If discoveries change
   the design, update the bead and assess whether they exceed approved scope.
+- For new APIs and substantive behavior changes, follow
+  [test-first.md](test-first.md): define the contract and initial case matrix,
+  including known material edge cases, before production behavior. Bind the
+  test commands and blocking triggers; do not promise exhaustive input coverage.
 - When a requirement can be checked mechanically, consider making it a
   repeatable gate instead of relying on repeated model review. For gate changes,
   define the command, trigger, input scope and failure behaviour using
@@ -227,7 +248,11 @@ where scope, risk or the repo's rules require it.
   unavailable checks and their limits. They do not waive required final gates
   or authorize unrelated repairs.
 - Smallest diff. Change a contract or schema before the code that uses it.
-  Tests alongside the code, in proportion to the behaviour changed.
+  For new APIs/substantive behavior, complete the tests-ready checkpoint in
+  [test-first.md](test-first.md) before production behavior: executable initial
+  tests, checked expectations and failures for the intended missing behavior.
+  Then implement to green and refactor. Add newly discovered cases before their
+  fixes; expected red does not authorize bypassing existing hooks or delivery gates.
 - For bugs or unexpected failures: reproduce the symptom, gather baseline
   evidence, state one root-cause hypothesis and test the smallest change that
   distinguishes it. Verify the original symptom after the fix; use a regression
@@ -250,6 +275,9 @@ where scope, risk or the repo's rules require it.
   deep, or standard and the change touches a boundary (schema, API contract,
   auth, background jobs). Run long suites in the background.
 - Exercise the real behaviour where practical, not only the tests.
+- For test-first work, retain observed red and final green evidence. All required
+  cases and relevant regressions must pass without weakened assertions or hidden
+  skips; package validation or a coverage percentage cannot substitute for them.
 - Work backwards from each acceptance criterion: confirm implementation,
   reachable wiring and real data where relevant. File presence, a stub or a
   passing unrelated suite does not establish the outcome.
@@ -424,29 +452,31 @@ Load Herdr's own skill (`herdr --skill`) for command syntax.
   Helpers report findings on that bead when authorized; otherwise the lead
   records their returned findings. Helpers do not edit project files or change
   issue status/ownership.
-- **Default pairing:** Claude Code leads and builds; Codex reviews and is the
-  second planner.
+- **Default pairing:** use the host binding in `local.md` when supplied.
+  Otherwise the preferred pairing is Claude Code building and Codex reviewing
+  and planning second, subject to actual availability and task authority.
+- **Accounts:** preserve the task's account/profile binding. When multiple
+  profiles are available and none is bound, ask which one applies; do not pick
+  credentials. Start the intended profile launcher rather than a default binary.
 
 ## Local models
 
-- **oMLX** (`omlx launch <tool> --model <name>`): optional helpers for
-  exploration and second opinions. Discover the approved model id and resource
-  limits on the actual host before selecting a model.
-- **Harness:** run local models through opencode, pi or hermes. Claude Code
-  and Codex stay on hosted models.
-- **Local heavy pass:** use the configured larger model for a single large
-  review or plan. Run local passes serially when their combined residency
-  exceeds the host's memory budget. Do not infer available capacity or model
-  quality from another machine's observations.
-- Local models are never the lead builder, and never the only reviewer on a
-  deep-lane or security-sensitive change.
-- Their main job is the local review pass. Roles, prompts and how to launch
-  them are in `review-agents.md`.
+Use [local-second-opinions.md](local-second-opinions.md) for the supervised
+Flash-through-oMLX/Splash integration: a bounded, read-only local review pass
+whose findings the lead confirms. Resolve the exact model, endpoint, transport
+and resource limits from the host binding; this portable package sets no
+machine defaults. Run local passes serially within that budget.
+
+Local models never lead builds or decide gate outcomes. Required deterministic
+checks remain blocking according to the repo contract; a model's opinion cannot
+waive them. Required hosted/deep/security review independence still follows
+[review-agents.md](review-agents.md). Local advice does not replace that coverage.
 
 ## Status of this skill
 
 Package validation checks structure, bundled references and portability; it
 does not qualify a host, validate project code or establish workflow quality.
+Host-specific results and outstanding qualification gaps stay in `local.md`.
 Record actual runs and limitations on the task's bead. A full end-to-end task,
 the preferred multi-model topology, direct mode and hook tiers still require
 qualification in real tasks; no measured productivity benefit is claimed.

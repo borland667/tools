@@ -22,8 +22,8 @@ python3 scripts/validate_dev_flow.py --skill-dir /path/to/copied/dev-flow
 ```
 
 No agents, models, network or tracker access is needed. See
-[script usage and limitations](../docs/scripts/validate_dev_flow.md) and the
-[skill package guide](../docs/skills/dev-flow.md).
+[script usage and limitations](../skills/dev-flow/validation.md) and the
+[skill package guide](../skills/dev-flow/installation.md).
 
 ## `install-to-bin.sh`
 

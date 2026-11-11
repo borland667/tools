@@ -21,7 +21,11 @@ class PackageValidationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="dev-flow-package-")
         self.addCleanup(self.temp.cleanup)
         self.package = Path(self.temp.name) / "relocated" / "dev-flow"
-        shutil.copytree(REPO / "skills" / "dev-flow", self.package)
+        source = REPO / "skills" / "dev-flow"
+        shutil.copytree(
+            source, self.package,
+            ignore=lambda directory, names: ["local.md"] if Path(directory) == source else [],
+        )
 
     def run_cli(self):
         return subprocess.run(
@@ -66,6 +70,36 @@ class PackageValidationTests(unittest.TestCase):
         external.write_text("Private source\n")
         (self.package / "extra.md").symlink_to(external)
         self.assertTrue(any("symlinks" in e for e in VALIDATOR.validate(self.package)))
+
+    def test_root_installation_symlink_resolves_the_canonical_package(self):
+        installed = Path(self.temp.name) / "installed-dev-flow"
+        installed.symlink_to(self.package, target_is_directory=True)
+        self.assertEqual(VALIDATOR.validate(installed), [])
+
+    def test_private_host_bindings_are_allowed_only_in_root_local_file(self):
+        (self.package / "local.md").write_text("Host path: /Users/fixture-user/private\n")
+        self.assertEqual(VALIDATOR.validate(self.package), [])
+        nested = self.package / "references"
+        nested.mkdir()
+        (nested / "local.md").write_text("Host path: /Users/fixture-user/private\n")
+        self.assertTrue(any("machine/account binding" in e for e in VALIDATOR.validate(self.package)))
+
+    def test_private_host_file_cannot_be_a_symlink(self):
+        external = self.package.parent / "private-host.md"
+        external.write_text("Host path: /Users/fixture-user/private\n")
+        (self.package / "local.md").symlink_to(external)
+        self.assertTrue(any("symlinks" in e for e in VALIDATOR.validate(self.package)))
+
+    def test_missing_private_ignore_rule_is_rejected(self):
+        (self.package / ".gitignore").write_text("# no private host exclusion\n")
+        self.assertTrue(any("local.md" in e and "ignore" in e for e in VALIDATOR.validate(self.package)))
+
+    def test_unreadable_ignore_encoding_reports_a_diagnostic(self):
+        (self.package / ".gitignore").write_bytes(b"\xff")
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot read UTF-8 package resource", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_machine_path_fails_without_echoing_private_content(self):
         private_path = "/Users/fixture-user/private/config"

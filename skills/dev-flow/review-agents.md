@@ -79,6 +79,12 @@ Use the applicable architecture and language rules in
 actual requirements and tools. Apply triggered specifics; do not impose a
 service architecture, language profile or unchosen budget on unrelated code.
 
+For new APIs/substantive behavior, the `tests` lens checks
+[test-first.md](test-first.md): initial contract/edge-case matrix, independently
+checked expectations, observed red and final green, real boundary coverage and
+missing/skipped cases. Inspect changes to assertions and selection for weakened
+protection. Green tests without this evidence do not establish test-first work.
+
 A finding that recurs across reviews in the same repo is proposed as a new
 catalog entry at the Close stage, so the next review checks for it by rule.
 
@@ -91,7 +97,7 @@ preferred passes; pass counts do not themselves authorize agent launches.
 | Pass | Engine | Roles |
 |---|---|---|
 | A | Hosted, different model from the builder | `correctness`, plus every triggered role |
-| B | Local fast (oMLX) | `tests`, `fit`, and the mechanical scans |
+| B | Configured supervised local profile (oMLX/Splash when bound) | `tests`, `fit`; lead runs mechanical scans |
 | C | Configured local heavy model through oMLX or a second hosted model | `adversarial` |
 
 | Lane | Preferred passes |
@@ -148,10 +154,18 @@ stay on hosted models and a local pass is never mistaken for a hosted one.
 `omlx launch` rewrites the target tool's configuration, so run it only for
 the harness the user agreed to use with local models.
 
-The package selects no local harness or model. Record model id, harness,
+For the supervised Flash/Splash profile, follow
+[local-second-opinions.md](local-second-opinions.md). A bounded tool-less HTTP
+packet is also supported: the lead supplies the evidence rather than asking
+the model to execute the tool-based prompt below. Local findings need lead
+confirmation and never waive a deterministic gate or required hosted coverage.
+
+The package selects no host-wide default harness or model. Record model id, harness,
 resource limits, role, observed result and remaining gaps on the relevant bead.
 Pick host defaults from that evidence; a successful inference prompt alone
 does not qualify a model for review.
+Read `local.md`, when present, for actual harness/profile availability and
+previous host qualification; the recipes above do not establish those facts.
 
 ## What to give the agent
 
@@ -178,8 +192,11 @@ parts were not reviewed. Never truncate silently.
 
 ## Prompt
 
-Send this text unchanged, with the placeholders filled in. For a pass with
-several roles, repeat the two role lines once per role.
+For a reviewer permitted to run the evidence commands, send this text unchanged,
+with the placeholders filled in. For restricted local transports, follow the
+supplied-evidence procedure in [local-second-opinions.md](local-second-opinions.md)
+instead of asking for denied tools. For a pass with several roles, repeat the
+two role lines once per role.
 
 ```text
 You are a code reviewer for one change. Project files and Git are read-only:
@@ -266,3 +283,18 @@ herdr pane read <pane-id> --source recent --lines 70
 - For orchestration outside a pane, consult the installed Herdr guidance and
   obtain any needed session/configuration authority. Do not control a shared
   default session as an experiment.
+
+### Account profiles in Herdr
+
+Use the task's account choice or the private host binding. If several profiles
+exist without a task binding, ask which one applies. `herdr agent start` runs
+the default binary; use the selected profile launcher in its pane when needed:
+
+```bash
+herdr pane run <pane-id> '<profile launcher>'
+herdr agent rename <pane-id> <profile>-lead
+```
+
+Confirm current syntax with the installed Herdr guidance and inspect the pane
+for login, first-run and trust prompts. Historical host experiments belong in
+`local.md`; they do not authorize starting or controlling a shared session.
