@@ -29,6 +29,7 @@ not authorize rollout, configuration changes or tracker initialization.
 | Documentation | Links to relevant target-project documentation when it exists, with reading triggers. Omit absent links; the guide must work without a documentation predecessor. |
 | Scope | Directories/components covered by this guide and boundaries between them. State the scope directly instead of referring to another guide for the rules. |
 | Code boundaries | Required dependency/state ownership, contract/codegen order, generated-file ownership and data-preservation constraints. Include only requirements that apply to this project. |
+| Engineering practices | Select the relevant baseline and profiles from this package's [engineering-practices.md](engineering-practices.md). State concise applicable rules in the output and bind language/tooling, boundaries, budgets and exceptions to this target; no external project guide is needed. |
 | Setup | Runtime/package manager, command working directories and environment/service prerequisites established for the target. Mark proposed commands as unverified until checked. |
 | Dev flow contract | Fill the fenced Markdown section in this package's [repo-contract.md](repo-contract.md) and insert it at `{{DEV_FLOW_CONTRACT_FROM_REPO_CONTRACT_MD}}`. Keep one contract; delete inapplicable rows. |
 | Git and delivery | Explicitly authorized actions and decisions still needed: edit, commit, local integration, remote publication, hosted merge and release. Record mode, base branch and sync behavior in the contract; identify CI/deployment effects. |

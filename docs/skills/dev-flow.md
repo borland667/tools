@@ -11,6 +11,7 @@ the repository's MIT license with a standalone copy.
 |---|---|
 | `SKILL.md` | Discovery, authority, stages, lanes and optional integrations |
 | `repo-contract.md` | Single template for repo commands and delivery bindings |
+| `engineering-practices.md` | Language-independent architecture/quality baseline and conditional stack specifics |
 | `review-agents.md` | Review coverage, independence, prompts and launch recipes |
 | `deterministic-gates.md` | Authoring and proving hooks and other repeatable gates |
 | `evidence-and-learning.md` | Resume, baseline, revision-bound evidence and handoff |
@@ -23,6 +24,13 @@ uses the repo's existing tracker. Beads and its skill are not bundled in this
 folder; follow the target repo's Beads setup instructions when adopting the
 workflow. Do not replace an existing team tracker or initialize one merely
 because this folder was installed.
+
+Architecture and engineering rules are shared in `engineering-practices.md`.
+Fresh guides include the applicable baseline and target-specific language,
+tooling, ownership and budget bindings. Profiles are conditional: a shell CLI
+does not inherit a web service's API, queue or schema machinery. Additional
+languages use the same binding method; commands and limits come from target
+requirements and verified code/configuration, not another project's guide.
 
 Herdr orchestration and oMLX/local harnesses are optional. They need separate
 installation, host support, authentication/model setup and authorization.

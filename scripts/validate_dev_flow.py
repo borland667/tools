@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlsplit
 REQUIRED_FILES = (
     "SKILL.md",
     "repo-contract.md",
+    "engineering-practices.md",
     "review-agents.md",
     "deterministic-gates.md",
     "evidence-and-learning.md",

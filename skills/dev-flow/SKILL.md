@@ -94,9 +94,15 @@ otherwise propose the addition.
 | Base sync | Local-only base or configured remote/base-update command |
 | Autonomy | `propose` / `commit-local` / `commit-push` |
 | Review catalogs | Anti-pattern lists, review-bot rule files or checklists the reviewers must apply |
+| Engineering | Target language/tooling, architecture ownership, applicable rules and declared module budgets |
 | Scratch | Where bulky notes and analysis go, if anywhere |
 | Release gate | What ships to production and who triggers it |
 | Tracker | External tracker (Jira, Linear) if the team requires one |
+
+For architecture decisions, implementation and review, use the applicable
+sections of [engineering-practices.md](engineering-practices.md). It owns the
+language-independent baseline and conditional stack rules. Bind specifics to
+the target's actual code/tools; it grants no authority or cross-project policy.
 
 ## Modes
 

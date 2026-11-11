@@ -23,6 +23,10 @@ owning documentation.
 
 {{LOCAL_DATA_SECRETS_AND_SCRATCH_RULES}}
 
+## Engineering practices
+
+{{APPLICABLE_ENGINEERING_RULES_AND_LANGUAGE_SPECIFICS}}
+
 ## Local setup and verification
 
 {{SETUP_COMMANDS_WITH_CWD_AND_PREREQUISITES_OR_SETUP_DOC_LINK}}

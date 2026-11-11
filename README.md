@@ -176,8 +176,9 @@ These rules apply to all current and future scripts, regardless of language.
 
 - [`dev-flow`](./skills/dev-flow/SKILL.md): staged development with Beads task
   state, repo-owned commands, deterministic gates, independent review and
-  explicit delivery authority. Includes an AGENTS.md bootstrap; Herdr and local
-  models are optional. See [installation and validation](./docs/skills/dev-flow.md).
+  explicit delivery authority. Includes portable architecture/engineering rules
+  and an AGENTS.md bootstrap; Herdr and local models are optional.
+  See [installation and validation](./docs/skills/dev-flow.md).
 
 ## Optional Libraries (media_carver)
 

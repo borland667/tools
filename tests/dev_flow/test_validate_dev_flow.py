@@ -36,11 +36,16 @@ class PackageValidationTests(unittest.TestCase):
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_missing_bootstrap_asset_fails_with_useful_diagnostic(self):
-        (self.package / "assets" / "AGENTS.md.template").unlink()
-        result = self.run_cli()
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("assets/AGENTS.md.template", result.stdout)
+    def test_missing_required_resources_fail_with_useful_diagnostic(self):
+        for name in ["assets/AGENTS.md.template", "engineering-practices.md"]:
+            with self.subTest(resource=name):
+                path = self.package / name
+                original = path.read_bytes()
+                path.unlink()
+                result = self.run_cli()
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(name, result.stdout)
+                path.write_bytes(original)
 
     def test_link_to_an_existing_file_outside_bundle_is_rejected(self):
         (self.package.parent / "outside.md").write_text("External content\n")

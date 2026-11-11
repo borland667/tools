@@ -22,6 +22,7 @@ This remains the single contract template; do not maintain a second copy.
 | Base sync | `<local-only: use local base / remote and base-update command>` |
 | Autonomy | `<propose / commit-local / commit-push>` |
 | Review catalogs | `<paths to anti-pattern lists / bot rule files / checklists>` or none |
+| Engineering | `<target language/runtime/tooling; section/path for applicable architecture rules, module budgets and exceptions>` |
 | Scratch | `<path, gitignored>` or none |
 | Release gate | `<tag / deploy / apply>` — triggered by `<who>` |
 | Tracker | `<Jira project / Linear team>` or none; beads is local `<stealth / committed>` |

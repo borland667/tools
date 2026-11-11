@@ -74,6 +74,11 @@ bot rule files, or a checklist built from its own past findings. When a
 catalog covers an area the diff touches, the matching role reads it first and
 cites the entry it applies.
 
+Use the applicable architecture and language rules in
+[engineering-practices.md](engineering-practices.md), bound to the target's
+actual requirements and tools. Apply triggered specifics; do not impose a
+service architecture, language profile or unchosen budget on unrelated code.
+
 A finding that recurs across reviews in the same repo is proposed as a new
 catalog entry at the Close stage, so the next review checks for it by rule.
 
