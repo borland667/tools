@@ -56,7 +56,8 @@ Validated local setup:
 - OMLX server: `http://127.0.0.1:8005`
 - Bridge server: `http://127.0.0.1:1245`
 - LaunchAgent label: `com.borland.claude-local-bridge`
-- Default/tool route: `omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX`
+- Default/tool route: `omlx/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-splash`
+  (alias `claude-opus-4-2`; about 66 GB, roughly 45 s to load cold)
 - Vision route: `omlx/Qwen3-VL-4B-Instruct-4bit`
 - Claude profiles: isolated with Electron `--user-data-dir`, usually under
   `$HOME/.claude-instances/<profile>`
