@@ -162,9 +162,9 @@ An advertised VLM type, reasoning option or context value is not an exercised
 capability; null metadata is unknown, not proof of lack of support. Estimated
 weight size is neither peak runtime memory nor context/KV-cache capacity.
 
-Next compare the Qwen3.6 35B and small coding candidates against the tested
-Qwen3.8 paths on frozen representative packets. This is a test priority,
-not a quality ordering. Separately test vision and
+Use the gap-specific priorities below to compare the remaining candidates
+against the tested Qwen3.8 paths on frozen representative packets. These are
+test priorities, not a quality ordering. Separately test vision and
 retrieval specialists on their actual modalities/endpoints. Run only authorized
 bounded inference, serially on the shared server; inventory inspection alone
 does not load models or establish task competence. Existing writer/hosted-review
@@ -177,6 +177,145 @@ regression inputs and strict-format failures remain qualification limits.
 Larger summaries, tool-using local coordination and real-repo build roles need
 their own evidence. See [local-second-opinions.md](local-second-opinions.md)
 for bounded calls and supervised finding confirmation.
+
+## Candidates for the remaining gaps
+
+Research snapshot: 2026-11-11. The priorities here are inferences from the
+measured failures, current publisher documentation and available conversions;
+they are not additional benchmark results or new role approvals. Publisher
+scores use different harnesses, budgets and sometimes modified task sets.
+Do not combine them into a cross-model ranking or transfer full-precision
+scores to a community fine-tune or quantization.
+
+| Observed gap | Candidate responsibility | Evidence needed before promotion |
+|---|---|---|
+| Architecture misses ordering, owning-operation authorization or crash windows | Systems planner and adversarial design reviewer | Producer/consumer release and rollback checks; provider-side duplicate policy, durable progress, cancellation/cleanup and operation-bound authorization |
+| Debugger asserts unseen implementation and supplies risks instead of tests | Causal investigator and regression designer | Distinguish fact/hypothesis, test alternatives, controlled reproduction, both tenant orders and cache states, correct content and authorization assertions |
+| API drafts miss concurrency or test-first execution | Test designer plus an execution-capable builder | Executable assertions for every contract case, controlled overlap, intended red before behavior, final green and tests that reject relevant mutants |
+| JSON fences, invalid output or list-limit violations | Structured-output adapter and deterministic validator | Probe actual schema/grammar enforcement for the exact engine; validate types, fields and list bounds separately from semantic correctness |
+| Stale evidence or failing gates omitted from decisions | Coordinator assisted by durable state and tools | Bind evidence to the final diff, reject failed/missing checks, test resume and denied actions; a model's decision never replaces the gate |
+| Tool use and full builds untested | Harness and model together | Tool-call/result correlation, reasoning history, cancellation, read/write containment, command exits and actual file/test effects |
+
+### Installed candidates to evaluate first
+
+1. **Qwen3.6 35B-A3B:** first general coding/debugging/test-draft challenger.
+   Its [publisher card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
+   describes repository coding and preserved thinking, with agent evaluations.
+   That makes it relevant to iterative investigation, not a proven replacement
+   for a systems architect. Test the actual MLX 4-bit path; its optional missing
+   Splash draft does not disqualify native serving.
+2. **Qwen3-Next 80B-A3B Thinking:** first installed reasoning-focused
+   architecture/diagnosis challenger. The [card](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Thinking)
+   specifies thinking-only behavior and potentially longer reasoning. A
+   disabled-thinking comparison is inapplicable; predeclare a separate finite
+   profile with enough budget for reasoning and the final answer.
+3. **Qwen3-Next 80B-A3B Instruct:** compare workflow decisions, supplied
+   architecture constraints and tool-oriented packets with the Thinking
+   checkpoint. Its [card](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct)
+   specifies non-thinking-only behavior. It is a separate checkpoint, not a
+   toggle on the Thinking model, and neither is **Qwen3-Coder-Next**.
+4. **Gemma 4 12B coder fine-tune:** a narrower repair/function-level challenger.
+   The [fine-tuner's card](https://huggingface.co/yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1)
+   describes Python algorithmic tasks and solutions filtered through existing
+   tests. That does not establish generation of new test oracles, distributed
+   systems design or performance of the installed MLX conversion. Verify its
+   native thought channel and chat template rather than reusing Qwen parsing.
+
+Keep **27B Heretic bf16** as a lower-priority, resource-heavy comparison:
+the [conversion](https://huggingface.co/TheCluster/Qwen3.6-27B-Heretic-MLX-bf16)
+comes from a modified source, so higher precision does not isolate quantization
+or prove better reasoning. **Qwimi 9B** is a lower-priority reasoning experiment:
+its [card](https://huggingface.co/trjxter/Qwimi3.5-9B-Kimik2.6-Opus-Distill-MLX-8Bit)
+reports training metrics and explicitly lacks a separate full evaluation of
+that MLX quant. Retain Sushi's observed limitations. Teacher names, refusal
+modifications and training loss do not establish hosted identity or capability.
+The visual specialists and embedding/reranker entries address other tasks;
+retrieval may improve repository context but cannot explain away failures in
+the already supplied, self-contained packets.
+
+### Additional open-weight candidates
+
+These require checking installation, provenance and runtime support on the
+target host. A published MLX conversion is not a qualified oMLX backend or
+agent harness. Keep exact conversions, revisions and measured resource needs
+in private host records; download or installation follows task authority.
+
+| Candidate | Gap it could address; research basis | Main qualification limit |
+|---|---|---|
+| [Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next) | First additional coding-agent candidate: trained for tool use, long tasks and recovery from execution failures | 80B total/3B active, non-thinking-only; distinct from general Next; verify parser, containment and real edits/tests |
+| [GLM-4.7-Flash](https://huggingface.co/zai-org/GLM-4.7-Flash) | Smaller alternative family for iterative debugging, tools and regression drafts; publisher reports agent/code results and preserved-thinking settings | 30B-A3B; exact conversion and multi-turn reasoning/tool history unqualified; not the latest GLM family |
+| [Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) | Smaller dedicated coding-agent comparison when the 80B checkpoint is impractical | Tool protocol and agent scaffold still require validation; no architecture/test-first guarantee |
+| [Devstral Small 2 24B](https://huggingface.co/mistralai/Devstral-Small-2-24B-Instruct-2512) | Alternative family explicitly aimed at codebase exploration and multi-file edits | Local weights remain a candidate; the hosted model is marked deprecated in current Mistral docs; check current lifecycle before choosing an API |
+| [Gemma 4 31B IT](https://huggingface.co/google/gemma-4-31B-it) | Official general reasoning/vision checkpoint as a different-family control, rather than assuming the 12B coding fine-tune generalizes | New weight/runtime qualification; native thought-channel handling and task quality remain untested |
+| [gpt-oss-120b](https://developers.openai.com/api/docs/models/gpt-oss-120b) | Heavy open-weight reasoning/tool-use comparison for architecture and causal analysis | Significant residency plus context overhead; Harmony formatting, channels and tool continuations must be verified |
+| [Mistral Small 4 119B](https://huggingface.co/mistralai/Mistral-Small-4-119B-2603) | Heavy alternative combining instruction, reasoning and coding capabilities | 119B total/6.5B active; memory and parser support must be checked before inference |
+
+Mistral's [offline guide](https://docs.mistral.ai/vibe/code/cli/offline-models)
+still recommends Devstral Small 2 for local use, while its
+[hosted model page](https://docs.mistral.ai/models/devstral-small-2-25-12)
+marks it deprecated. Keep local checkpoint suitability separate from API
+lifecycle. For gpt-oss, the official
+[implementation guide](https://developers.openai.com/cookbook/articles/gpt-oss/verifying-implementations)
+explains Harmony and reasoning/tool-history requirements; an OpenAI-compatible
+HTTP URL alone does not establish correct serving.
+
+Active parameters describe per-token computation, not the full weights that
+must reside in or be accessed from memory. Compare actual conversion sizes
+with the current server budget, context/runtime overhead and other work.
+Keep heavy models serial; physical RAM and a model-card context limit do not
+guarantee usable capacity. Do not change shared memory limits to fit a candidate.
+
+### Hosted candidates and evaluation controls
+
+Use the existing **Opus 5.5 / Sol** pairing as practical controls, **Astra**
+for demanding causal/systems analysis, and **Fable 5.2** when Opus at higher
+effort still falls short. These role hypotheses follow the current
+[OpenAI guidance](https://learn.chatgpt.com/docs/models?surface=cli) and
+[Claude selection guidance](https://platform.claude.com/docs/en/models/overview),
+not our local packet scores. A frontier control on the same tasks helps reveal
+fixture or harness problems before attributing every miss to model capacity.
+
+[Gemini 4 Carbon](https://aistudio.google.com/docs/models/gemini-4-carbon)
+is a further complex-engineering/reasoning control requiring its own approved
+account/harness. [Qwen3.8-Max](https://qwen.ai/blog?id=qwen3.8),
+[GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash) and
+[DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)
+are additional provider comparisons, not routine fully resident local choices
+based on their large published architectures. The Flash suffix is not a
+small-memory guarantee. Extreme quantization or special offload would be a
+separate unqualified experiment. Existing worker-launcher/provider boundaries
+and account bindings remain unchanged; new providers need separate integration.
+
+### What the next comparison must establish
+
+- Preserve the original corpus/results as a regression set. Add held-out
+  variations across languages and realistic repository changes, including
+  clean controls; do not tune on the only known failure examples.
+- Separate a common deployment-budget comparison from model-native profiles.
+  Unsupported modes are inapplicable, not quality failures. Record actual
+  reasoning/final channels, stop reasons, output budgets and parser behavior.
+  Publisher multi-hour/token-heavy results are not a 90-second local promise.
+- For diagnosis, separately test explicit `regression_tests` wording against
+  the original `regressions` field. Ambiguous terminology is a possible
+  confound, not an established explanation or permission to overwrite scores.
+- For API work, require executable tests and observed intended assertion
+  failures before implementation, then green and relevant mutation checks.
+  Missing required auth, tenant isolation, concurrency or test-first evidence
+  blocks that role even when a partial-credit rubric total is high.
+- Probe structured decoding separately from prompt-only JSON compliance.
+  The exact engine must enforce the requested schema, including supported
+  bounds; always validate independently. As the
+  [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
+  explains, well-structured output can still contain semantic mistakes.
+- Run tool-using qualification only in an authorized isolated fixture with
+  observable reads/writes, denied-action controls, cancellation and finite
+  turn/wall/token budgets. Reuse the outstanding real-repository/harness work
+  instead of counting another tool-free answer as successful agent operation.
+- Make tests-ready, final-diff gate checks and ownership/permission checks
+  workflow conditions under [test-first.md](test-first.md) and
+  [deterministic-gates.md](deterministic-gates.md). A stronger model may follow
+  them better, but it cannot replace their enforcement. Compare confirmed
+  quality and human repair effort before promoting one role/path at a time.
 
 ## Effort, budgets and escalation
 
