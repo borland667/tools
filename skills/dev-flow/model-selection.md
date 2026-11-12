@@ -75,6 +75,51 @@ local replacement for every frontier role:
   checked. Parameter count, quantization label or a coding-oriented name does
   not establish role suitability.
 
+## Additional installed-model evaluation candidates
+
+A read-only oMLX API inventory on 2026-11-11 expands the local shortlist below.
+These are proposed evaluation roles, not measured rankings or approved primary
+agents. Metadata identifies an exposed path/type, not whether it produces
+correct code, uses tools reliably or stays within memory/latency budgets.
+Keep exact served ids, variants, configured aliases and inventory snapshots in
+the host's private `local.md`; these family-level options are portable.
+
+| Model / group | Role to evaluate first | Evidence boundary |
+|---|---|---|
+| Qwen3.8 9B 8-bit | Bounded intake/classification, source summaries, small code-analysis packets | API reports LLM with thinking enabled by default; quality and speed unmeasured |
+| Qwen3.8 27B OrcaRouter 4-bit | Debugging/contract-review drafts and architecture critique; vision inspection if validated | API reports VLM and reasoning efforts low/medium/xhigh; no primary architect/test-author approval |
+| Qwen3.8 Flash Next Q2_0 | Existing supervised defect/edge-case opinion, after current path identity is checked | Historical pilot evidence is limited; configured alias and Splash compatibility alone do not requalify the current backend |
+| Qwen3.6 35B-A3B 4-bit | Compare code/debugging/review drafts against the Qwen3.8 candidates | Native VLM candidate; missing Splash draft affects that optional engine, not proof that native serving is unavailable |
+| Qwen3.6 27B Heretic bf16 | Heavy comparison candidate for difficult supplied analysis | API reports VLM; record actual resource needs before considering a regular role |
+| Qwen3-Next 80B-A3B Instruct / Thinking | Alternative code-analysis and planning-critique packets | API reports LLM; compare both variants empirically, without assuming Thinking is better |
+| Gemma 4 12B coder fine-tune | Isolated patch drafts and review comparison | API reports VLM; name/distillation labels do not prove coding competence or frontier-model identity |
+| Sushi 9B / Qwimi 9B distill | Small repair/source-processing drafts | Preserve Sushi's prior limitations; Qwimi is unqualified and is not hosted Opus because its name contains Opus |
+| Gemma 4 E4B | Bounded extraction, document and visual-context drafts | API reports VLM; validate exact input modality, correctness and tool behavior |
+| Qwen3-VL 4B / Huihui variant | Screenshot/OCR/UI-description candidates | VLM metadata only; check actual image inputs and prefer a controlled comparison, not a naming-based ranking |
+| VisualQuality R1 7B | Advisory visual-quality critique | VLM metadata does not qualify code review or prove a design-quality judgment correct |
+| Qwen3 Embedding / Reranker 0.6B | Repository-context retrieval and candidate-passage ordering | Use embedding/rerank endpoints, not chat/subagent roles; no retrieval index or pipeline is installed by this guide |
+| HiDream O1 Image Dev entry | Inspect model integrity and actual task support before assigning a role | API currently reports a VLM; image generation is unverified despite the name |
+
+Exclude hidden DFlash draft/helper entries from standalone subagent selection.
+Do not infer exact architecture, safety properties or quality from community
+names such as Uncensored, Heretic, Opus or Fable. Confirm the actual checkpoint,
+configuration and intended task before testing or using it.
+
+For API discovery, inspect the running server's OpenAPI first, then authorized
+GET inventory/status/model-metadata endpoints. Cross-check public served ids
+against raw models, hidden helpers, aliases and selected/compatible engines.
+An advertised VLM type, reasoning option or context value is not an exercised
+capability; null metadata is unknown, not proof of lack of support. Estimated
+weight size is neither peak runtime memory nor context/KV-cache capacity.
+
+Evaluate the Qwen3.8 9B/27B and existing Flash path first, then compare the
+Qwen3.6 35B and small coding candidates on frozen representative packets.
+This is a test priority, not a quality ordering. Separately test vision and
+retrieval specialists on their actual modalities/endpoints. Run only authorized
+bounded inference, serially on the shared server; inventory inspection alone
+does not load models or establish task competence. Existing writer/hosted-review
+restrictions remain unchanged until qualification and an explicit policy change.
+
 Keep measured scores, corpus identity, artifacts, current server inventory and
 exact host settings in private `local.md`, not portable defaults. Existing
 pilots are small synthetic checks; incomplete architecture plans, unreliable
