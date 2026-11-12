@@ -55,6 +55,25 @@ class WorkerTests(unittest.TestCase):
                 self.assertIn('$(touch unwanted)', raw['input'])
                 self.assertFalse((self.workspace / 'unwanted').exists())
 
+    def test_claude_allowed_tools_apply_only_to_writer_roles(self):
+        body = "import sys,json\nprint(json.dumps({'type':'result','subtype':'success','result':'done','args':sys.argv}))\n"
+        launcher = self.executable('allowed-tools', body)
+        rules = ['Edit(/tmp/fx/**)', 'Bash(make verify-fast)']
+        for role in ['build', 'plan']:
+            with self.subTest(role=role):
+                result = self.run_worker(launcher, engine='claude', role=role,
+                                         allowed_tools=','.join(rules), output=role)
+                self.assertEqual(result['status'], 'completed')
+                raw = json.loads((self.root / role / 'stdout.log').read_text())
+                command = raw['args']
+                if role == 'build':
+                    index = command.index('--allowedTools')
+                    self.assertEqual(command[index + 1:index + 3], rules)
+                    self.assertTrue(command[index + 3].startswith('--'))
+                    self.assertEqual(command.count('--allowedTools'), 1)
+                else:
+                    self.assertNotIn('--allowedTools', command)
+
     def test_codex_uses_read_only_and_requires_final_output(self):
         launcher = self.executable('fake-codex', "import sys,json,pathlib\np=pathlib.Path(sys.argv[sys.argv.index('-o')+1]);p.write_text('No findings')\nprint(json.dumps({'type':'turn.completed'}))\n")
         result = self.run_worker(launcher, engine='codex', allow_nonrepo=True)

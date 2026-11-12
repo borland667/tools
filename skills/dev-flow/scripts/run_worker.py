@@ -51,7 +51,7 @@ def stop_group(process):
 
 
 def run_worker(*, engine, launcher, role, workdir, prompt_file, output,
-               timeout=180, model=None, max_turns=8, allow_nonrepo=False):
+               timeout=180, model=None, max_turns=8, allow_nonrepo=False, allowed_tools=None):
     if engine not in {'claude', 'codex'} or role not in {'plan', 'tests', 'build', 'review'}:
         raise ValueError('unknown worker or role')
     if not 0 < timeout <= 600 or not 1 <= max_turns <= 12:
@@ -74,8 +74,10 @@ def run_worker(*, engine, launcher, role, workdir, prompt_file, output,
     if engine == 'claude':
         command += ['-p', '--output-format', 'json', '--max-turns', str(max_turns),
                     '--no-session-persistence', '--tools', 'Read,Glob,Grep' if read_only else 'Read,Glob,Grep,Edit,Write,Bash',
-                    '--disallowedTools', 'mcp__*,Agent,Task,Skill,NotebookEdit',
-                    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']
+                    '--disallowedTools', 'mcp__*,Agent,Task,Skill,NotebookEdit']
+        if allowed_tools and not read_only:
+            command += ['--allowedTools', *(rule.strip() for rule in allowed_tools.split(',') if rule.strip())]
+        command += ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']
     else:
         command += ['exec', '--ignore-user-config', '--sandbox', 'read-only' if read_only else 'workspace-write',
                     '--ephemeral', '--json', '--color', 'never', '-o', str(output / 'final.txt')]
@@ -174,6 +176,7 @@ def main():
     parser.add_argument('--timeout', type=float, default=180)
     parser.add_argument('--max-turns', type=int, default=8)
     parser.add_argument('--model')
+    parser.add_argument('--allowed-tools', default=None, help='comma-separated Claude permission allow-list for writer jobs')
     parser.add_argument('--allow-nonrepo', action='store_true', help='explicitly permit a scratch Codex workspace without Git initialization')
     args = parser.parse_args()
     interrupted = False

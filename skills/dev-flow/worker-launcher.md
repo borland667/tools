@@ -19,6 +19,12 @@ python3 -B skills/dev-flow/scripts/run_worker.py \
   --output <another-new-artifact-directory> --timeout 180
 ```
 
+`--allowed-tools` scopes Claude permission rules per packet so bounded writer
+jobs are not auto-denied in headless mode. For example:
+`--allowed-tools 'Edit(<worktree>/**),Bash(make verify-fast),Bash(python3 -m pytest:*)'`.
+It is a scoped allow-list, not a permission bypass, and has no effect on read-only
+roles or on Codex jobs.
+
 The Hermes coordinator resolves this script through its linked skill, for
 example `$HERMES_HOME/skills/dev-flow/scripts/run_worker.py`. The caller supplies
 the approved launcher explicitly; personal, work, local or another authorized
