@@ -501,6 +501,17 @@ role-combining fallbacks retain required coverage and record omitted passes.
 
 Rules for either coordinator:
 
+- **Brief before dispatch:** before the first dispatch of a segment, the
+  coordinator presents the user the plan it will execute, then waits for
+  explicit approval. Per bead include: type, lane, current stage and
+  workspace/branch; a stage table with the exit gate the coordinator runs
+  itself (never a worker's report as the gate); every planned worker job with
+  role, engine/launcher, wall budget and permitted writes; the baseline and
+  verification commands the coordinator will run personally; standing limits;
+  and risks such as overlap with in-progress beads or other writers. Approval
+  binds to the recorded plan: changing bindings, budgets, scope, writer count
+  or job count requires a re-brief and new approval. Re-dispatching the same
+  job within an approved plan does not.
 - **Fan-out limits:** at most two planners per bead. Review agents follow
   the passes in `review-agents.md`: one on the fast lane, two on standard,
   and at most four on deep.

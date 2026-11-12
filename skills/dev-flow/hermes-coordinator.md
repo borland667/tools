@@ -40,6 +40,33 @@ through Hermes and another harness does not create independence.
 
 ## Dispatch and checkpoints
 
+### Pre-dispatch briefing
+
+Before launching any worker job in a segment, Hermes gives the user a
+dispatch brief and waits for approval. The brief is plan-only: it states
+what will run, not results. For each bead it covers:
+
+- Bead identity, task type, lane, initial phase, and the claimed stage.
+- The exact workspace: worktree path and branch, and which worktree holds
+  the single writer.
+- A stage table: stage, what the worker job does, and the exit gate Hermes
+  runs and inspects itself (never a worker's report as the gate).
+- Each planned job: role (`plan`, `tests`, `build`, `review`), engine and
+  launcher, wall deadline, allowed writes, and artifact directory.
+- The baseline commands Hermes will run personally in the task workspace
+  before edits, and how failures will be labeled baseline vs regression.
+- Standing limits: one writer per checkout, workers run no Git, no bypass
+  flags, no automatic retries, budgets per segment.
+- Risks: overlap with in-progress beads, shared files, missing hooks or
+  prerequisites, and any integration authority still ungranted.
+- A closing explicit request for approval or adjustment before dispatch.
+
+Record the approved brief (or its essentials) in the bead's design field so
+a fresh session can resume from the same plan. Approval covers the recorded
+plan; a changed launcher, budget, scope, or writer needs a new brief and a
+new yes. Within an approved plan, sequential re-dispatch of the same job
+does not need another confirmation.
+
 1. Hermes frames/claims the bead and provides the worker a complete packet:
    contract, initial edge-case matrix, exact file/diff identity, scoped writes,
    expected results, repo rules and available check commands. Preserve the
