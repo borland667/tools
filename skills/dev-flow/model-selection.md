@@ -40,15 +40,15 @@ independence and one writer per checkout.
 
 | Task / role | Frontier recommendation | Local use and limits |
 |---|---|---|
-| Coordinator / task framing | Sol; Opus is an alternative | Flash/Splash only for bounded dispatch/status under an approved packet and supervision; full writer lifecycle still needs qualification |
+| Coordinator / task framing | Sol; Opus is an alternative | Flash/Splash or Qwen3.8 27B for supervised supplied-state decisions; neither is qualified for the full writer lifecycle; avoid 9B for gate/practice decisions |
 | Architect / Design / planner | Opus; escalate to Astra or Fable for material ambiguity or cross-repo tradeoffs | Flash may challenge a supplied design; no qualified local primary architect or plan approver |
 | Troubleshooter / debugger | Sol or Opus; Astra for difficult causal analysis | Flash can inspect a bounded trace or reproduction packet; its hypothesis needs confirmation |
-| Test designer / test author | Sol or Opus, with expectations checked against the contract | Flash may suggest missing cases; no local test oracle or primary test author currently qualified |
-| Coder / implementation | Opus preferred; Sol alternative; Sonnet candidate for well-scoped throughput work | No local primary writer recommended under current policy; Sushi is a candidate for isolated repair drafts, not autonomous edits |
-| Correctness / contract reviewer | Sol when Opus built; Opus when Sol built; otherwise select a different qualified hosted model | Flash/Splash is an advisory second opinion; cannot replace required hosted coverage |
+| Test designer / test author | Sol or Opus, with expectations checked against the contract | 27B can draft an API case matrix at a separately sized output budget; Flash may suggest missing cases. No local test oracle or primary test author qualified |
+| Coder / implementation | Opus preferred; Sol alternative; Sonnet candidate for well-scoped throughput work | Flash and Qwen3.8 9B can draft tiny isolated repairs for checked inputs; 27B and Sushi remain alternatives; no local primary writer or autonomous edits qualified |
+| Correctness / contract reviewer | Sol when Opus built; Opus when Sol built; otherwise select a different qualified hosted model | Flash/Splash preferred for bounded advisory packets; Qwen3.8 27B is an alternative after path checks; neither replaces required hosted coverage |
 | Security / data / concurrency reviewer | Astra or Opus when different from builder; specialist coverage still follows repo requirements | Local findings are suggestions, never sole required security review |
 | Deep adversarial reviewer | Astra or Fable if distinct from builder and every other review model; Carbon is a further candidate | Flash may challenge a small packet but cannot satisfy required hosted/deep independence under current policy |
-| Documentation / indexing / extraction | Luna or Haiku for bounded source-based work; Terra for visual checks; Sol/Opus for substantive technical decisions | Flash can draft source summaries; Sushi extraction/indexing is an unqualified candidate, and all summaries need source checks |
+| Documentation / indexing / extraction | Luna or Haiku for bounded source-based work; Terra for visual checks; Sol/Opus for substantive technical decisions | Qwen3.8 9B for short supplied-fact summaries; Flash or 27B alternatives. Indexing/retrieval and Sushi extraction remain unqualified; check every summary against its source |
 
 A conservative initial pairing preserves the workflow's preferred shape:
 Opus implements, Sol supplies hosted review, and qualified Flash/Splash adds
@@ -66,6 +66,14 @@ local replacement for every frontier role:
   The evaluated artifact was `Qwen3.8-Flash-Next-GSQ-RCO-Q2_0`; resolve the
   exact served id, checkpoint/quantization and backend from host setup. An id
   with a new suffix is not automatically the same qualified execution path.
+- **Qwen3.8 27B OrcaRouter 4-bit:** alternative supervised reviewer for small
+  supplied code packets and source-summary drafts. Workflow-decision probes
+  support supervised supplied-state assistance, not tool-using coordination.
+  Architecture and diagnostic gaps prevent primary planner/debugger selection.
+- **Qwen3.8 9B 8-bit:** first local option for short source-fact summaries
+  and tiny isolated repair drafts with checked expectations. Correct-code
+  false positives and missed workflow blockers prevent default reviewer or
+  coordinator selection. Fast replies do not compensate for those errors.
 - **Qwen3.5-9b-Sushi-Coder-RL-MLX:** candidate for small isolated repair
   drafts and inexpensive source processing. Existing repair fixtures do not
   qualify an autonomous writer; false-positive review and weak regression
@@ -75,20 +83,62 @@ local replacement for every frontier role:
   checked. Parameter count, quantization label or a coding-oriented name does
   not establish role suitability.
 
+### Qwen3.8 role-probe findings
+
+The 2026-11-11 host evaluation compared the three variants above on frozen
+tool-free packets covering coordination, architecture, diagnosis, repair,
+review, test inputs, API test design, repository fit, gates and documentation.
+Deterministic oracles and blinded rubric assessment were separate from JSON
+format, schema validity and completion checks. These are provisional helper
+recommendations for the tested paths, not family-wide rankings.
+
+- Flash and 27B handled the small code-review controls without the correct-code
+  false positives seen in 9B. Flash was faster on this host and remains the
+  preferred supervised local reviewer; 27B is a useful alternative.
+- All three faithfully summarized the supplied documentation facts. Prefer
+  9B when a small model is useful; Flash was faster in this particular run.
+  This does not qualify repository search, retrieval or long-document synthesis.
+- All three passed the supplied-state resume decision. Only Flash and 27B
+  passed both the repository-practice and stale-test/failing-gate decisions.
+  None was tested operating the coordinator, tools, accounts or writer lifecycle.
+- Baseline architecture and diagnostic answers had material gaps. A separate
+  low-thinking/larger-token arm improved a schema-rollout plan for Flash and
+  27B, but did not establish reliable durable-job planning or debugging tests.
+  Keep frontier leads for design, diagnosis and test expectations.
+- All baseline API test designs exceeded the output cap. A separate larger
+  disabled-thinking capacity check completed all three answers: 27B met the
+  packet rubric/structure threshold, Flash exceeded the list limit, and 9B
+  omitted concurrency coverage and exceeded the list limit. All three missed
+  explicit tests-ready/red-before-implementation/green steps. Use 27B only for
+  a case-matrix draft checked by the lead; no executable API tests were built
+  or run, and no primary test-author qualification follows.
+
+The common baseline used a small disabled-thinking output budget; a separate
+low-thinking arm also changed the token budget. Do not pool them or attribute
+differences to reasoning alone. Keep the API-capacity follow-up separate too;
+truncation is not a categorical claim that a model cannot design tests.
+Prompt-only JSON compliance does not measure grammar-constrained output.
+Two repeats of tiny synthetic fixtures are not independent samples or an
+end-to-end build, tool-use, security or primary test-author qualification.
+Keep exact scores, budgets, corpus identity, raw answers, independent grades,
+timing/resources and follow-up results in private `local.md` and retained
+ignored evidence. Required deterministic gates and hosted review still apply.
+
 ## Additional installed-model evaluation candidates
 
-A read-only oMLX API inventory on 2026-11-11 expands the local shortlist below.
-These are proposed evaluation roles, not measured rankings or approved primary
-agents. Metadata identifies an exposed path/type, not whether it produces
-correct code, uses tools reliably or stays within memory/latency budgets.
+A read-only oMLX API inventory on 2026-11-11 identified the shortlist below.
+The Qwen3.8 text paths now have the limited role-probe evidence above; other
+groups and untested modalities remain proposed evaluation roles. No entry is
+an approved local primary agent. Metadata identifies an exposed path/type,
+not correctness, tool reliability or runtime memory capacity.
 Keep exact served ids, variants, configured aliases and inventory snapshots in
 the host's private `local.md`; these family-level options are portable.
 
 | Model / group | Role to evaluate first | Evidence boundary |
 |---|---|---|
-| Qwen3.8 9B 8-bit | Bounded intake/classification, source summaries, small code-analysis packets | API reports LLM with thinking enabled by default; quality and speed unmeasured |
-| Qwen3.8 27B OrcaRouter 4-bit | Debugging/contract-review drafts and architecture critique; vision inspection if validated | API reports VLM and reasoning efforts low/medium/xhigh; no primary architect/test-author approval |
-| Qwen3.8 Flash Next Q2_0 | Existing supervised defect/edge-case opinion, after current path identity is checked | Historical pilot evidence is limited; configured alias and Splash compatibility alone do not requalify the current backend |
+| Qwen3.8 9B 8-bit | Short source summaries and tiny checked repair drafts | Text probes measured; false-positive review and workflow-decision misses limit the role |
+| Qwen3.8 27B OrcaRouter 4-bit | Alternative supervised code review and source summaries; planning critique only | Text probes measured; VLM metadata does not qualify vision or primary architect/test-author roles |
+| Qwen3.8 Flash Next Q2_0 | Preferred supervised defect/edge-case opinion and source summaries | Current tested alias confirmed through runtime status as Splash; new aliases/checkpoints still need path checks |
 | Qwen3.6 35B-A3B 4-bit | Compare code/debugging/review drafts against the Qwen3.8 candidates | Native VLM candidate; missing Splash draft affects that optional engine, not proof that native serving is unavailable |
 | Qwen3.6 27B Heretic bf16 | Heavy comparison candidate for difficult supplied analysis | API reports VLM; record actual resource needs before considering a regular role |
 | Qwen3-Next 80B-A3B Instruct / Thinking | Alternative code-analysis and planning-critique packets | API reports LLM; compare both variants empirically, without assuming Thinking is better |
@@ -112,9 +162,9 @@ An advertised VLM type, reasoning option or context value is not an exercised
 capability; null metadata is unknown, not proof of lack of support. Estimated
 weight size is neither peak runtime memory nor context/KV-cache capacity.
 
-Evaluate the Qwen3.8 9B/27B and existing Flash path first, then compare the
-Qwen3.6 35B and small coding candidates on frozen representative packets.
-This is a test priority, not a quality ordering. Separately test vision and
+Next compare the Qwen3.6 35B and small coding candidates against the tested
+Qwen3.8 paths on frozen representative packets. This is a test priority,
+not a quality ordering. Separately test vision and
 retrieval specialists on their actual modalities/endpoints. Run only authorized
 bounded inference, serially on the shared server; inventory inspection alone
 does not load models or establish task competence. Existing writer/hosted-review
@@ -124,7 +174,7 @@ Keep measured scores, corpus identity, artifacts, current server inventory and
 exact host settings in private `local.md`, not portable defaults. Existing
 pilots are small synthetic checks; incomplete architecture plans, unreliable
 regression inputs and strict-format failures remain qualification limits.
-Draft summaries, new local coordinator behavior and real-repo build roles need
+Larger summaries, tool-using local coordination and real-repo build roles need
 their own evidence. See [local-second-opinions.md](local-second-opinions.md)
 for bounded calls and supervised finding confirmation.
 
@@ -137,6 +187,10 @@ where supported. Increase effort or use the named escalation model when actual
 gaps justify it; stronger effort is not a correctness guarantee. Provider effort
 labels are not interchangeable. Existing local Flash calls keep their host's
 disabled-thinking and request/token/wall limits; do not copy frontier settings.
+Do not reuse a short-review output cap for a complete API case matrix. A
+separately recorded, bounded budget or smaller contract packets need their own
+qualification; increasing tokens or enabling thinking alone did not establish
+complete test-first behavior in these probes. Check structure as well as content.
 
 Bound the job by relevant context, allowed tools, wall/turn/output budgets and
 an observable result. Split work at coherent boundaries instead of assuming
