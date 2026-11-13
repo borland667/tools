@@ -1,6 +1,6 @@
 # Bounded CLI worker launcher
 
-`scripts/run_worker.py` inside this skill runs one Claude Code or Codex CLI job.
+`scripts/run_worker.py` inside this skill runs one Claude Code, Codex or Cursor CLI job.
 It requires Python 3.9+ on a POSIX host (`fcntl` and process groups), plus the
 selected CLI/profile executable. It installs nothing and never uses a shell to
 interpolate a task packet. A different platform needs a qualified launcher.
@@ -24,6 +24,24 @@ jobs are not auto-denied in headless mode. For example:
 `--allowed-tools 'Edit(<worktree>/**),Bash(make verify-fast),Bash(python3 -m pytest:*)'`.
 It is a scoped allow-list, not a permission bypass, and has no effect on read-only
 roles or on Codex jobs.
+
+### Cursor read-only jobs
+
+`cursor-agent` is the third hosted engine (`--engine cursor`). It supports only
+read-only `plan` and `review` roles until headless permission behavior is
+qualified; both use `--mode plan`. The default model is `auto`; `--model` can
+select a model explicitly. Workspace trust is a per-directory interactive grant
+done by the host. The launcher never passes bypass/trust flags such as `--trust`,
+`--force` or `--yolo`.
+
+```bash
+python3 -B skills/dev-flow/scripts/run_worker.py \
+  --engine cursor --launcher cursor-agent --role plan \
+  --workdir <task-worktree> --prompt-file <plan-packet.txt> \
+  --output <new-private-artifact-directory> --timeout 180
+```
+
+### Shared launcher behavior
 
 The Hermes coordinator resolves this script through its linked skill, for
 example `$HERMES_HOME/skills/dev-flow/scripts/run_worker.py`. The caller supplies

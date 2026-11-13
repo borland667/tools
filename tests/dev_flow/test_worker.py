@@ -89,6 +89,49 @@ class WorkerTests(unittest.TestCase):
         result = self.run_worker(launcher)
         self.assertEqual(result['status'], 'worker_error')
 
+    def test_cursor_read_only_jobs_capture_identity_and_receive_packet_on_stdin(self):
+        body = ("import sys,json\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                "'result':'No findings','session_id':'cursor-session','usage':{'input_tokens':12},"
+                "'args':sys.argv,'input':sys.stdin.read()}))\n")
+        launcher = self.executable('fake-cursor', body)
+        for role, model in [('plan', None), ('review', 'chosen-model')]:
+            with self.subTest(role=role, model=model):
+                result = self.run_worker(launcher, engine='cursor', role=role, model=model, output=role)
+                self.assertEqual(result['status'], 'completed')
+                self.assertEqual(result['worker_identity'], {
+                    'session_id': 'cursor-session', 'usage': {'input_tokens': 12},
+                    'model': model or 'auto'})
+                self.assertEqual(result['permission_denials'], [])
+                expected = [launcher, '-p', '--output-format', 'json', '--mode', 'plan']
+                if model:
+                    expected += ['--model', model]
+                self.assertEqual(result['command'], expected)
+                raw = json.loads((self.root / role / 'stdout.log').read_text())
+                self.assertEqual(raw['args'], expected)
+                self.assertEqual(raw['input'], (self.root / role / 'prompt.txt').read_text())
+                self.assertEqual((self.root / role / 'final.txt').read_text(), 'No findings')
+
+    def test_cursor_writer_roles_are_rejected_before_launch(self):
+        launcher = self.executable('unused-cursor', "raise RuntimeError('must not run')\n")
+        for role in ['tests', 'build']:
+            with self.subTest(role=role):
+                with self.assertRaisesRegex(ValueError, 'cursor.*read-only'):
+                    self.run_worker(launcher, engine='cursor', role=role, output=role)
+                self.assertFalse((self.root / role).exists())
+
+    def test_cursor_error_or_missing_result_is_not_completion(self):
+        for index, (payload, status) in enumerate([
+            ({'subtype': 'success', 'is_error': True, 'result': 'failed'}, 'worker_error'),
+            ({'subtype': 'error', 'is_error': False, 'result': 'failed'}, 'worker_error'),
+            ({'subtype': 'success', 'is_error': False, 'result': '  '}, 'incomplete'),
+        ]):
+            with self.subTest(payload=payload):
+                launcher = self.executable('cursor-error', 'import json\nprint(json.dumps(' + repr(payload) + '))\n')
+                result = self.run_worker(launcher, engine='cursor', output='error' + str(index))
+                self.assertEqual(result['status'], status)
+                self.assertFalse((self.root / ('error' + str(index)) / 'final.txt').exists())
+
     def test_permission_denials_never_count_as_completion(self):
         launcher = self.executable('denied', "import json\nprint(json.dumps({'type':'result','subtype':'success','result':'Could not write','permission_denials':[{'tool_name':'Write'}]}))\n")
         result = self.run_worker(launcher, role='tests')

@@ -1,4 +1,4 @@
-"""Run one bounded Claude/Codex worker; completion never proves acceptance."""
+"""Run one bounded Claude/Codex/Cursor worker; completion never proves acceptance."""
 
 import argparse
 import fcntl
@@ -52,8 +52,10 @@ def stop_group(process):
 
 def run_worker(*, engine, launcher, role, workdir, prompt_file, output,
                timeout=180, model=None, max_turns=8, allow_nonrepo=False, allowed_tools=None):
-    if engine not in {'claude', 'codex'} or role not in {'plan', 'tests', 'build', 'review'}:
+    if engine not in {'claude', 'codex', 'cursor'} or role not in {'plan', 'tests', 'build', 'review'}:
         raise ValueError('unknown worker or role')
+    if engine == 'cursor' and role in {'tests', 'build'}:
+        raise ValueError('cursor supports read-only plan/review roles until headless permission behavior is qualified')
     if not 0 < timeout <= 600 or not 1 <= max_turns <= 12:
         raise ValueError('wall timeout must be 0..600s; Claude turns 1..12')
     workdir, prompt_file, output = Path(workdir).resolve(), Path(prompt_file).resolve(), Path(output).resolve()
@@ -78,6 +80,8 @@ def run_worker(*, engine, launcher, role, workdir, prompt_file, output,
         if allowed_tools and not read_only:
             command += ['--allowedTools', *(rule.strip() for rule in allowed_tools.split(',') if rule.strip())]
         command += ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']
+    elif engine == 'cursor':
+        command += ['-p', '--output-format', 'json', '--mode', 'plan']
     else:
         command += ['exec', '--ignore-user-config', '--sandbox', 'read-only' if read_only else 'workspace-write',
                     '--ephemeral', '--json', '--color', 'never', '-o', str(output / 'final.txt')]
@@ -142,10 +146,15 @@ def run_worker(*, engine, launcher, role, workdir, prompt_file, output,
                 else:
                     try:
                         raw = (output / 'stdout.log').read_text()
-                        if engine == 'claude':
+                        if engine in {'claude', 'cursor'}:
                             data = json.loads(raw)
-                            result['worker_identity'] = {'modelUsage': data.get('modelUsage'), 'session_id': data.get('session_id')}
-                            result['permission_denials'] = data.get('permission_denials', [])
+                            if engine == 'cursor':
+                                result['worker_identity'] = {'session_id': data.get('session_id'),
+                                                             'usage': data.get('usage'), 'model': model or 'auto'}
+                                result['permission_denials'] = []
+                            else:
+                                result['worker_identity'] = {'modelUsage': data.get('modelUsage'), 'session_id': data.get('session_id')}
+                                result['permission_denials'] = data.get('permission_denials', [])
                             result['status'] = ('permission_denied' if result['permission_denials']
                                                 else 'worker_error' if data.get('is_error') or data.get('subtype') != 'success'
                                                 else 'completed' if data.get('result', '').strip() else 'incomplete')
@@ -167,8 +176,8 @@ def run_worker(*, engine, launcher, role, workdir, prompt_file, output,
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--engine', required=True, choices=['claude', 'codex'])
-    parser.add_argument('--launcher', required=True, help='approved profile launcher or Codex executable, one literal path/name')
+    parser.add_argument('--engine', required=True, choices=['claude', 'codex', 'cursor'])
+    parser.add_argument('--launcher', required=True, help='approved profile launcher or CLI executable, one literal path/name')
     parser.add_argument('--role', required=True, choices=['plan', 'tests', 'build', 'review'])
     parser.add_argument('--workdir', type=Path, required=True)
     parser.add_argument('--prompt-file', type=Path, required=True)
