@@ -21,7 +21,10 @@ python3 -B skills/dev-flow/scripts/run_worker.py \
 
 `--allowed-tools` scopes Claude permission rules per packet so bounded writer
 jobs are not auto-denied in headless mode. For example:
-`--allowed-tools 'Edit(<worktree>/**),Bash(make verify-fast),Bash(python3 -m pytest:*)'`.
+`--allowed-tools 'Edit,Write,Read,Bash'`.
+Path-scoped rules such as `Edit(<path>/**)` were observed to fail the permission
+matcher in Claude Code 2.1.322, so coordinators should use bare tool names
+(`Edit`, `Write`, `Read`, `Bash`) until scoped rules are re-qualified.
 It is a scoped allow-list, not a permission bypass, and has no effect on read-only
 roles or on Codex jobs.
 
