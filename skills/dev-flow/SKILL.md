@@ -125,6 +125,7 @@ otherwise propose the addition.
 | Verify (full) | Optional local full suite including integration tests |
 | Task intake | Target design/contract sources and diagnostic commands/prerequisites; [task-intake.md](task-intake.md) supplies the procedure |
 | Test-first | Applicable behavior/contract cases, test commands and tests-ready/red-to-green evidence |
+| Acceptance exercise | How to run the target at the tested revision for [acceptance-exercise.md](acceptance-exercise.md): start command, entry point, seed data and credential source; or no reachable surface |
 | Hooks | What runs on commit and on push, runner/config and local install command |
 | Deterministic gates | Repeatable commands, triggers, input scope and blocking/advisory status |
 | Integration | Target branch, merge style and local integration authority |
@@ -195,6 +196,12 @@ implementation-only task records release as not applicable. Promotion to a
 deeper lane changes investigation/verification needs, not the approved scope.
 
 ## Stages
+
+A request naming a stage enters at that stage when the earlier stages' exit
+conditions are already satisfied on the bead, or are explicitly waived there
+with a reason. Otherwise the flow starts at the first unmet exit condition,
+whatever the request names. Entering mid-flow changes where work starts, never
+the exit conditions, the evidence rules or the authority rules.
 
 ### 1. Frame
 
@@ -318,7 +325,11 @@ where scope, risk or the repo's rules require it.
 - Run the fast verify command. Run the full local suite when the lane is
   deep, or standard and the change touches a boundary (schema, API contract,
   auth, background jobs). Run long suites in the background.
-- Exercise the real behaviour where practical, not only the tests.
+- Exercise the delivered behaviour through its real entry point, not only the
+  tests, when the change has a surface a user or calling system can reach.
+  Follow [acceptance-exercise.md](acceptance-exercise.md) at the depth for the
+  lane; a change with no reachable surface records it as not applicable with a
+  reason, decided at Frame or Plan rather than at the end.
 - For test-first work, retain observed red and final green evidence. All required
   cases and relevant regressions must pass without weakened assertions or hidden
   skips; package validation or a coverage percentage cannot substitute for them.
@@ -335,7 +346,9 @@ where scope, risk or the repo's rules require it.
   command alone does not prove a hook or CI job is registered or active.
 
 **Exit:** required checks pass and every acceptance criterion has current
-supporting evidence; unmet criteria remain open, with gaps recorded.
+supporting evidence; every criterion with a reachable surface also has exercise
+evidence at the tested revision or a recorded reason it does not apply; unmet
+criteria remain open, with gaps recorded.
 
 ### 6. Review
 

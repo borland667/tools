@@ -18,6 +18,7 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | `ticket-mapping.md` | 1:1 external ticket identity, field/status ownership and authorized reconciliation protocol; no installed sync adapter |
 | `engineering-practices.md` | Language-independent architecture/quality baseline and conditional stack specifics |
 | `test-first.md` | Initial contract/edge-case tests, red-to-green checkpoints and blocking test gates |
+| `acceptance-exercise.md` | Exercising delivered behavior through its real entry point, lane depth, findings and limits |
 | `review-agents.md` | Review coverage, independence, prompts and launch recipes |
 | `model-selection.md` | Dated frontier/local role recommendations, effort, independence and qualification limits |
 | `local-second-opinions.md` | Supervised Flash/oMLX/Splash review, limits and gate authority |

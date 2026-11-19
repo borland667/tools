@@ -24,6 +24,10 @@ keep the reasoning and any lane change on the bead.
 - Establish the target's existing practices before choosing an approach. Reuse
   its architecture, tooling and conventions; justify any departure with the
   evidence/reference protocol in [engineering-practices.md](engineering-practices.md).
+- State the request as given and the need as understood. When they diverge,
+  name the divergence and resolve it before choosing an approach; a requested
+  feature can be the symptom of a different problem. A divergence the user has
+  already settled needs no second confirmation.
 - State the problem, intended users/callers, outcome, non-goals and constraints.
   Inspect the existing implementation and contracts where they exist. Separate
   verified facts, explicit requirements and unresolved assumptions.
@@ -34,10 +38,18 @@ keep the reasoning and any lane change on the bead.
   [engineering-practices.md](engineering-practices.md). Compare alternatives
   when there is a real tradeoff; record state/dependency ownership and relevant
   migration, failure or recovery considerations. Do not invent architecture
-  layers or infrastructure merely to fill a design.
+  layers or infrastructure merely to fill a design. When scope is genuinely
+  open, offer a shippable slice against the fuller intent with rough relative
+  effort and recommend the slice; record what it excludes as a non-goal rather
+  than leaving it implied.
 - Map requirements and known material edge cases to planned tests and checks
   using [test-first.md](test-first.md). State expected results from the agreed
   contract, not from model guesses or the future implementation.
+- Record an observable success signal when the task has a product or
+  operational outcome, kept separate from the acceptance checks: acceptance
+  says the change is correct, the signal says it achieved what it was for.
+  Name one only where it can actually be observed; omit it with a reason when
+  the work has none.
 - Resolve decisions needed for the next implementation slice. Existing user
   intent or standing authority can settle a decision; this checkpoint is not
   a mandatory human sign-off. Keep material unresolved choices explicit and

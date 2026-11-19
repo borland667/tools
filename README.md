@@ -200,6 +200,12 @@ These rules apply to all current and future scripts, regardless of language.
   New APIs and substantive behavior use contract and edge-case tests before implementation.
   An [initial design or diagnosis](./skills/dev-flow/task-intake.md) follows the
   task type before implementation planning; routine maintenance stays proportional.
+  Design states the request against the need as understood and recommends a
+  shippable slice when scope is open.
+  Changes with a reachable surface are also
+  [exercised through their real entry point](./skills/dev-flow/acceptance-exercise.md)
+  at Verify, with lane-proportional depth; tests and a reviewed diff alone do
+  not establish that delivered behavior is reachable.
   [TMP working docs](./skills/dev-flow/tmp-docs.md) organize plans, analysis,
   review and verification drafts alongside the durable Beads record.
   Workflow references, templates and setup docs live together in that folder;

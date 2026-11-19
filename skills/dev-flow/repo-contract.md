@@ -18,6 +18,7 @@ This remains the single contract template; do not maintain a second copy.
 | Verify (full) | `<command>` — whole suite incl. integration; needs `<local services>`; or "CI only" |
 | Task intake | `<target design/contract sources; reproduction/diagnostic commands, environment and access prerequisites>` or explicit gaps |
 | Test-first | `<contract/case matrix location; initial tests/commands; tests-ready red evidence; final green and regression commands>` or not applicable with reason |
+| Acceptance exercise | `<start command; entry point/URL; seed data; credential source>` — how to run the target at the tested revision; or not applicable with reason |
 | Hooks | runner/config: `<path>`; pre-commit/commit-msg: `<commands>`; pre-push: `<command>`; local install: `<command>` |
 | Deterministic gates | `<gate inventory below, or existing config path>` |
 | Integration | branch `<main>`; `<squash / rebase-and-merge / fast-forward>`; branch names `<pattern>`; local landing `<authorized / handoff>` |
