@@ -31,13 +31,23 @@ keep the reasoning and any lane change on the bead.
 - State the problem, intended users/callers, outcome, non-goals and constraints.
   Inspect the existing implementation and contracts where they exist. Separate
   verified facts, explicit requirements and unresolved assumptions.
+- Interrogate the requirement along the axes in
+  [design-decisions.md](design-decisions.md) — granularity, volume, time,
+  identity, consumers, failure and future change — and ask the agent which of
+  those are undefined before it implements. Unanswered axes stay explicit
+  assumptions, not silent defaults.
 - Define observable behavior and acceptance: inputs/outputs, errors, state and
   side effects, boundaries and compatibility as relevant. For an API, specify
   method/path and request/response semantics before implementation.
 - Choose the smallest coherent approach using
   [engineering-practices.md](engineering-practices.md). Compare alternatives
   when there is a real tradeoff; record state/dependency ownership and relevant
-  migration, failure or recovery considerations. Do not invent architecture
+  migration, failure or recovery considerations. For any non-trivial
+  representation or ownership choice, enumerate at least two genuinely
+  different designs with their hidden costs and record why the others were
+  rejected, then classify the chosen one as reversible or not, per
+  [design-decisions.md](design-decisions.md). Escalate a one-way decision with
+  `bd human <id>` before Build. Do not invent architecture
   layers or infrastructure merely to fill a design. When scope is genuinely
   open, offer a shippable slice against the fuller intent with rough relative
   effort and recommend the slice; record what it excludes as a non-goal rather
@@ -55,8 +65,10 @@ keep the reasoning and any lane change on the bead.
   a mandatory human sign-off. Keep material unresolved choices explicit and
   continue only independent work until they are resolved.
 
-**Exit:** a coherent intended contract, scoped approach, acceptance/case map and
-resolved decisions for the next slice, recorded on the bead. Link substantial
+**Exit:** a coherent intended contract, scoped approach, acceptance/case map,
+compared alternatives and reversibility classification for any non-trivial
+representation or ownership choice, and resolved decisions for the next slice,
+recorded on the bead. Link substantial
 supporting design in `TMP_FILES/plans/` under [tmp-docs.md](tmp-docs.md). Plan
 then turns that design into ordered tests, implementation and verification work.
 Tests are implemented and observed red before production behavior, not replaced

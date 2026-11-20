@@ -29,6 +29,7 @@ This remains the single contract template; do not maintain a second copy.
 | Local second opinion | `<host profile / disabled>`; `<read-only HTTP packet / isolated harness>`; `<request/token/wall limits>`; advisory only |
 | Models by role | `<primary and approved alternate per role; harness/profile; identity evidence; effort/budgets; qualification limits>` using the skill's model-selection reference |
 | Engineering | `<target language/runtime/tooling; section/path for applicable architecture rules, module budgets and exceptions>` |
+| Design decisions | `<bead design field only / decision-record path in TMP plans/ / an ADR directory in the repo>` — where requirement answers, compared alternatives and reversibility are recorded |
 | Scratch | `<path, gitignored>` or none |
 | TMP docs | `<scratch root; per-task document owner; ignore/export rules; archive/retention policy>` or none with reason |
 | Release gate | `<tag / deploy / apply>` — triggered by `<who>` |

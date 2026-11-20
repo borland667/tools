@@ -31,7 +31,7 @@ a parallel Markdown task ledger or put the only copy of a decision in scratch.
 
 | Category | Contents |
 |---|---|
-| `plans/` | Designs, alternatives, implementation/migration approaches, contract and initial test-case matrices |
+| `plans/` | Designs, alternatives, design decision records with rejected options and reversibility, implementation/migration approaches, contract and initial test-case matrices |
 | `analysis/` | Investigations, measurements and hypothesis/disposition notes |
 | `reviews/` | Review findings, accepted/rejected dispositions and verification summaries |
 | `incidents/` | Incident investigations, RCAs and postmortem drafts |
@@ -54,7 +54,7 @@ the shared skill or create a second maintained copy of the workflow.
 | Checkpoint | TMP content and durable update |
 |---|---|
 | Frame/resume | Find existing documents from the bead. Confirm owner, purpose, paths and revision before reuse; mark stale claims. Bind scratch/retention rules once per target. |
-| Design | Capture the intended contract, approach, alternatives and initial case map in `plans/` when substantial; record the phase exit and decisions on the bead. |
+| Design | Capture the intended contract, requirement answers, compared alternatives with rejection reasons, reversibility classification and initial case map in `plans/` when substantial; record the phase exit and decisions on the bead. |
 | Diagnose | Capture expected/actual behavior, reproduction, causal hypotheses and discriminating evidence in `analysis/` or `incidents/`; record supported cause or unresolved gaps on the bead. |
 | Plan | Turn the phase result into executable tests/build/verification steps on the bead; link technical detail without creating a second task ledger. |
 | Tests/Build | Record test identities and observed red before behavior implementation, then green/regression results. Keep the actual tests in the repo's test suite. Explain contract changes and refresh affected evidence. |

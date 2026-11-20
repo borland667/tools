@@ -60,6 +60,7 @@ A role is a lens, not a separate agent. One agent pass can carry several.
 | `contract` | Routes, serializers, DTOs, public types, message formats, anything another service or client reads | Fields dropped or renamed; casing mismatches; behaviour change for existing clients; one side of a cross-service or cross-repo change missing |
 | `security` | Auth, permissions, IAM, secrets, public endpoints, user input, storage exposure, CI credentials | Missing or widened authorisation; secrets in code, logs or CI output; injection; public exposure; broader privilege than the task needs; personal data handling |
 | `deploy` | Infra code, manifests, CI workflows, images, env vars, feature flags | Whether it will actually run where it lands: the image, tag and architecture exist; roles and permissions it assumes exist; env vars survive overlays; probes and limits are sane; dependent changes are ordered; a rollback path exists; the change is observable after release |
+| `consequences` | New data representation, schema or migration, storage/hosting choice, external service, anything that writes durable data or records events | Peak-volume assumption never stated; unbounded growth of a field, table or document; missing dedup, idempotency or atomic increment; no behaviour defined for an outage or partial write; cost at real scale rather than assumed scale; a design chosen without its alternatives recorded; an expensive-to-reverse change presented as incidental |
 
 ### Deep lane only
 

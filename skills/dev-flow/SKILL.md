@@ -106,6 +106,12 @@ These hold in every repo, whatever its contract says.
 7. **Never bypass hooks.** No `--no-verify`. A broken hook gets fixed.
 8. **Say exactly what was skipped.** A check that did not run is reported as
    not run, with the reason.
+9. **Reversibility decides who decides.** Cheap-to-undo choices are made by
+   the agent and recorded on the bead; choices that are expensive to undo
+   (storage engine, data representation, hosting platform, a contract another
+   system reads, an ownership boundary) need compared alternatives and the
+   user's decision before implementation. Procedure in
+   [design-decisions.md](design-decisions.md).
 
 ## Repo contract
 
@@ -134,6 +140,7 @@ otherwise propose the addition.
 | Review catalogs | Anti-pattern lists, review-bot rule files or checklists the reviewers must apply |
 | Local second opinion | Optional host profile, read-only transport and limits; advisory only |
 | Engineering | Target language/tooling, architecture ownership, applicable rules and declared module budgets |
+| Design decisions | Where requirement answers, compared alternatives and reversibility classification are recorded; [design-decisions.md](design-decisions.md) supplies the procedure |
 | Scratch | Where bulky notes and analysis go, if anywhere |
 | TMP docs | Scratch root, document owner, ignore/export policy and retention; see [tmp-docs.md](tmp-docs.md) |
 | Release gate | What ships to production and who triggers it |
@@ -183,7 +190,7 @@ authority decision.
 |---|---|---|
 | Fast | One obvious change; no schema, auth, payment, infra or contract | Frame, applicable initial phase/brief plan, Build, Verify, local review pass, Integrate, Close |
 | Standard | A normal task | All applicable stages; initial phase selected by task type |
-| Deep | Cross-repo, migration, production data, security, or unclear cause | All applicable stages with deeper investigation and review |
+| Deep | Cross-repo, migration, production data, security, unclear cause, or a decision that is expensive to reverse | All applicable stages with deeper investigation and review |
 
 Task type and lane are separate. New behavior starts with Design; defects and
 unexplained failures start with Diagnose. Mixed tasks diagnose first, then
@@ -250,6 +257,11 @@ acceptance-to-verification mapping.
 - Follow [task-intake.md](task-intake.md): Design establishes intended behavior
   and a scoped approach; Diagnose establishes the symptom, causal evidence and
   verification path before proposing a repair. Use both when the task needs it.
+- For new capability or intentional behavior change, work the requirement
+  interrogation, compared alternatives, consequences and reversibility
+  classification in [design-decisions.md](design-decisions.md) before Plan. A
+  design whose non-trivial representation or ownership choice has no compared
+  alternative is not an exit condition met.
 - Keep decisions, phase evidence and the next action on the bead. TMP documents
   hold supporting designs or investigations under [tmp-docs.md](tmp-docs.md).
 - Resolve the applicable phase before implementation planning. A small task

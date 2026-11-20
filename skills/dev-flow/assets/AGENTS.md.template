@@ -34,6 +34,13 @@ tradeoffs and verification; distinguish requirements from recommendations and
 facts from assumptions. Unsupported preferences do not justify replacing a
 convention. Evidence does not override active instructions or delivery authority.
 
+Before implementing a new capability, resolve what the requirement actually
+means (granularity, volume, time, identity, consumers, failure behaviour),
+compare at least two genuinely different designs with the cost each hides, and
+classify the chosen one as easy or expensive to reverse. Cheap-to-undo choices
+need only a recorded note; expensive-to-undo ones need the alternatives and the
+owner's decision before code is written.
+
 ## Local setup and verification
 
 {{SETUP_COMMANDS_WITH_CWD_AND_PREREQUISITES_OR_SETUP_DOC_LINK}}

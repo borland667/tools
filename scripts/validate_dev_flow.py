@@ -13,6 +13,7 @@ REQUIRED_FILES = (
     "ticket-mapping.md",
     "engineering-practices.md",
     "task-intake.md",
+    "design-decisions.md",
     "acceptance-exercise.md",
     "test-first.md",
     "review-agents.md",
