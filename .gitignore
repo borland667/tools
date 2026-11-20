@@ -107,6 +107,14 @@ tmp_test/
 .cache/
 recovery_test*
 recovery_full/
+# Generated run artifacts and local session state
+artifacts/
+.scan_state/
+*.xlsx
+*.img
+.agents/
+claude_local_bridge/models.current.json
+claude_local_bridge/launchd/com.borland.*.plist
 
 # Beads / Dolt files (added by bd init)
 .dolt/

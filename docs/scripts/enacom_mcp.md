@@ -191,7 +191,13 @@ guess degrades gracefully rather than hard-failing.
 
 - `ENACOM_DRY_RUN=true` is the default. The server fills forms but **does not
   click final *Enviar*** until you flip the env var off.
-- AFIP credentials are never asked, never stored. Login is manual every run.
+- The server never asks for or stores your AFIP password; you type it in the
+  browser yourself. If you set `ENACOM_STORAGE_STATE`, Playwright writes a
+  session-cookie file to that path so later runs can skip login. Treat that
+  file as a credential: keep it outside the repository and never commit it.
+- `ENACOM_ARTIFACTS_DIR` (default `./artifacts`) holds full-page screenshots
+  of a logged-in government portal plus element dumps. `artifacts/`, `*.xlsx`
+  and `.scan_state/` are gitignored — do not force-add them.
 - Selectors in `selectors.py` are inferred from ENACOM's PDF guide and may
   need adjustment on first use. Each tool logs the selector it tried.
 - DDJJ are sworn declarations. Even when automated, the licensee is legally
