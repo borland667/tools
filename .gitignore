@@ -25,6 +25,14 @@ Icon?
 *.local
 claude_local_bridge/providers.local.json
 claude_local_bridge/bridge.local.json
+# Any local/private config JSON, plus renamed backup copies of it
+*.local.json
+*.local.json.bak*
+# Real config files whose committed counterpart is the .example version
+claude_local_bridge/bridge.config.json
+claude_local_bridge/providers.json
+local_llm_mcp/claude_desktop_config.json
+local_model_eval/config.json
 
 # -------------------------------
 # Python
