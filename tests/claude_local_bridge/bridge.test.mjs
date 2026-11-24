@@ -1053,6 +1053,47 @@ function bridgeConfig(providersFile, mainModel) {
   }
 }
 
+test('advertises opt-in Auto Routing and selects models by request capability', async t => {
+  const upstream = await startAnthropicProvider({
+    models: ['plain', 'tools', 'vision', 'fixed'].map(id => model(id)),
+  })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [{ ...provider('aggregator', 'anthropic', upstream.baseUrl), capabilityFallback: false }], async bridge => {
+    const catalog = await getJson(`${bridge.baseUrl}/v1/models`)
+    const entry = catalog.data.find(model => model.id === 'claude-auto-routing')
+    assert.equal(entry.display_name, 'Auto Routing')
+    const bootstrap = await getJson(`${bridge.baseUrl}/api/claude_cli/bootstrap`)
+    assert.ok(bootstrap.additional_model_options.some(option => option.model === entry.id && option.name === 'Auto Routing'))
+    const tools = [{ name: 'lookup', input_schema: { type: 'object' } }]
+    const text = [{ role: 'user', content: 'Hi' }]
+    const image = [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'test' } }] }]
+    for (const [model, messages, requestTools, expected] of [
+      [entry.id, text, [], 'plain'],
+      [entry.id, text, tools, 'tools'],
+      [entry.id, image, [], 'vision'],
+      [entry.id, image, tools, 'vision'],
+      ['claude-opus-4-6', image, tools, 'fixed'],
+    ]) {
+      const response = await postJson(`${bridge.baseUrl}/v1/messages`, {
+        model, messages, tools: requestTools, max_tokens: 16,
+      })
+      assert.equal(response.model, expected)
+    }
+    assert.equal((await getJson(`${bridge.baseUrl}/healthz`)).mainModel, 'aggregator/fixed')
+    const config = JSON.parse(await readFile(bridge.bridgeConfigFile, 'utf8'))
+    config.autoRouting.vision = 'aggregator/unavailable'
+    await writeFile(bridge.bridgeConfigFile, JSON.stringify(config))
+    const updated = await getJson(`${bridge.baseUrl}/v1/models`)
+    assert.ok(!updated.data.some(model => model.id === entry.id))
+  }, {
+    bridgeConfig: file => ({
+      ...bridgeConfig(file, 'aggregator/fixed'),
+      autoRouting: { chat: 'aggregator/plain', tools: 'aggregator/tools', vision: 'aggregator/vision' },
+      claudeDesktopModels: [{ name: 'claude-opus-4-6', target: 'aggregator/fixed' }],
+    }),
+  })
+})
+
 test('normalizes system blocks only for providers configured for text system prompts', async t => {
   const upstream = await startAnthropicProvider({ models: [model('remote-chat')] })
   t.after(() => closeServers([upstream.server]))

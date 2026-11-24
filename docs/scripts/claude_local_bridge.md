@@ -30,6 +30,11 @@ Set those `models` defaults to provider-qualified gateway IDs in the ignored
 explicit selections on the chosen model. The OpenAI adapter retains tool-call
 history and matching tool results, including parallel and error results.
 
+The optional `autoRouting` object publishes a distinct **Auto Routing** picker
+entry in model discovery and CLI bootstrap. Set its `chat`, `tools`, and
+`vision` keys to exact catalog IDs. Image requests take precedence over tool
+requests. See the [bridge configuration example](../../claude_local_bridge/README.md).
+
 The gateway templates use text system prompts and omit unsigned thinking from
 assistant history because the current gateway rejects those returned shapes on
 input. Signed thinking is preserved. Gemini 4 Hydrogen/Neon use a per-model

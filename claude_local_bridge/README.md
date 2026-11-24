@@ -73,6 +73,25 @@ For the API-only profile, enable only `aggregator-anthropic` and `aggregator-ope
 resolving to local models. oMLX can continue serving other clients independently.
 Keep any optional local-provider setup in a separate bridge configuration.
 
+Set `autoRouting` in `bridge.local.json` to publish a separate **Auto Routing**
+picker entry (`claude-auto-routing`). Configure three exact catalog IDs:
+
+```json
+{
+  "autoRouting": {
+    "chat": "aggregator-anthropic/claude-sonnet-5-5",
+    "tools": "aggregator-anthropic/anthropic/claude-opus-5-5",
+    "vision": "aggregator-anthropic/anthropic/claude-opus-5-5"
+  }
+}
+```
+
+Select **Auto Routing** to use these rules. Requests containing images use
+`vision`, even when they also include tools, so that target should support both.
+Other requests with tools use `tools`, and the rest use `chat`. The entry is
+published only when all three targets are available. Fixed gateway selections
+keep their own model and Auto Routing does not become a family default.
+
 ## Claude Profiles
 
 Claude Desktop is an Electron app. Launching it with `--user-data-dir` gives

@@ -26,11 +26,13 @@ const ANTHROPIC_FAMILY_PATTERNS = [
   'haiku',
   'capybara',
 ]
+const AUTO_ROUTING_MODEL = 'claude-auto-routing'
 
 let providers = []
 let lastProviderConfigSignature = ''
 let lastSyncedOptions = []
 let modelRoutes = new Map()
+let autoRoutingRoutes = null
 let providerStatuses = []
 let modelSelection = {
   mainModel: null,
@@ -701,6 +703,11 @@ function isAnthropicMessagesPath(pathname) {
 
 function resolveModelRoute(requestedModel, payload = null) {
   const normalized = requestedModel.toLowerCase()
+
+  if (normalized === AUTO_ROUTING_MODEL) {
+    const role = payloadHasImages(payload) ? 'vision' : payloadHasTools(payload) ? 'tools' : 'chat'
+    return autoRoutingRoutes?.[role] ?? null
+  }
 
   const exact = modelRoutes.get(requestedModel)
   if (exact) {
@@ -1772,6 +1779,7 @@ async function buildGatewayModelList() {
       created: 0,
       owned_by: option.providerId ?? 'local',
       label: option.label,
+      ...(option.value === AUTO_ROUTING_MODEL ? { display_name: option.label } : {}),
       description: option.description,
       upstream_model_id: option.upstreamModelId,
       local: option.local === true,
@@ -1879,14 +1887,36 @@ async function syncModelOptions() {
     routesById.set(alias.value, alias.route)
   }
 
-  const options = [...optionsByPublicId.values()].sort((a, b) => {
+  // Keep the virtual model out of default selection and reserve its ID.
+  optionsByPublicId.delete(AUTO_ROUTING_MODEL)
+  routesById.delete(AUTO_ROUTING_MODEL)
+  const routingConfig = configValue('autoRouting')
+  const autoRoutes = routingConfig && Object.fromEntries(
+    ['chat', 'tools', 'vision'].map(role => [
+      role, routesById.get(routingConfig[role]) ?? null,
+    ]),
+  )
+  const options = [...optionsByPublicId.values()]
+  const defaults = chooseDefaultModels(options)
+  if (autoRoutes && Object.values(autoRoutes).every(Boolean)) {
+    options.push({
+      value: AUTO_ROUTING_MODEL,
+      label: 'Auto Routing',
+      description: 'Routes chat, tool, and image requests to their configured models.',
+      providerId: 'bridge',
+      toolCapable: isToolCapableRoute(autoRoutes.tools),
+      visionCapable: isVisionCapableRoute(autoRoutes.vision),
+    })
+  }
+  options.sort((a, b) => {
     return a.label.localeCompare(b.label) || a.value.localeCompare(b.value)
   })
 
   lastSyncedOptions = options
   modelRoutes = routesById
+  autoRoutingRoutes = autoRoutes
   providerStatuses = nextStatuses
-  modelSelection = chooseDefaultModels(options)
+  modelSelection = defaults
 
   const configPath = await getClaudeGlobalConfigPath()
   const config = await readJsonObject(configPath)
