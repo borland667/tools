@@ -642,6 +642,24 @@ async function prepareRequestForProvider(pathname, rawBody) {
 
   const selectedModel = payload.model
   payload.model = route.upstreamModelId
+  if (route.provider.stripUnsignedThinking && Array.isArray(payload.messages)) {
+    for (const message of payload.messages) {
+      if (message.role !== 'assistant' || !Array.isArray(message.content)) continue
+      message.content = message.content
+        .filter(block => !(block.type === 'thinking' && !block.signature) && !(block.type === 'text' && !block.text))
+        .map(block => {
+          if (block.provider_specific_fields !== null) return block
+          const { provider_specific_fields, ...rest } = block
+          return rest
+        })
+    }
+  }
+  if (route.provider.systemFormat === 'text' && Array.isArray(payload.system)) {
+    if (payload.system.some(block => block?.type !== 'text' || typeof block.text !== 'string')) {
+      throw new Error('text system prompts require text content blocks')
+    }
+    payload.system = anthropicTextFromContent(payload.system)
+  }
   const toolResponseFormat =
     isMessagesCreate && payloadHasTools(payload)
       ? route.toolFormat ?? route.provider.toolFormat ?? 'native'
@@ -729,6 +747,9 @@ function resolveModelRoute(requestedModel, payload = null) {
 }
 
 function pickCapabilityAwareModel(payload, normalizedRequestedModel, selectedRoute = null) {
+  if (selectedRoute?.provider?.capabilityFallback === false) {
+    return null
+  }
   return (
     pickToolAwareModel(payload, normalizedRequestedModel, selectedRoute) ??
     pickVisionAwareModel(payload, normalizedRequestedModel, selectedRoute) ??
@@ -918,10 +939,29 @@ function toOpenAiChatCompletion(payload) {
 
   for (const message of Array.isArray(payload.messages) ? payload.messages : []) {
     const role = message?.role === 'assistant' ? 'assistant' : 'user'
-    messages.push({
-      role,
-      content: openAiContentFromAnthropicContent(message?.content),
-    })
+    const blocks = Array.isArray(message?.content) ? message.content : []
+    if (role === 'user') {
+      for (const block of blocks.filter(block => block?.type === 'tool_result')) {
+        let content = openAiContentFromAnthropicContent(block.content)
+        if (block.is_error && typeof content === 'string') content = `Error: ${content}`
+        messages.push({ role: 'tool', tool_call_id: block.tool_use_id, content })
+      }
+    }
+    const content = openAiContentFromAnthropicContent(
+      Array.isArray(message?.content)
+        ? blocks.filter(block => !['tool_result', 'tool_use'].includes(block?.type))
+        : message?.content,
+    )
+    const toolCalls = role === 'assistant' ? blocks.filter(block => block?.type === 'tool_use').map(block => ({
+      id: block.id,
+      type: 'function',
+      function: { name: block.name, arguments: JSON.stringify(block.input ?? {}) },
+    })) : []
+    if (content || toolCalls.length || !blocks.some(block => block?.type === 'tool_result')) {
+      messages.push({ role, content: content || (toolCalls.length ? null : ''),
+        ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+      })
+    }
   }
 
   const next = {
@@ -947,6 +987,7 @@ function toOpenAiChatCompletion(payload) {
   }
   if (payload.tool_choice) {
     next.tool_choice = toOpenAiToolChoice(payload.tool_choice)
+    if (payload.tool_choice.disable_parallel_tool_use === true) next.parallel_tool_calls = false
   }
 
   return next
@@ -1033,6 +1074,9 @@ function toOpenAiTool(tool) {
 }
 
 function toOpenAiToolChoice(choice) {
+  if (choice === 'none' || choice?.type === 'none') {
+    return 'none'
+  }
   if (choice === 'auto' || choice?.type === 'auto') {
     return 'auto'
   }
@@ -1094,13 +1138,18 @@ async function writeOpenAiChatAsAnthropicSse(upstream, res, provider) {
     res.setHeader('cache-control', 'no-cache')
   }
 
-  res.write(`event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message })}\n\n`)
+  res.write(`event: message_start\ndata: ${JSON.stringify({
+    type: 'message_start',
+    message: { ...message, content: [], stop_reason: null, usage: { ...message.usage, output_tokens: 0 } },
+  })}\n\n`)
   for (const [index, block] of message.content.entries()) {
     res.write(
       `event: content_block_start\ndata: ${JSON.stringify({
         type: 'content_block_start',
         index,
-        content_block: block.type === 'text' ? { type: 'text', text: '' } : block,
+        content_block: block.type === 'text'
+          ? { type: 'text', text: '' }
+          : { ...block, input: {} },
       })}\n\n`,
     )
     if (block.type === 'text') {
@@ -1109,6 +1158,13 @@ async function writeOpenAiChatAsAnthropicSse(upstream, res, provider) {
           type: 'content_block_delta',
           index,
           delta: { type: 'text_delta', text: block.text },
+        })}\n\n`,
+      )
+    } else if (block.type === 'tool_use') {
+      res.write(
+        `event: content_block_delta\ndata: ${JSON.stringify({
+          type: 'content_block_delta', index,
+          delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input) },
         })}\n\n`,
       )
     }
@@ -1788,7 +1844,7 @@ async function syncModelOptions() {
       routesById.set(option.value, {
         routeId: option.value,
         upstreamModelId: option.upstreamModelId,
-        provider,
+        provider: option.apiType === provider.type ? provider : { ...provider, type: option.apiType },
         toolCapable: option.toolCapable,
         visionCapable: option.visionCapable,
         local: option.local,
@@ -1924,6 +1980,9 @@ function normalizeClaudeDesktopModels(routesById) {
 }
 
 function isToolCapableAliasRoute(alias, route) {
+  if (route?.provider?.toolCapableModels) {
+    return route.toolCapable === true
+  }
   const aliasToolFormat = normalizeToolFormat(alias?.toolFormat ?? alias?.tool_format)
   if (aliasToolFormat === 'text' || route?.toolFormat === 'text') {
     return true
@@ -2284,6 +2343,7 @@ function normalizeModelOption(model, provider = providers[0]) {
     slow: isSlowModelForProvider(model, provider),
     timeoutRisk: isTimeoutRiskModelForProvider(model, provider),
     maxContextLength,
+    apiType: provider.modelApiTypes?.[id] === 'openai' ? 'openai' : provider.type,
   }
 }
 
@@ -2315,6 +2375,9 @@ function isTimeoutRiskModelForProvider(model, provider) {
 }
 
 function isToolCapableModelForProvider(model, provider) {
+  if (provider?.toolCapableModels) {
+    return provider.toolCapableModels.includes(firstString(model?.id, model?.key, model?.model, model?.name))
+  }
   if (provider?.toolFormat === 'text') {
     return true
   }
@@ -2687,6 +2750,12 @@ function normalizeProvider(provider, index) {
         provider?.supports_tools,
     ),
     toolFormat: normalizeToolFormat(provider?.toolFormat ?? provider?.tool_format),
+    systemFormat: provider?.systemFormat === 'text' ? 'text' : null,
+    capabilityFallback: provider?.capabilityFallback !== false,
+    stripUnsignedThinking: provider?.stripUnsignedThinking === true,
+    modelApiTypes: provider?.modelApiTypes ?? {},
+    toolCapableModels: Array.isArray(provider?.toolCapableModels)
+      ? provider.toolCapableModels.filter(id => typeof id === 'string') : null,
     enabled: provider?.enabled !== false,
   }
 }

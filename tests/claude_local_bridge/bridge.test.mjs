@@ -1053,6 +1053,161 @@ function bridgeConfig(providersFile, mainModel) {
   }
 }
 
+test('normalizes system blocks only for providers configured for text system prompts', async t => {
+  const upstream = await startAnthropicProvider({ models: [model('remote-chat')] })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [{ ...provider('aggregator', 'anthropic', upstream.baseUrl), systemFormat: 'text' }], async bridge => {
+    await postJson(`${bridge.baseUrl}/v1/messages`, {
+      model: 'aggregator/remote-chat', max_tokens: 1,
+      system: [{ type: 'text', text: 'First', cache_control: { type: 'ephemeral' } }, { type: 'text', text: 'Second' }],
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+    assert.equal(upstream.requests.messages[0].system, 'First\nSecond')
+  })
+})
+
+test('preserves explicitly selected provider for tools and images when capability fallback is disabled', async t => {
+  const upstream = await startAnthropicProvider({ models: [model('remote-chat'), model('local-fallback')] })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [{ ...provider('aggregator', 'anthropic', upstream.baseUrl), capabilityFallback: false, toolCapable: false }], async bridge => {
+    const catalog = await getJson(`${bridge.baseUrl}/v1/models`)
+    const alias = catalog.data.find(m => !m.id.includes('/') && m.upstream_model_id === 'remote-chat')
+    await postJson(`${bridge.baseUrl}/v1/messages`, {
+      model: alias.id, max_tokens: 16,
+      tools: [{ name: 'lookup', input_schema: { type: 'object' } }],
+      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'test' } }] }],
+    })
+    assert.equal(upstream.requests.messages[0].model, 'remote-chat')
+    await postJson(`${bridge.baseUrl}/v1/messages`, {
+      model: alias.id, max_tokens: 16,
+      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'test' } }] }],
+    })
+    assert.equal(upstream.requests.messages[1].model, 'remote-chat')
+  }, { bridgeConfig: file => ({ ...bridgeConfig(file, 'aggregator/local-fallback'),
+    models: { main: 'aggregator/local-fallback', small: 'aggregator/local-fallback', tool: 'aggregator/local-fallback', vision: 'aggregator/local-fallback' },
+  }) })
+})
+
+test('emits valid OpenAI tool SSE and continues with the returned result', async t => {
+  const upstream = await startOpenAiProvider({
+    models: [model('remote-chat')],
+    completion: body => ({
+      id: 'chatcmpl_tools', model: body.model,
+      choices: [{ index: 0,
+        finish_reason: body.messages.some(m => m.role === 'tool') ? 'stop' : 'tool_calls',
+        message: body.messages.some(m => m.role === 'tool')
+          ? { role: 'assistant', content: 'receipt-ok' }
+          : { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{"id":42}' } }] },
+      }],
+    }),
+  })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [provider('aggregator', 'openai', upstream.baseUrl)], async bridge => {
+    const payload = { model: 'aggregator/remote-chat', max_tokens: 64, stream: true,
+      messages: [{ role: 'user', content: 'Look up 42.' }],
+      tools: [{ name: 'lookup', input_schema: { type: 'object' } }],
+    }
+    const response = await fetch(`${bridge.baseUrl}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    const events = (await response.text()).split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6)))
+    assert.deepEqual(events.find(e => e.type === 'message_start').message.content, [])
+    assert.deepEqual(events.find(e => e.type === 'content_block_start').content_block, { type: 'tool_use', id: 'call_1', name: 'lookup', input: {} })
+    assert.deepEqual(events.find(e => e.type === 'content_block_delta').delta, { type: 'input_json_delta', partial_json: '{"id":42}' })
+    assert.equal(events.find(e => e.type === 'message_delta').delta.stop_reason, 'tool_use')
+    assert.equal(events.at(-1).type, 'message_stop')
+    const continuation = await postJson(`${bridge.baseUrl}/v1/messages`, { ...payload, stream: false,
+      messages: [...payload.messages,
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'lookup', input: { id: 42 } }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call_1', content: 'receipt-ok' }] },
+      ],
+    })
+    assert.deepEqual(continuation.content, [{ type: 'text', text: 'receipt-ok' }])
+    assert.equal(continuation.stop_reason, 'end_turn')
+  })
+})
+
+test('uses a model-specific API override without changing the selected upstream model', async t => {
+  const upstream = await startOpenAiProvider({ models: [model('gemini-test'), model('native-test')] })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [{ ...provider('aggregator', 'anthropic', upstream.baseUrl), modelApiTypes: { 'gemini-test': 'openai' }, capabilityFallback: false }], async bridge => {
+    const models = await getJson(`${bridge.baseUrl}/v1/models`)
+    const alias = models.data.find(m => !m.id.includes('/') && m.upstream_model_id === 'gemini-test')
+    const response = await postJson(`${bridge.baseUrl}/v1/messages`, {
+      model: alias.id, max_tokens: 16, messages: [{ role: 'user', content: 'Hi' }],
+    })
+    assert.equal(response.model, 'gemini-test')
+    assert.equal(upstream.requests.chatCompletions[0].model, 'gemini-test')
+  })
+})
+
+test('omits unsigned thinking on configured providers while retaining signed thinking', async t => {
+  const upstream = await startAnthropicProvider({ models: [model('remote-chat')] })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [{ ...provider('aggregator', 'anthropic', upstream.baseUrl), stripUnsignedThinking: true }], async bridge => {
+    const signed = { type: 'thinking', thinking: 'Signed', signature: 'valid-signature' }
+    await postJson(`${bridge.baseUrl}/v1/messages`, {
+      model: 'aggregator/remote-chat', max_tokens: 16,
+      messages: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: [
+        { type: 'thinking', thinking: 'Unsigned', signature: null }, signed,
+        { type: 'text', text: '' },
+        { type: 'tool_use', id: 'call_1', name: 'lookup', input: {}, provider_specific_fields: null },
+      ] }],
+    })
+    assert.deepEqual(upstream.requests.messages[0].messages[1].content, [signed,
+      { type: 'tool_use', id: 'call_1', name: 'lookup', input: {} },
+    ])
+  })
+})
+
+test('reports only qualified tool models even when a stale manual alias claims tool support', async t => {
+  const upstream = await startAnthropicProvider({ models: [model('qualified'), model('unqualified')] })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [{ ...provider('aggregator', 'anthropic', upstream.baseUrl), toolCapableModels: ['qualified'] }], async bridge => {
+    const catalog = await getJson(`${bridge.baseUrl}/v1/models`)
+    assert.equal(catalog.data.find(m => m.id === 'aggregator/qualified').tool_capable, true)
+    assert.equal(catalog.data.find(m => m.id === 'aggregator/unqualified').tool_capable, false)
+    assert.equal(catalog.data.find(m => m.id === 'claude-sonnet-5-1').tool_capable, false)
+  }, { bridgeConfig: file => ({ ...bridgeConfig(file, 'aggregator/qualified'),
+    claudeDesktopModels: [{ name: 'claude-sonnet-5-1', target: 'aggregator/unqualified', toolCapable: true }],
+  }) })
+})
+
+test('preserves multiple OpenAI tool calls and matching tool results across turns', async t => {
+  const upstream = await startOpenAiProvider({ models: [model('remote-chat')] })
+  t.after(() => closeServers([upstream.server]))
+  await withBridge(t, [provider('aggregator', 'openai', upstream.baseUrl)], async bridge => {
+    await postJson(`${bridge.baseUrl}/v1/messages`, {
+      model: 'aggregator/remote-chat', max_tokens: 16,
+      tools: [{ name: 'lookup', input_schema: { type: 'object' } }],
+      tool_choice: { type: 'none' },
+      messages: [
+        { role: 'user', content: 'Look up both.' },
+        { role: 'assistant', content: [
+          { type: 'text', text: 'Checking.' },
+          { type: 'tool_use', id: 'call_1', name: 'lookup', input: { id: 1 } },
+          { type: 'tool_use', id: 'call_2', name: 'lookup', input: { id: 2 } },
+        ] },
+        { role: 'user', content: [
+          { type: 'tool_result', tool_use_id: 'call_1', content: [{ type: 'text', text: 'receipt-1' }] },
+          { type: 'tool_result', tool_use_id: 'call_2', content: 'missing', is_error: true },
+          { type: 'text', text: 'Summarize.' },
+        ] },
+      ],
+    })
+    const request = upstream.requests.chatCompletions[0]
+    assert.equal(request.tool_choice, 'none')
+    assert.deepEqual(request.messages, [
+      { role: 'user', content: 'Look up both.' },
+      { role: 'assistant', content: 'Checking.', tool_calls: [
+        { id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{"id":1}' } },
+        { id: 'call_2', type: 'function', function: { name: 'lookup', arguments: '{"id":2}' } },
+      ] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'receipt-1' },
+      { role: 'tool', tool_call_id: 'call_2', content: 'Error: missing' },
+      { role: 'user', content: 'Summarize.' },
+    ])
+  })
+})
+
 function model(id, extra = {}) {
   return {
     id,
@@ -1346,7 +1501,7 @@ async function startThinkingThenTextAnthropicStreamingProvider({ models }) {
   return { server, baseUrl, requests }
 }
 
-async function startOpenAiProvider({ models }) {
+async function startOpenAiProvider({ models, completion }) {
   const requests = { chatCompletions: [] }
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && ['/v1/models', '/api/v1/models'].includes(req.url)) {
@@ -1356,6 +1511,7 @@ async function startOpenAiProvider({ models }) {
     if (req.method === 'POST' && req.url === '/v1/chat/completions') {
       const body = await readJsonBody(req)
       requests.chatCompletions.push(body)
+      if (completion) return writeJson(res, 200, completion(body))
       return writeJson(res, 200, {
         id: 'chatcmpl_test',
         object: 'chat.completion',

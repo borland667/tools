@@ -19,11 +19,44 @@ Use this when:
 
 Do not use this when:
 
-- The upstream only exposes OpenAI chat completions and not Anthropic
-  `/v1/messages`.
-- You want hosted Claude and local models in the same 3P model picker.
 - You need plugin marketplace access beyond what the signed-in Claude account
   and organization provide.
+
+## gateway API routing and qualification
+
+gateway can handle main, small, tool, and image requests through the bridge.
+Set those `models` defaults to provider-qualified gateway IDs in the ignored
+`bridge.local.json`. Use `capabilityFallback: false` on gateway providers to keep
+explicit selections on the chosen model. The OpenAI adapter retains tool-call
+history and matching tool results, including parallel and error results.
+
+The gateway templates use text system prompts and omit unsigned thinking from
+assistant history because the current gateway rejects those returned shapes on
+input. Signed thinking is preserved. Gemini 4 Hydrogen/Neon use a per-model
+OpenAI protocol override to retain their tool signatures; their model IDs and
+provider identity remain unchanged. `toolCapableModels` records qualified IDs
+without hiding unqualified discovery entries or trusting stale alias flags.
+
+Run the dependency-free qualification helper from the repository root:
+
+```bash
+python3 claude_local_bridge/qualify_aggregator.py --model qwen3.8-max \
+  --model anthropic/claude-opus-5-5 --stream-tools \
+  --output tmp/aggregator-streamed-tools.json
+python3 claude_local_bridge/qualify_aggregator.py --all-models --timeout 30 \
+  --output tmp/aggregator-all-models.json
+```
+
+These are paid synthetic API checks: model validation, token counting, real
+structured tool requests, and streamed tool-result continuation with an
+independent confirmation. No tool commands run and no workspace files are sent.
+Both gateway routes are tested by default; `--provider` narrows that scope.
+`--all-models` explicitly opts into testing the entire advertised catalog.
+Failed checks return a nonzero exit status and remain visible in the JSON
+report. Vision and full Claude Code execution require separate smoke checks.
+
+Validation: `node --test tests/claude_local_bridge/bridge.test.mjs` and
+`python3 -m pytest tests/claude_local_bridge -q`.
 
 ## Requirements
 

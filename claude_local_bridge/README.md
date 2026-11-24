@@ -56,9 +56,10 @@ Validated local setup:
 - OMLX server: `http://127.0.0.1:8005`
 - Bridge server: `http://127.0.0.1:1245`
 - LaunchAgent label: `com.borland.claude-local-bridge`
-- Default/tool route: `omlx/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-splash`
-  (alias `claude-opus-4-2`; about 66 GB, roughly 45 s to load cold)
-- Vision route: `omlx/Qwen3-VL-4B-Instruct-4bit`
+- API default/tool/vision route: `aggregator-anthropic/anthropic/claude-opus-5-5`
+  (stable picker alias `claude-opus-5-404289`)
+- API small route: `aggregator-anthropic/claude-haiku-5-5`
+- OMLX remains an optional provider for explicitly selected local models.
 - Claude profiles: isolated with Electron `--user-data-dir`, usually under
   `$HOME/.claude-instances/<profile>`
 
@@ -66,6 +67,11 @@ Keep Claude Desktop/Cowork pointed at the bridge, not directly at OMLX. The
 bridge aggregates every discovered provider model. Capability hints still
 inform request routing and default-model heuristics, but they do not remove
 models from discovery.
+
+For the API-only profile, enable only `aggregator-anthropic` and `aggregator-openai` in
+`providers.local.json`. This also keeps fixed internal Claude aliases from
+resolving to local models. oMLX can continue serving other clients independently.
+Keep any optional local-provider setup in a separate bridge configuration.
 
 ## Claude Profiles
 
@@ -329,6 +335,20 @@ Provider fields:
   tags, validate the tool name and required input fields against the request,
   and return structured Anthropic `tool_use` blocks to Claude. Leave unset for
   native Anthropic or OpenAI tool-call objects.
+- `toolCapableModels`: optional list of exact upstream model IDs qualified for
+  tools. When present, this overrides provider/model hints and stale manual
+  alias flags. It reports capability; it does not hide other discovered models.
+- `capabilityFallback`: defaults to `true`. Set `false` to preserve an explicitly
+  selected provider/model for tools and images. Unsupported requests then return
+  that provider's error rather than silently running another model.
+- `systemFormat`: set `text` for gateways that reject Anthropic system content
+  arrays. Text blocks are joined in order; system-block cache hints are omitted.
+- `stripUnsignedThinking`: omit unsigned thinking and empty text from assistant
+  history before forwarding it. Signed thinking is retained. This handles gateway
+  responses whose null thinking signatures fail its own request validation.
+- `modelApiTypes`: optional map of upstream model ID to `openai`, selecting
+  `/v1/chat/completions` for that model on an otherwise Anthropic provider.
+  Provider identity, credentials, model ID, and picker alias stay the same.
 
 Internally, the aggregate catalog uses provider-qualified route IDs, for example:
 
@@ -376,6 +396,46 @@ compatibility surfaces:
 
 Both use `https://api.aggregator.ai` as the provider root. Do not append `/v1`; the
 bridge probes the standard model-list paths for the selected provider type.
+
+The templates preserve gateway selections for all requests, including tool use
+and images. They normalize system prompts and unsigned thinking for the current
+gateway. OpenAI adaptation preserves assistant tool calls, matching tool-result
+messages, parallel calls, error results, and tool-choice settings across turns.
+Its client-facing SSE emits empty block starts followed by argument deltas.
+
+Gemini 4 Hydrogen/Neon use gateway's OpenAI endpoint even under the
+`aggregator-anthropic` picker entries: the native Anthropic translation loses Gemini's
+tool signature during continuation. This selects another protocol for the same
+model, without switching providers or models. See the
+[upstream LiteLLM signature issue](https://github.com/BerriAI/litellm/issues/46369)
+and [signature transport documentation](https://docs.litellm.ai/docs/providers/gemini).
+
+Qualify the current catalog instead of assuming every advertised deployment is
+usable. This makes paid API calls with synthetic prompts and inert receipt
+results; it never executes model-selected shell commands or accesses your files:
+
+```bash
+python3 qualify_aggregator.py --model qwen3.8-max \
+  --model anthropic/claude-opus-5-5 --stream-tools \
+  --output ../tmp/aggregator-streamed-tools.json
+python3 qualify_aggregator.py --all-models --timeout 30 \
+  --output ../tmp/aggregator-all-models.json
+```
+
+The report checks Claude-shaped model validation, token counting, structured
+tool name/arguments, and streamed continuation containing an unpredictable
+confirmation supplied only in the tool result. `--stream-tools` also exercises
+the initial tool response over SSE. Plain prose claiming a tool ran does not
+pass. Reports include synthetic response bodies, failures, and elapsed times;
+nonzero exit status means some checks failed. Populate `toolCapableModels` from
+successful qualifications; new models remain discoverable without a false
+capability claim. Authentication errors, retired upstream deployments, timeouts,
+and missing structured calls need separate investigation. These checks do not
+qualify vision, every tool-choice mode, or full coding-agent behavior.
+
+Use automatic tool choice with the current Claude 5.5 deployments: the upstream
+rejects forced `tool`/`any` choices. The bridge preserves that error rather than
+silently weakening the caller's requested tool policy.
 
 To enable gateway locally, edit ignored local files only. Put the real key in
 `bridge.local.json`:

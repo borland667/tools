@@ -139,8 +139,8 @@ These rules apply to all current and future scripts, regardless of language.
   bridge for running Anthropic-style Claude clients against local OMLX or
   LM Studio backends through `/v1/messages`. It supports Claude Code and
   Claude Desktop/Cowork 3P `gateway` profiles, filters live local model
-  discovery into conversation-safe gateway IDs, routes tool-heavy requests to
-  the configured local tool model, surfaces dropped upstream streams as
+  discovery into conversation-safe gateway IDs, routes capability requests
+  according to provider policy, surfaces dropped upstream streams as
   structured Anthropic-style errors, and can be kept alive through `launchd`.
   The docs cover profile-aware setup with Claude `--user-data-dir`, the
   generic LaunchAgent/provider files, Anthropic 3P config details such as
@@ -151,6 +151,9 @@ These rules apply to all current and future scripts, regardless of language.
   `refresh_omlx_cowork_models.py` for regenerating bridge aliases from live
   OMLX discovery. See
   [`docs/scripts/claude_local_bridge.md`](./docs/scripts/claude_local_bridge.md).
+  gateway API routes can preserve the selected cloud model for tools and images;
+  `qualify_aggregator.py` checks validation, token counting, structured tools, and
+  streamed continuation against the current catalog.
 - [`omlx_auto_router/`](./omlx_auto_router/): local OpenAI-compatible proxy
   that routes `auto`, `auto-chat`, and `auto-agent` aliases to suitable live
   OMLX models for chat, coding, agent, embedding, reranking, and vision flows.
