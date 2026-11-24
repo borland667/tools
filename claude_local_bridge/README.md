@@ -59,7 +59,7 @@ Validated local setup:
 - API default/tool/vision route: `aggregator-anthropic/anthropic/claude-opus-5-5`
   (stable picker alias `claude-opus-5-404289`)
 - API small route: `aggregator-anthropic/claude-haiku-5-5`
-- OMLX remains an optional provider for explicitly selected local models.
+- **Auto Routing** uses oMLX for chat, tools, and images.
 - Claude profiles: isolated with Electron `--user-data-dir`, usually under
   `$HOME/.claude-instances/<profile>`
 
@@ -68,25 +68,37 @@ bridge aggregates every discovered provider model. Capability hints still
 inform request routing and default-model heuristics, but they do not remove
 models from discovery.
 
-For the API-only profile, enable only `aggregator-anthropic` and `aggregator-openai` in
-`providers.local.json`. This also keeps fixed internal Claude aliases from
-resolving to local models. oMLX can continue serving other clients independently.
-Keep any optional local-provider setup in a separate bridge configuration.
-
-Set `autoRouting` in `bridge.local.json` to publish a separate **Auto Routing**
-picker entry (`claude-auto-routing`). Configure three exact catalog IDs:
+Enable `omlx` in `providers.local.json` alongside the gateway providers. Set
+`capabilityFallback: false` on the oMLX provider to keep explicit oMLX
+selections local. Add these fields to `bridge.local.json`, merging the alias
+entries into the existing `claudeDesktopModels` list:
 
 ```json
 {
   "autoRouting": {
-    "chat": "aggregator-anthropic/claude-sonnet-5-5",
-    "tools": "aggregator-anthropic/anthropic/claude-opus-5-5",
-    "vision": "aggregator-anthropic/anthropic/claude-opus-5-5"
-  }
+    "chat": "claude-omlx-gemma-e4b",
+    "tools": "claude-omlx-sushi-coder",
+    "vision": "claude-omlx-gemma-e4b"
+  },
+  "claudeDesktopModels": [
+    {
+      "name": "claude-omlx-gemma-e4b",
+      "target": "omlx/gemma-4-e4b-it-4bit",
+      "labelOverride": "OMLX: Gemma 4 E4B",
+      "toolCapable": true,
+      "visionCapable": true
+    },
+    {
+      "name": "claude-omlx-sushi-coder",
+      "target": "omlx/Qwen3.5-9b-Sushi-Coder-RL-MLX",
+      "labelOverride": "OMLX: Qwen 3.5 Sushi Coder",
+      "toolCapable": true
+    }
+  ]
 }
 ```
 
-Select **Auto Routing** to use these rules. Requests containing images use
+Select **Auto Routing** (`claude-auto-routing`) to use these rules. Requests containing images use
 `vision`, even when they also include tools, so that target should support both.
 Other requests with tools use `tools`, and the rest use `chat`. The entry is
 published only when all three targets are available. Fixed gateway selections

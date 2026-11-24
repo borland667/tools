@@ -33,7 +33,9 @@ history and matching tool results, including parallel and error results.
 The optional `autoRouting` object publishes a distinct **Auto Routing** picker
 entry in model discovery and CLI bootstrap. Set its `chat`, `tools`, and
 `vision` keys to exact catalog IDs. Image requests take precedence over tool
-requests. See the [bridge configuration example](../../claude_local_bridge/README.md).
+requests. The local profile uses oMLX for all three Auto Routing targets.
+Choose a fixed gateway entry to route a session to gateway. See the
+[bridge configuration example](../../claude_local_bridge/README.md).
 
 The gateway templates use text system prompts and omit unsigned thinking from
 assistant history because the current gateway rejects those returned shapes on
