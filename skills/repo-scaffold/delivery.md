@@ -6,6 +6,9 @@
 
 - Lint, typecheck, unit tests and a secret scan, as parallel jobs calling the
   same command as the local gate.
+- A lint rule that fails stray debug output on production paths (raw console
+  or print calls, unstructured logging at the wrong level), or the language's
+  equivalent.
 - Third-party actions pinned to a commit SHA; workflow permissions read-only by
   default, widened per job; a timeout on every job.
 - A dependency update bot that also covers the CI actions.

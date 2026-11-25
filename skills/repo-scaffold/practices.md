@@ -173,6 +173,10 @@ Put these in the agent guide (S):
 - Scratch goes in an ignored scratch directory.
 - Kill only processes the agent started; use only devices and services it
   created.
+- Multi-step procedures (branching flow, the review loop, manual QA) live as
+  repo skills, each description opening with when to use it and when not to.
+- An agent works in its own checkout or sandbox, with its own ports and local
+  services, never on a shared one.
 
 ## What not to copy
 

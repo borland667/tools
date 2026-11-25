@@ -54,7 +54,14 @@ verify a tool works in the target before naming it in the contract.
 | Reachability walk | dependency-cruiser, or a resolver walk in a test | import-linter | `go list -deps` in a test | ArchUnit layered rules |
 | Sweep with allowlist | TypeScript compiler API | `ast` module | `go/packages` | Konsist, ArchUnit |
 | Compile-fail fixtures | `@ts-expect-error` | mypy or pyright with unused-ignore warnings | a build-tagged fixture package | compile-testing |
+| Migration replay | parse the migration files in order in a test | same | same | a SQL parse of the migration set |
+| Two-source contract diff | read both files in the test and compare sets | same | same | same |
+| CI config as input | parse the workflow YAML | parse the pipeline config | parse the pipeline config | parse the pipeline config |
 | Seeded-canary redaction | the error SDK's test transport | logging handler capture | `slog` test handler | Logback list appender |
+| Fresh-process probe | import in a child process | `python -X importtime` with stubs | an `init()` audit | a static-initializer probe |
+| Build-artifact check | inspect the built bundle | wheel or archive inspection | binary size and symbols | jar inspection |
+| Generated-file drift | regenerate, then diff | same | `go generate`, then diff | same |
+| Endpoint sweep | router introspection | the framework's route table | the route table | the route registry |
 
 ## Where to start
 
