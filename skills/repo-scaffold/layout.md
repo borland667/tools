@@ -9,8 +9,8 @@ alternatives; use whatever the target's ecosystem already uses.
   README.md                      S  stack, first day, troubleshooting, secrets, releases
   ARCHITECTURE.md                S  built / decided-not-built / pending
   CLEAN-BUILDS.md                M  reset ladder
-  <version pins>                 S  [mise.toml, .tool-versions]
-  <task runner>                  S  check = typecheck + lint + unit tests  [Makefile, justfile, turbo.json]
+  <version pins>                 S  [.tool-versions, or the version manager's file]
+  <task runner>                  S  check = typecheck + lint + unit tests  [Makefile, justfile, or the workspace runner]
   .env.example                   S  every variable, one comment each
   .env.worktree.example          M  per-worktree overrides, every port listed
   <encrypted secrets>            S  [fnox.toml, secrets.sops.yaml]

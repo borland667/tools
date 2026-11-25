@@ -4,7 +4,10 @@
 `skills/dev-flow/` and its sibling `skills/repo-scaffold/`. It requires Python
 3.9+ with no third-party dependencies. It validates distribution resources and
 links without loading a model, using Beads or changing files. It is not a
-project-code test or credential scanner.
+project-code test or credential scanner. It checks required files, skill
+frontmatter, links inside Markdown files and templates, and machine or account
+bindings in every text file; it does not execute the shell assets or check their
+syntax.
 
 ```bash
 python3 scripts/validate_dev_flow.py --help

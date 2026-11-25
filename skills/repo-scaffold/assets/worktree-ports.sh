@@ -5,12 +5,15 @@
 #
 # Each worktree claims a numbered slot once, atomically, in the git common dir,
 # so two worktrees can never share one. The main checkout is slot 0. Ports are
-# BASE + STRIDE * slot, and COMPOSE_PROJECT_NAME is the repo name plus the slot.
-# Edit _wt_ports for the target stack and delete pairs it lacks. Any of them
-# can be overridden in the gitignored .env.worktree, sourced last. Slots of
-# worktrees git no longer registers are reclaimed.
+# BASE + STRIDE * slot, and COMPOSE_PROJECT_NAME is this checkout's directory
+# name plus the slot. Edit _wt_ports for the target stack and delete pairs it
+# lacks. Any of them can be overridden in the gitignored .env.worktree, sourced
+# last. Slots of worktrees git no longer registers are reclaimed. If no slot is
+# left, the script says so and leaves the variables unset rather than guessing.
 
 _wt_stride=10
+# 50 slots spans 500 ports per service; raise it only if the target can listen
+# that far out.
 _wt_max_slots=50
 
 # Docker Compose project names take lowercase letters, digits, "-" and "_",
@@ -84,10 +87,9 @@ $wtpath
     fi
     slot=$((slot + 1))
   done
-  printf 'worktree-ports: all %s slots are claimed; this checkout reuses slot 0 ports\n' \
+  printf 'worktree-ports: all %s slots are claimed; raise _wt_max_slots or remove stale worktrees\n' \
     "$_wt_max_slots" >&2
-  echo 0
-  return 0
+  return 1
 }
 
 # One "NAME BASE" pair per line; each NAME becomes an exported variable.
@@ -97,22 +99,21 @@ _wt_ports() {
 
 WORKTREE_SLOT="$(_wt_slot)"
 if [ -z "$WORKTREE_SLOT" ]; then
-  printf 'worktree-ports: git did not report a checkout; keeping the base ports\n' >&2
-  WORKTREE_SLOT=0
-fi
-export WORKTREE_SLOT
-
-while read -r _wt_name _wt_base; do
-  export "$_wt_name=$((_wt_base + _wt_stride * WORKTREE_SLOT))"
-done <<EOF
+  printf 'worktree-ports: no slot for this checkout; ports are left unset\n' >&2
+else
+  export WORKTREE_SLOT
+  while read -r _wt_name _wt_base; do
+    export "$_wt_name=$((_wt_base + _wt_stride * WORKTREE_SLOT))"
+  done <<EOF
 $(_wt_ports)
 EOF
-COMPOSE_PROJECT_NAME="$(_wt_slug "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")-$WORKTREE_SLOT"
-export COMPOSE_PROJECT_NAME
+  COMPOSE_PROJECT_NAME="$(_wt_slug "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")")-$WORKTREE_SLOT"
+  export COMPOSE_PROJECT_NAME
 
-_wt_local="$(git rev-parse --show-toplevel 2>/dev/null)/.env.worktree"
-# shellcheck disable=SC1090
-[ -f "$_wt_local" ] && . "$_wt_local"
+  _wt_local="$(git rev-parse --show-toplevel 2>/dev/null)/.env.worktree"
+  # shellcheck disable=SC1090
+  [ -f "$_wt_local" ] && . "$_wt_local"
+fi
 
 # Only print when run directly, so sourcing from a shell hook stays quiet.
 # zsh reports "file" in ZSH_EVAL_CONTEXT when a script is sourced.

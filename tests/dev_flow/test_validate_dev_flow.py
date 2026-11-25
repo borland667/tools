@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -242,6 +243,117 @@ class RepoScaffoldValidationTests(unittest.TestCase):
         self.assertIn("ERROR: repo-scaffold: missing required file: checklist.md",
                      result.stdout)
         self.assertIn("dev-flow package valid", result.stdout)
+
+
+class ScaffoldScriptTests(unittest.TestCase):
+    """Behaviour of the shipped shell assets, not just their presence."""
+
+    ASSETS = REPO / "skills" / "repo-scaffold" / "assets"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="scaffold-scripts-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def git(self, repo, *args):
+        return subprocess.run(["git", "-C", str(repo), *args],
+                              capture_output=True, text=True, check=True)
+
+    def new_repo(self):
+        repo = self.root / "repo"
+        repo.mkdir()
+        self.git(repo, "init", "-q")
+        self.git(repo, "config", "user.email", "test@example.com")
+        (repo / "README.md").write_text("example\n")
+        self.git(repo, "add", "README.md")
+        self.git(repo, "commit", "-qm", "init")
+        return repo
+
+    def source_in(self, script, directory):
+        """Source the script in a child shell and print the resolved values."""
+        runner = self.root / "source-report.sh"
+        runner.write_text('. "$SRC"\nprintf "%s|%s|%s\\n" '
+                          '"$WORKTREE_SLOT" "$WEB_PORT" "$COMPOSE_PROJECT_NAME"\n')
+        return subprocess.run(
+            ["bash", str(runner)], cwd=str(directory),
+            env={**os.environ, "SRC": str(script)},
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_shell_assets_parse(self):
+        for name in ("worktree-ports.sh", "bootstrap.sh.template"):
+            result = subprocess.run(["bash", "-n", str(self.ASSETS / name)],
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_worktrees_get_distinct_stable_slots(self):
+        repo = self.new_repo()
+        first = self.root / "wt-a"
+        second = self.root / "wt-b"
+        self.git(repo, "worktree", "add", "-q", str(first), "-b", "wt-a")
+        self.git(repo, "worktree", "add", "-q", str(second), "-b", "wt-b")
+        script = self.ASSETS / "worktree-ports.sh"
+
+        main = self.source_in(script, repo)
+        again = self.source_in(script, first)
+        other = self.source_in(script, second)
+        self.assertEqual(again.stdout, self.source_in(script, first).stdout)
+        slot_a, port_a, compose_a = again.stdout.strip().split("|")
+        slot_b, port_b, compose_b = other.stdout.strip().split("|")
+        self.assertEqual(main.stdout.strip().split("|")[0], "0")
+        self.assertEqual(len(again.stdout.strip().splitlines()), 1, again.stdout)
+        self.assertNotEqual(slot_a, slot_b)
+        self.assertEqual(int(port_a), 3000 + 10 * int(slot_a))
+        self.assertEqual(int(port_b), 3000 + 10 * int(slot_b))
+        self.assertNotEqual(compose_a, compose_b)
+        self.assertTrue(compose_b.islower())
+
+    def test_removed_worktree_frees_its_slot(self):
+        repo = self.new_repo()
+        first = self.root / "wt-a"
+        self.git(repo, "worktree", "add", "-q", str(first), "-b", "wt-a")
+        script = self.ASSETS / "worktree-ports.sh"
+        slot = self.source_in(script, first).stdout.strip().split("|")[0]
+        self.git(repo, "worktree", "remove", "--force", str(first))
+        freed = self.root / "wt-b"
+        self.git(repo, "worktree", "add", "-q", str(freed), "-b", "wt-b")
+        self.assertEqual(self.source_in(script, freed).stdout.strip().split("|")[0], slot)
+
+    def test_exhausted_slots_leave_ports_unset(self):
+        repo = self.new_repo()
+        limited = self.root / "limited.sh"
+        limited.write_text((self.ASSETS / "worktree-ports.sh").read_text()
+                           .replace("_wt_max_slots=50", "_wt_max_slots=1"))
+        first = self.root / "wt-a"
+        second = self.root / "wt-b"
+        self.git(repo, "worktree", "add", "-q", str(first), "-b", "wt-a")
+        self.git(repo, "worktree", "add", "-q", str(second), "-b", "wt-b")
+        self.assertEqual(self.source_in(limited, first).stdout.strip().split("|")[0], "1")
+        result = self.source_in(limited, second)
+        self.assertEqual(result.stdout.strip(), "||", result.stdout)
+        self.assertIn("all 1 slots are claimed", result.stderr)
+
+    def test_executing_prints_and_sourcing_does_not(self):
+        repo = self.new_repo()
+        worktree = self.root / "wt-a"
+        self.git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-a")
+        executed = subprocess.run(["bash", str(self.ASSETS / "worktree-ports.sh")],
+                                  cwd=str(worktree), capture_output=True, text=True, check=False)
+        self.assertIn("COMPOSE_PROJECT_NAME=", executed.stdout)
+        sourced = subprocess.run(["bash", "-c", 'set -- info; . "$SRC"; printf ok'],
+                                 cwd=str(worktree), env={**os.environ,
+                                                        "SRC": str(self.ASSETS / "worktree-ports.sh")},
+                                 capture_output=True, text=True, check=False)
+        self.assertEqual(sourced.stdout, "ok", sourced.stdout + sourced.stderr)
+
+    def test_bootstrap_rejects_unknown_flags(self):
+        filled = self.root / "bootstrap.sh"
+        filled.write_text((self.ASSETS / "bootstrap.sh.template").read_text()
+                          .replace("{{FIELD}}", "TOOL"))
+        result = subprocess.run(["bash", str(filled), "--dry-run"],
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("usage:", result.stderr)
 
 
 if __name__ == "__main__":

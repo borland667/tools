@@ -6,7 +6,11 @@
 set -u
 
 mode=install
-[ "${1:-}" = "--check" ] && mode=check
+case "${1:-}" in
+  "") ;;
+  --check) mode=check ;;
+  *) printf 'usage: %s [--check]\n' "$0" >&2; exit 2 ;;
+esac
 
 missing=()
 ok()   { printf '  \342\234\223 %s\n' "$1"; }

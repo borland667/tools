@@ -60,7 +60,8 @@ per-language tooling are in dev-flow's `invariant-guards.md`.
 one person knows, and a definition of done that varies by person.
 
 - **Pinned versions, checked everywhere (S).** Pin tool versions in one file
-  (`mise.toml`, `.tool-versions` or the ecosystem's equivalent). Where another
+  (a version manager's pin file, `.tool-versions`, or the ecosystem's
+  equivalent). Where another
   file must repeat a pin (a package manager field, a build service config),
   CI fails when they disagree and says which to update.
 - **One local gate command (S).** Typecheck, lint and unit tests in one run
@@ -77,10 +78,11 @@ one person knows, and a definition of done that varies by person.
   warning and leaves the shell usable.
 - **Strict environment in the build (M).** Undeclared variables never reach a
   build or test task, so results are reproducible. Values that change per
-  commit or per machine are declared on the task that needs them, so they do
-  not change every task's cache key.
-- **Dependency patches (S).** Committed patch files pinned to an exact version,
-  never edits inside the dependency directory.
+  commit or per machine are declared only on the task that needs them, so they
+  do not invalidate every task's cache.
+- **Dependency patches (S)** where the ecosystem supports them: committed
+  patch files pinned to an exact version, never edits inside the dependency
+  directory.
 - **Generated files (S).** Marked as generated for review tools; CI regenerates
   them and fails on any difference.
 - **Reset ladder (M).** `CLEAN-BUILDS.md` from `assets/CLEAN-BUILDS.md.template`.
@@ -93,7 +95,9 @@ over ports, local databases and caches.
 - **Per-worktree port slots (M).** Each worktree claims a numbered slot
   atomically under the shared git directory; every port is a base plus a
   stride times the slot; a gitignored local file can override any port; one
-  command prints what the checkout resolved. Template:
+  command prints what the checkout resolved; if the slot space is exhausted it
+  says so and leaves the variables unset rather than reusing another checkout's
+  ports. Template:
   `assets/worktree-ports.sh`.
 - **Local service stack per worktree (M).** A compose file (or equivalent)
   bound to loopback, with throwaway credentials, ports from the slot and a
@@ -107,8 +111,8 @@ over ports, local databases and caches.
 **Problem:** secrets in chat, in plain files, or in a CI store nobody can
 audit; and teammates who leave still holding everything.
 
-- **Encrypted in the repo (S).** A tool such as fnox with age, or sops, keeps
-  ciphertext committed. Each person holds their own private key outside the
+- **Encrypted in the repo (S).** A tool such as age or sops keeps ciphertext
+  committed. Each person holds their own private key outside the
   repo, from the team's password manager.
 - **Personal tokens in the OS keychain (S)**, named in the secret file but not
   stored in it.

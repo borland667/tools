@@ -17,22 +17,24 @@
   no job shares a database. External model or API calls are replayed from
   recordings, and the real host is blocked so a missing recording fails loudly.
 - A preview environment per pull request (below).
-- One sticky pull-request comment updated in place for preview URLs and test
-  accounts, instead of a new comment per push.
+- One pull-request comment updated in place (where the host supports editing a
+  comment) for preview URLs and test accounts, instead of a new comment per push.
 - Generated-file drift check: regenerate, then fail on any difference.
 
 **L — add**
 
 - Integration tests sharded by committed timings, longest first.
-- Opt-in jobs by label for slow or billed work (mobile builds, payment sandbox).
+- Opt-in jobs by label for slow or billed work (for example a mobile build or
+  a payment sandbox).
 - A nightly live check against the real providers. It alerts; it never blocks
   a pull request, so provider flakiness does not stop merges.
 
 ## Preview environments (M)
 
 - CI is the only deployer; the hosting platform's own git integration is off.
-- Each pull request gets its own database branch or schema, migrated and
-  seeded with fixture accounts that exist only in disposable stores.
+- Each pull request gets its own isolated data (a database branch, a schema,
+  or a throwaway instance), migrated and seeded with fixture accounts that exist
+  only in disposable stores.
 - Deploy only after the gates pass, then run a smoke test that signs in as a
   fixture account and checks the preview reached its own data.
 - Tear the preview and its data down when the pull request closes. A nightly
@@ -54,8 +56,9 @@ Rules at every tier:
   request whose head is a long-lived branch.
 - Task branches rebase onto their base; they never merge the base in.
 - The deploy job runs migrations, asserts they are current, deploys, then moves
-  the public alias. Migrations never run inside the application build. Its
-  concurrency group never cancels a deploy halfway.
+  how the platform switches traffic (an alias, a tag, a blue-green swap).
+  Migrations never run inside the application build. Its concurrency group never
+  cancels a deploy halfway.
 - Release actions — tags, production deploys, infrastructure applies — are
   triggered by a person, never by an agent on its own authority.
 
@@ -65,7 +68,8 @@ Tier L additions:
   integration branch, open until the whole project is accepted. Each ticket is
   a small pull request into that base. The base merges once every ticket is in,
   manual QA has passed on a build, and errors raised on its previews are
-  resolved or accepted.
+  resolved or accepted. Because that base pull request stays a draft, the review
+  service runs on each ticket pull request, not on the base.
 - **Hotfixes** branch from staging, ship as a patch release, and the
   integration branch is rebased onto staging the same day; the next promotion
   refuses until it has been.
