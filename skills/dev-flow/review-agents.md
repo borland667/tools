@@ -95,6 +95,29 @@ protection. Green tests without this evidence do not establish test-first work.
 
 A finding that recurs across reviews in the same repo is proposed as a new
 catalog entry at the Close stage, so the next review checks for it by rule.
+When it can be checked mechanically, propose a guard instead, using
+[invariant-guards.md](invariant-guards.md).
+
+Every pass reads the repo's hard invariants from its contract; a change that
+breaks one is a blocker whether or not a guard caught it. When the contract
+names a pull-request review service, also give the reviewer that service's
+unresolved and recent threads on changes to the same files or area, so the
+local review raises what that service would.
+
+## Pull-request review services
+
+"Review service" here means a bot or paid service that reviews the pull request
+itself (Greptile, CodeRabbit and the like). It is not a review pass run on a
+hosted model, which Pass A below uses.
+
+Such a service is not one of the passes below; it comes after them. Request it
+only when the required local passes have no
+unresolved blocking findings and CI is green on the head commit, never on a
+draft and never while one of its reviews is still running. Follow the
+contract's *Review service* row for who may request it. Each round fixes or
+answers every thread with a reason in one push; a rebase that changes
+none of the PR's own lines is no reason for a new request. Report its state
+with evidence: score or verdict, unresolved thread count, run identity.
 
 ## Passes
 
@@ -226,6 +249,10 @@ verification results apply to a different working tree.
 Change under review: run `<DIFF_COMMAND>`. Read the surrounding code of every
 hunk, and the callers of anything whose behaviour changed, before judging it.
 Repo rules to apply: <CATALOG_PATHS, or "none">
+Hard invariants of this repo, each with its guard or "unguarded":
+<HARD_INVARIANTS, or "none recorded">
+Unresolved or recent threads from the repo's pull-request review service on
+these files: <REVIEW_THREADS, or "none provided">
 
 Role <ROLE>: review for <ROLE_LOOKS_FOR>
 

@@ -31,6 +31,11 @@ authority. That request alone does not adopt the full workflow, initialize
 Beads or grant Git actions. The workflow invariants and stages below apply
 when adopting or executing dev-flow.
 
+dev-flow runs one task inside a repo. What the repo itself should contain —
+document split, invariant guards, toolchain, worktree isolation, secrets, CI,
+previews and release flow — is the sibling `repo-scaffold` skill. Use it to
+set up or audit a repo; this skill neither requires nor installs it.
+
 ## Canonical source and local setup
 
 Maintain this skill and its workflow references in the tools repo's
@@ -138,6 +143,13 @@ otherwise propose the addition.
 | Base sync | Local-only base or configured remote/base-update command |
 | Autonomy | `propose` / `commit-local` / `commit-push` |
 | Review catalogs | Anti-pattern lists, review-bot rule files or checklists the reviewers must apply |
+| Hard invariants | Rules whose violation is a bug even if the code works, each with its guard; [invariant-guards.md](invariant-guards.md) |
+| Review service | Bot or paid review service on the PR, its trigger and who requests it |
+| PR template | The repo's PR body template, or [assets/PR.md.template](assets/PR.md.template) |
+| Workspace isolation | How ports, local services and data stay separate per worktree |
+| Secrets | Secret store, key holders, CI access and environment separation |
+| Preview environments | Per-PR environment, data, smoke check and teardown |
+| Release flow | Branches, promotion, version source and who triggers |
 | Local second opinion | Optional host profile, read-only transport and limits; advisory only |
 | Engineering | Target language/tooling, architecture ownership, applicable rules and declared module budgets |
 | Design decisions | Where requirement answers, compared alternatives and reversibility classification are recorded; [design-decisions.md](design-decisions.md) supplies the procedure |
@@ -290,7 +302,9 @@ follow the requested endpoint rather than forcing implementation.
 - When a requirement can be checked mechanically, consider making it a
   repeatable gate instead of relying on repeated model review. For gate changes,
   define the command, trigger, input scope and failure behaviour using
-  [deterministic-gates.md](deterministic-gates.md).
+  [deterministic-gates.md](deterministic-gates.md). When the task adds or
+  changes a hard invariant, plan its guard with
+  [invariant-guards.md](invariant-guards.md).
 - Deep lane with authorized multi-agent planning: use two planners when
   available (see Multi-agent) and merge their drafts. Otherwise the lead writes
   the plan; do not treat an unavailable planning pass as one that ran.
@@ -413,7 +427,10 @@ non-blocking deferrals have a reason and a linked bead.
   establish the new state. Explain any carry-forward across identical content.
 - Direct mode: synchronize the base as above while preserving uncommitted work.
   Do not amend or rebase commits that are already pushed.
-- Follow the repo's commit and PR conventions.
+- Follow the repo's commit and PR conventions. When the repo has no PR
+  template, write the body from [assets/PR.md.template](assets/PR.md.template).
+- Do not request a pull-request review service until its conditions in
+  [review-agents.md](review-agents.md) are met.
 - Audit the staged diff for secrets. Update docs in the same change.
 - With commit authority, create one clean commit per change unless the repo
   says otherwise. In direct mode that commit is local integration. In worktree
@@ -466,8 +483,8 @@ as authorized; the bead and handoff state which actually occurred.
   [tmp-docs.md](tmp-docs.md); ignored documents can still be the only copy.
 - Record the final tested revision/environment, actual delivery state, gaps,
   follow-up beads, retained work and concrete next action before closing.
-  For mapped tickets, reconcile scope/status and authorized public evidence
-  under [ticket-mapping.md](ticket-mapping.md). Record local and remote states
+  For mapped tickets, reconcile scope/status and authorized public evidence,
+  including the QA-facing evidence, under [ticket-mapping.md](ticket-mapping.md). Record local and remote states
   separately; required unverified remote updates keep delivery unfinished.
   Close with `bd close <id> --reason "..." --json` only when acceptance is
   satisfied.

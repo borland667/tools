@@ -34,6 +34,8 @@ not authorize rollout, configuration changes or tracker initialization.
 | Purpose | The target project's current purpose and scope, without historical project examples. |
 | Documentation | Links to relevant target-project documentation when it exists, with reading triggers. Omit absent links; the guide must work without a documentation predecessor. |
 | Scope | Directories/components covered by this guide and boundaries between them. State the scope directly instead of referring to another guide for the rules. |
+| Commands | The local gate and other everyday commands with their working directory, one line each. Mark any not yet run in the target as unverified. |
+| Hard invariants | Rules whose violation is a bug even when the code works, each with the guard that enforces it or marked unguarded, using [invariant-guards.md](invariant-guards.md). Only rules that apply to this target. |
 | Code boundaries | Required dependency/state ownership, contract/codegen order, generated-file ownership and data-preservation constraints. Include only requirements that apply to this project. |
 | Engineering practices | Select the relevant baseline and profiles from this package's [engineering-practices.md](engineering-practices.md). State concise applicable rules in the output and bind language/tooling, boundaries, budgets and exceptions to this target; no external project guide is needed. |
 | Setup | Runtime/package manager, command working directories and environment/service prerequisites established for the target. Mark proposed commands as unverified until checked. |

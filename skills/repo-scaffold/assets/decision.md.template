@@ -1,0 +1,32 @@
+<!-- One decision per file under docs/decisions/. Resolve every {{FIELD}} and remove this comment. -->
+# {{DECISION_TITLE}}
+
+**Written:** {{YYYY-MM-DD}} · **Status:** {{proposed | decided | superseded by FILE}} ·
+**Decided by:** {{OWNER}}
+
+{{WHY_THIS_NEEDS_DECIDING_IN_TWO_SENTENCES}}
+
+## Requirement drivers
+
+- {{DRIVER: volume, latency, cost, compliance, consumers, failure behaviour}}
+
+## Options
+
+| Option | Gains | Hidden cost | Fails when |
+|---|---|---|---|
+| {{A}} | {{}} | {{}} | {{}} |
+| {{B}} | {{}} | {{}} | {{}} |
+
+## Decision
+
+- [ ] {{OPTION_A}} — {{COST_AND_IMPACT}}
+- [ ] {{OPTION_B}} — {{COST_AND_IMPACT}}
+
+**Chosen:** {{OPTION}}, because {{DRIVER_IT_SATISFIES}}.
+**Reversibility:** {{two-way | one-way}} — {{WHAT_UNDOING_IT_COSTS}}.
+
+## Evidence
+
+| Question | Answer | Source, checked on |
+|---|---|---|
+| {{}} | {{}} | {{}} |

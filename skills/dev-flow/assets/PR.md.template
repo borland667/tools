@@ -1,0 +1,30 @@
+Ticket: {{TICKET_LINK_OR_N/A}}
+
+## What changed
+
+<!-- What a reviewer gets, with the reasoning folded in. Not a file list and
+     not a restatement of the diff. For a fix, say what was wrong and why it
+     behaved that way; the cause is usually the most useful sentence. -->
+
+## How it was verified
+
+<!-- Evidence, not intent: the commands run and what they printed, numbers
+     before and after, which suites passed and how many cases. The repo's fast
+     verify command is the floor, not the answer. Name anything that could not
+     be verified. UI work: a screenshot or recording, old beside new. -->
+
+## Risk
+
+<!-- Optional. What could break, for whom, and how it would be noticed: paths
+     the tests do not reach, a migration, a CI or config change, behaviour
+     that only shows in production. -->
+
+## Rollback
+
+<!-- Optional. "Revert the PR" is enough when nothing persists. Otherwise:
+     a migration to undo, rows already written, a flag to flip, a redeploy. -->
+
+## Not done
+
+<!-- What this deliberately leaves out and what picks it up. "Nothing" is a
+     valid answer; leaving the section empty is not. -->

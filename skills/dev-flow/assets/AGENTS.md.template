@@ -7,13 +7,23 @@ This template does not grant permissions or install tools/hooks. -->
 
 ## Start here
 
-This guide records the repo's operating bindings. Follow project documentation
-linked below when provided; keep detailed design and setup material in its
-owning documentation.
+This guide records the repo's rules and commands only. Design and its reasons
+live in the documents linked below; do not restate them here.
 
 {{DOCUMENTATION_MAP_WITH_WHEN_TO_READ_EACH_LINK}}
 
 {{GUIDE_SCOPE_AND_COMPONENT_BOUNDARIES}}
+
+## Commands
+
+{{COMMANDS_WITH_ONE_LINE_PURPOSE_EACH_INCLUDING_THE_LOCAL_GATE}}
+
+## Hard invariants
+
+Violating any of these is a bug even if the code works. Each names the test or
+lint rule that enforces it, or says "unguarded".
+
+{{INVARIANT_LIST_EACH_WITH_ITS_GUARD_PATH}}
 
 ## Code boundaries
 

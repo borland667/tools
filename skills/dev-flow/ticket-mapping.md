@@ -110,6 +110,27 @@ At start/resume, material remote edits, handoff and Close:
    comment. After a timeout, inspect current remote state before any authorized
    retry; partial API success is not a complete update.
 
+## QA-facing evidence
+
+Testers and reviewers outside the agent workflow read the external ticket, not
+the bead or the PR. Posting there needs the same write authority as any other
+external change; a ticket binding does not grant it. Where that authority
+exists and the task reaches a review, QA handoff or Close, publish the
+authorized public portion of the evidence on the ticket:
+
+- a recording for a flow or motion, screenshots for static screens, or a
+  redacted terminal transcript for backend-only work; the before state for a fix;
+- every environment touched, with the build or preview it was checked on;
+- two to five numbered how-to-test steps, each with its expected result;
+- what the task leaves out or could not verify.
+
+Keep it short and plain; attach logs rather than pasting them into the
+comment. Without that authority, record the prepared text as a pending update
+on the bead. Moving the ticket to a QA state follows the bound status map and
+its own authority.
+
+## Reconciliation and pending updates
+
 Keep pending updates and failures on the bead, not a separate Markdown sync
 queue. Remote unavailability does not prove deletion or permit duplicate
 creation. Record missing credentials/connectivity without copying credentials;

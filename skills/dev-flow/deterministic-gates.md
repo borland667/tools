@@ -16,6 +16,8 @@ need not run on every keystroke or apply to every file type.
   formatting, lint, types, schema/codegen consistency, dependency or architecture
   rules, secrets patterns, or focused tests. Keep contextual judgment in review.
   Do not create a new gate for every task or speculative future requirement.
+  For architecture and data rules, the guard patterns, their self-tests and
+  minimum-match assertions are in [invariant-guards.md](invariant-guards.md).
 - A deterministic gate returns a reproducible verdict for defined inputs,
   configuration and tool versions. Avoid live model calls, nondeterministic
   external services and implicit dependency downloads during the check.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the dev-flow distribution without installed agents or services."""
+"""Validate the dev-flow and repo-scaffold skill packages without installed agents or services."""
 
 import argparse
 from pathlib import Path
@@ -33,6 +33,23 @@ REQUIRED_FILES = (
     "installation.md",
     "validation.md",
     "local.example.md",
+    "invariant-guards.md",
+    "assets/PR.md.template",
+    ".gitignore",
+)
+REPO_SCAFFOLD_REQUIRED_FILES = (
+    "SKILL.md",
+    "practices.md",
+    "layout.md",
+    "delivery.md",
+    "checklist.md",
+    "assets/ARCHITECTURE.md.template",
+    "assets/decision.md.template",
+    "assets/runbook.md.template",
+    "assets/CLEAN-BUILDS.md.template",
+    "assets/bootstrap.sh.template",
+    "assets/worktree-ports.sh",
+    "LICENSE",
     ".gitignore",
 )
 PRIVATE_BINDING = re.compile(
@@ -41,6 +58,10 @@ PRIVATE_BINDING = re.compile(
 )
 LOCAL_LINK = re.compile(r"\]\(([^)\n]+)\)")
 PRIVATE_LOCAL_FILES = frozenset({"local.md", "local.hermes.yaml"})
+PACKAGES = {
+    "dev-flow": (REQUIRED_FILES, PRIVATE_LOCAL_FILES),
+    "repo-scaffold": (REPO_SCAFFOLD_REQUIRED_FILES, frozenset({"local.md"})),
+}
 
 
 def has_description(header: str) -> bool:
@@ -59,11 +80,12 @@ def has_description(header: str) -> bool:
     return False
 
 
-def validate(skill_dir: Path) -> list[str]:
+def validate(skill_dir: Path, package: str = "dev-flow") -> list[str]:
     """Return diagnostics, leaving the package and configuration untouched."""
+    required, private_files = PACKAGES[package]
     root = skill_dir.resolve()
     errors = []
-    for name in REQUIRED_FILES:
+    for name in required:
         if not (root / name).is_file():
             errors.append(f"missing required file: {name}")
     if not root.is_dir():
@@ -74,7 +96,7 @@ def validate(skill_dir: Path) -> list[str]:
         if path.is_symlink():
             errors.append(f"{relative}: package must contain files, not symlinks")
             continue
-        if str(relative) in PRIVATE_LOCAL_FILES:
+        if str(relative) in private_files:
             if not path.is_file():
                 errors.append(f"{relative}: private host setup must be a regular file")
             continue
@@ -88,7 +110,7 @@ def validate(skill_dir: Path) -> list[str]:
             errors.append(f"{relative}: cannot read UTF-8 package resource")
             continue
         if relative == Path(".gitignore"):
-            for private in sorted(PRIVATE_LOCAL_FILES):
+            for private in sorted(private_files):
                 if "/" + private not in content.splitlines():
                     errors.append(f".gitignore: must ignore /{private} private host setup")
         if PRIVATE_BINDING.search(content):
@@ -99,11 +121,11 @@ def validate(skill_dir: Path) -> list[str]:
                 errors.append("SKILL.md: missing frontmatter")
             else:
                 header = frontmatter.group(1)
-                if not re.search(r"^name: dev-flow$", header, re.M):
-                    errors.append("SKILL.md: expected name: dev-flow")
+                if not re.search(rf"^name: {re.escape(package)}$", header, re.M):
+                    errors.append(f"SKILL.md: expected name: {package}")
                 if not has_description(header):
                     errors.append("SKILL.md: missing or empty description")
-        if path.suffix != ".md" and path.name != "AGENTS.md.template":
+        if path.suffix != ".md" and not path.name.endswith(".md.template"):
             continue
         for target in LOCAL_LINK.findall(content):
             target = target.strip().removeprefix("<").removesuffix(">")
@@ -124,19 +146,33 @@ def validate(skill_dir: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--skill",
+        choices=sorted(PACKAGES),
+        help="package to validate; defaults to dev-flow with --skill-dir, "
+             "otherwise every package in this checkout",
+    )
+    parser.add_argument(
         "--skill-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "skills" / "dev-flow",
-        help="package directory; defaults to this checkout's skills/dev-flow",
+        help="package directory; defaults to this checkout's skills/<skill>",
     )
     args = parser.parse_args()
-    errors = validate(args.skill_dir)
-    if errors:
+    skills_root = Path(__file__).resolve().parents[1] / "skills"
+    if args.skill_dir is not None:
+        targets = [(args.skill or "dev-flow", args.skill_dir)]
+    else:
+        names = [args.skill] if args.skill else sorted(PACKAGES)
+        targets = [(name, skills_root / name) for name in names]
+    failed = False
+    for package, skill_dir in targets:
+        errors = validate(skill_dir, package)
         for error in errors:
-            print(f"ERROR: {error}")
-        return 1
-    print("dev-flow package valid: required files, metadata, local links and portability")
-    return 0
+            print(f"ERROR: {package}: {error}" if len(targets) > 1 else f"ERROR: {error}")
+        if errors:
+            failed = True
+        else:
+            print(f"{package} package valid: required files, metadata, local links and portability")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

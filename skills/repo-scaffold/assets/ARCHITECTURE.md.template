@@ -1,0 +1,52 @@
+<!-- Resolve every {{FIELD}} from verified facts; remove sections that do not apply and this comment. -->
+# Architecture
+
+{{ONE_PARAGRAPH_WHAT_THE_SYSTEM_IS_AND_WHERE_IT_RUNS}}
+
+```text
+{{ASCII_DIAGRAM_OF_DEPLOYABLES_STORES_AND_EXTERNAL_SERVICES}}
+```
+
+This document says what is built and what is decided, and which is which. A
+section marked **decided, not built** is a commitment the code has not caught
+up with; a section marked **pending** is an open question whose answer will
+change it.
+
+## Modules
+
+| Module | Responsibility |
+|---|---|
+| {{PATH}} | {{ONE_SENTENCE_RESPONSIBILITY_AND_WHAT_IT_MUST_NOT_DEPEND_ON}} |
+
+{{DEPENDENCY_DIRECTION_AND_THE_GUARD_THAT_ENFORCES_IT}}
+
+## Conventions
+
+- **Identifiers:** {{WHICH_IDS_ARE_PUBLIC_AND_WHICH_ARE_NEVER_EXPOSED}}
+- **Boundaries:** {{WHERE_INPUT_IS_VALIDATED_AND_AUTHORIZATION_IS_CHECKED}}
+- **External systems:** {{ADAPTER_RULE_FOR_PROVIDERS_AND_SDKS}}
+- **Errors and logging:** {{WHAT_IS_REPORTED_AND_WHAT_IS_REDACTED}}
+
+## {{DOMAIN_AREA}}
+
+{{WHAT_IT_DOES_WHY_THIS_DESIGN_AND_WHICH_GUARD_HOLDS_ITS_RULES}}
+
+## Data
+
+{{STORES_OWNERSHIP_MIGRATIONS_AND_WHO_MAY_RUN_THEM}}
+
+## Background work
+
+{{JOBS_SCHEDULES_RETRIES_AND_IDEMPOTENCY}}
+
+## Environments and deploys
+
+{{ENVIRONMENTS_HOSTS_DEPLOY_PATH_AND_RUNBOOK_LINKS}}
+
+## Local development and parallel work
+
+{{LOCAL_STACK_WORKTREE_ISOLATION_AND_SANDBOXES}}
+
+## Not built yet
+
+{{DECIDED_OR_PENDING_ITEMS_WITH_THEIR_STATUS}}

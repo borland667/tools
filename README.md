@@ -86,7 +86,8 @@ These rules apply to all current and future scripts, regardless of language.
 - `scripts/README.md` — documentation for helper scripts.
 - `skills/dev-flow/` — reusable development workflow with review, gates and an AGENTS bootstrap.
 - `skills/dev-flow/installation.md` — canonical setup, linked installations and validation.
-- `scripts/validate_dev_flow.py` — offline skill-package validation.
+- `skills/repo-scaffold/` — what a repo should contain, sized by tier, with an audit checklist and templates.
+- `scripts/validate_dev_flow.py` — offline skill-package validation for both skills.
 - `local_model_eval/` — bounded local-model pilot, fixed fixtures and optional Strata transport.
 - `tests/media_carver/` — CLI mode and parser-heuristic tests for `media_carver.py`.
 - `tests/enacom_mcp/` — tests for the ENACOM tracker reader/writer.
@@ -176,8 +177,8 @@ These rules apply to all current and future scripts, regardless of language.
   Docker sandbox defaults. See
   [`docs/scripts/openclaw_local_gateway.md`](./docs/scripts/openclaw_local_gateway.md).
 - [`scripts/validate_dev_flow.py`](./scripts/validate_dev_flow.py): offline
-  validation of the dev-flow skill's resources, metadata, local links and
-  portability. See [`docs/scripts/validate_dev_flow.md`](./docs/scripts/validate_dev_flow.md).
+  validation of the dev-flow and repo-scaffold skills' resources, metadata,
+  local links and portability. See [`docs/scripts/validate_dev_flow.md`](./docs/scripts/validate_dev_flow.md).
 
 - [`scripts/evaluate_local_models.py`](./scripts/evaluate_local_models.py):
   bounded local inference pilot with a fixed ten-case corpus, context/cache and
@@ -213,9 +214,20 @@ These rules apply to all current and future scripts, regardless of language.
   review and verification drafts alongside the durable Beads record.
   Workflow references, templates and setup docs live together in that folder;
   local installations link to it. Host setup stays in its ignored `local.md`.
+  Hard invariants are enforced by [guard tests](./skills/dev-flow/invariant-guards.md)
+  rather than prose, and a pull-request review service is requested only after
+  local review is clean.
   Hermes can coordinate bounded Claude Code/Codex workers with per-task Claude
   profile selection; see [coordinator setup](skills/dev-flow/hermes-coordinator.md).
   See [installation and validation](./docs/skills/dev-flow.md).
+- [`repo-scaffold`](./skills/repo-scaffold/SKILL.md): what a repository should
+  contain so people and agents can work in it in parallel — document split,
+  invariant guards, pinned toolchain, re-runnable bootstrap, per-worktree port
+  slots, encrypted secrets, CI tiers, preview environments and release flow.
+  Sized by tier (small, medium, large) with an audit checklist and templates.
+  Pairs with dev-flow: its audit fills dev-flow's repo contract. Install it the
+  same way as dev-flow, linking `skills/repo-scaffold`; the same validator
+  checks both packages.
 
 ## Optional Libraries (media_carver)
 

@@ -42,8 +42,25 @@ class PackageValidationTests(unittest.TestCase):
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_selecting_one_skill_validates_only_that_package(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--skill", "dev-flow"],
+            cwd=self.temp.name, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("dev-flow package valid", result.stdout)
+        self.assertNotIn("repo-scaffold", result.stdout)
+
+    def test_unknown_skill_selection_exits_two(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--skill", "not-a-package"],
+            cwd=self.temp.name, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+
     def test_missing_required_resources_fail_with_useful_diagnostic(self):
-        for name in ["assets/AGENTS.md.template", "engineering-practices.md"]:
+        for name in ["assets/AGENTS.md.template", "engineering-practices.md",
+                     "invariant-guards.md", "assets/PR.md.template"]:
             with self.subTest(resource=name):
                 path = self.package / name
                 original = path.read_bytes()
@@ -149,6 +166,82 @@ class PackageValidationTests(unittest.TestCase):
                 result = self.run_cli()
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("empty description", result.stdout)
+
+
+class RepoScaffoldValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="repo-scaffold-package-")
+        self.addCleanup(self.temp.cleanup)
+        self.package = Path(self.temp.name) / "relocated" / "repo-scaffold"
+        source = REPO / "skills" / "repo-scaffold"
+        shutil.copytree(source, self.package, ignore=lambda directory, names: [
+            name for name in names if Path(directory) == source and name == "local.md"])
+
+    def run_cli(self, *extra):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--skill", "repo-scaffold",
+             "--skill-dir", str(self.package), *extra],
+            cwd=self.temp.name, capture_output=True, text=True, check=False,
+        )
+
+    def test_relocated_complete_package_is_valid(self):
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("repo-scaffold package valid", result.stdout)
+
+    def test_missing_required_resource_fails(self):
+        (self.package / "assets" / "worktree-ports.sh").unlink()
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("assets/worktree-ports.sh", result.stdout)
+
+    def test_dev_flow_identity_is_rejected_for_this_package(self):
+        path = self.package / "SKILL.md"
+        path.write_text(path.read_text().replace("name: repo-scaffold", "name: dev-flow", 1))
+        self.assertTrue(any("expected name: repo-scaffold" in e
+                            for e in VALIDATOR.validate(self.package, "repo-scaffold")))
+
+    def test_broken_link_in_a_markdown_template_is_rejected(self):
+        with (self.package / "assets" / "decision.md.template").open("a") as output:
+            output.write("\n[gone](missing.md)\n")
+        self.assertTrue(any("missing linked resource" in e
+                            for e in VALIDATOR.validate(self.package, "repo-scaffold")))
+
+    def test_machine_path_in_a_script_asset_is_rejected(self):
+        with (self.package / "assets" / "bootstrap.sh.template").open("a") as output:
+            output.write("\n# /Users/fixture-user/private\n")
+        self.assertTrue(any("machine/account binding" in e
+                            for e in VALIDATOR.validate(self.package, "repo-scaffold")))
+
+    def test_no_arguments_validates_every_package_in_the_checkout(self):
+        result = subprocess.run([sys.executable, str(SCRIPT)], cwd=self.temp.name,
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("dev-flow package valid", result.stdout)
+        self.assertIn("repo-scaffold package valid", result.stdout)
+
+    def test_missing_private_ignore_rule_is_rejected(self):
+        path = self.package / ".gitignore"
+        path.write_text(path.read_text().replace("/local.md\n", ""))
+        self.assertTrue(any("must ignore /local.md" in e
+                            for e in VALIDATOR.validate(self.package, "repo-scaffold")))
+
+    def test_no_arguments_names_a_failing_package(self):
+        checkout = Path(self.temp.name) / "checkout"
+        shutil.copytree(REPO / "scripts", checkout / "scripts")
+        shutil.copytree(REPO / "skills", checkout / "skills",
+                        ignore=lambda directory, names: [
+                            name for name in names
+                            if name == "__pycache__" or Path(name).suffix in {".pyc", ".pyo"}])
+        (checkout / "skills" / "repo-scaffold" / "checklist.md").unlink()
+        result = subprocess.run(
+            [sys.executable, str(checkout / "scripts" / "validate_dev_flow.py")],
+            cwd=self.temp.name, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("ERROR: repo-scaffold: missing required file: checklist.md",
+                     result.stdout)
+        self.assertIn("dev-flow package valid", result.stdout)
 
 
 if __name__ == "__main__":

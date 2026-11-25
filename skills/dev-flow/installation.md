@@ -25,6 +25,8 @@ bundled `LICENSE` preserves the repository's MIT license for portable distributi
 | `hermes-coordinator.md` / `assets/hermes-coordinator.md` | Hermes coordinator protocol and linked profile instructions |
 | `scripts/run_worker.py` / `worker-launcher.md` | Bounded Claude/Codex jobs with per-task profile selection |
 | `deterministic-gates.md` | Authoring and proving hooks and other repeatable gates |
+| `invariant-guards.md` | Guard patterns for hard invariants, their self-tests and per-language tools |
+| `assets/PR.md.template` | Default PR body when the repo has none |
 | `evidence-and-learning.md` | Resume, baseline, revision-bound evidence and handoff |
 | `tmp-docs.md` / `assets/TMP.md.template` | Categorized local working docs, Beads links, promotion, archive and retention |
 | `bootstrap-agents.md` | Author a fresh guide from target requirements and verified facts |

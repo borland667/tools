@@ -1,0 +1,29 @@
+<!-- Resolve every {{FIELD}} and remove this comment. Never put secret values in a runbook. -->
+# Runbook — {{THING}}
+
+| | |
+|---|---|
+| Resources | {{HOSTS_DATABASES_QUEUES_BY_NAME}} |
+| Deployed by | {{WORKFLOW_OR_COMMAND}} |
+| Who may run this | {{ROLE}} |
+| Secrets | {{WHERE_THEY_LIVE_NOT_THEIR_VALUES}} |
+
+## {{PROCEDURE_NAME}}
+
+1. {{STEP}}
+
+   ```bash
+   {{COMMAND}}
+   ```
+
+   Success prints: {{EXPECTED_OUTPUT}}
+
+## Rollback
+
+{{HOW_TO_UNDO_AND_WHAT_PERSISTS_AFTER_UNDO}}
+
+## When it fails
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| {{}} | {{}} | {{}} |

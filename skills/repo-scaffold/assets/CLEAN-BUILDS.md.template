@@ -1,0 +1,16 @@
+<!-- Resolve every {{FIELD}} with the target's real commands and remove this comment. -->
+# Clean builds
+
+Cheapest reset first. Stop at the first one that fixes the problem. Each says
+what it deletes, so nothing precious is lost by surprise.
+
+| # | Symptom | Reset | Deletes |
+|---|---|---|---|
+| 1 | A task replays a stale result | `{{CLEAR_TASK_CACHE}}` | Task-runner cache only |
+| 2 | Odd dependency errors after switching branches | `{{REINSTALL_DEPENDENCIES}}` | Installed dependencies |
+| 3 | A bundler or dev server shows old code | `{{CLEAR_BUNDLER_CACHE}}` | Bundler/transform cache |
+| 4 | Native or compiled build misbehaves | `{{CLEAN_NATIVE_BUILD}}` | Build output directories |
+| 5 | Local data is wrong or migrations are tangled | `{{RESET_LOCAL_STACK}}` | Local service containers and their data |
+| 6 | Nothing else worked | `{{FULL_CLEAN}}` | Everything ignored by git except local env and keys |
+
+Never reset shared, staging or production data from this list.

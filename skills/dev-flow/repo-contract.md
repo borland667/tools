@@ -7,6 +7,9 @@ skill.
 For a new standalone agent guide, use
 [bootstrap-agents.md](bootstrap-agents.md) and its asset around this contract.
 This remains the single contract template; do not maintain a second copy.
+When the sibling `repo-scaffold` skill is installed, its audit decides the
+values for the Workspace isolation, Secrets, Preview environments and Release
+flow rows; record them here, not in a second file.
 
 ```markdown
 ## Dev flow contract
@@ -25,6 +28,13 @@ This remains the single contract template; do not maintain a second copy.
 | Base sync | `<local-only: use local base / remote and base-update command>` |
 | Autonomy | `<propose / commit-local / commit-push>` |
 | Review catalogs | `<paths to anti-pattern lists / bot rule files / checklists>` or none |
+| Hard invariants | `<rule → guard test or lint rule path>` per invariant, or `unguarded`; see the skill's invariant-guards reference |
+| Review service | `<bot or service / none>`; trigger `<manual request / every push>`; requested by `<who>`; only after the local review is clean |
+| PR template | `<repo template path>` or the skill's `assets/PR.md.template` |
+| Workspace isolation | `<how ports, local services and data stay separate per worktree, and the command that prints them>` or "single checkout only" |
+| Secrets | `<store and provider; where each person's key lives; what CI holds; per-environment separation>` |
+| Preview environments | `<per-PR environment and data, smoke check, teardown and sweep>` or none |
+| Release flow | `<branches; how changes are promoted; where the version comes from; who triggers>` |
 | Coordinator | `<herdr / hermes / none>` default for multi-agent passes; interchangeable, per-task override on the bead |
 | Local second opinion | `<host profile / disabled>`; `<read-only HTTP packet / isolated harness>`; `<request/token/wall limits>`; advisory only |
 | Models by role | `<primary and approved alternate per role; harness/profile; identity evidence; effort/budgets; qualification limits>` using the skill's model-selection reference |
