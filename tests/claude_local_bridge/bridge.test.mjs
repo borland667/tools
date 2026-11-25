@@ -74,6 +74,30 @@ test('aggregates all provider models and preserves duplicate route IDs', async t
   )
 })
 
+test('excludeModels drops retired upstream models from routes and automatic aliases', async t => {
+  const upstreams = []
+  t.after(async () => {
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startAnthropicProvider({
+    models: [model('live-chat'), model('retired-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [{ ...provider('aggregator', 'anthropic', anthropic.baseUrl), excludeModels: ['retired-chat'] }],
+    async bridge => {
+      const response = await getJson(`${bridge.baseUrl}/v1/models`)
+      const upstreamIds = response.data.map(item => item.upstream_model_id ?? item.id)
+      assert.ok(response.data.some(item => item.id === 'aggregator/live-chat'))
+      assert.ok(!upstreamIds.some(id => String(id).includes('retired-chat')))
+      assert.ok(response.data.some(item => item.id.startsWith('claude-') && item.upstream_model_id === 'live-chat'))
+    },
+  )
+})
+
 test('routes Anthropic and OpenAI-compatible message requests by provider-qualified model', async t => {
   const upstreams = []
   t.after(async () => {

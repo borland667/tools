@@ -26,9 +26,6 @@
     ],
     "disabledBuiltinTools": [],
     "disableBundledSkills": false,
-    "builtinToolPolicy": {
-      "*": "allow"
-    },
     "disableDeepLinkRegistration": false
   },
   "features": {
@@ -49,15 +46,6 @@
   },
   "plugins": {
     "organizationPluginsUrl": null,
-    "orgPluginSettings": {
-      "mcpServers": {
-        "*": {
-          "toolPolicy": {
-            "*": "allow"
-          }
-        }
-      }
-    },
     "allowedPluginMarketplaces": [
       {
         "source": "github",

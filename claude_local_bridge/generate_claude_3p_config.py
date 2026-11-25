@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import time
@@ -44,6 +45,35 @@ SENSITIVE_KEYS = {
     "otlpHeaders",
 }
 
+# Claude Desktop's configLibrary schema (read from the 6.28899 app bundle). Anything
+# outside it is ignored by the app and shown as "Some saved settings can't be used
+# as written", so the generator only emits what the app accepts.
+INFERENCE_MODEL_KEYS = (
+    "anthropicFamilyTier",
+    "isFamilyDefault",
+    "supports1m",
+    "prefer1m",
+    "behavesAs",
+    "maxEffort",
+    "minDesktopVersion",
+)
+FAMILY_TIERS = ("opus", "sonnet", "haiku")
+BUILTIN_TOOL_PERMISSIONS = ("allow", "ask")
+
+# Claude Desktop removes gateway/Foundry/Mantle model names that do not look like
+# Anthropic models. A name passes if it is a bare family name, or if it mentions
+# claude/a family/anthropic and matches none of the non-Anthropic model families
+# below (copied from the app bundle; re-check after Claude Desktop updates).
+DESKTOP_MODEL_FAMILIES = ("sonnet", "opus", "haiku", "fable", "mythos")
+DESKTOP_BARE_FAMILY_RE = re.compile(r"^(sonnet|opus|haiku|fable|mythos)(-[\d.]+)?$")
+DESKTOP_NON_ANTHROPIC_RE = re.compile(
+    r"ark-code|astron|command-r|deepseek|doubao|gemini|gemma|glm|gpt|grok|hermes|hy3|kimi|lfm|\bling\b"
+    r"|llama|longcat|mimo|minimax|mistral|mixtral|moonshot|nemotron|openai|phi-|qianfan|qwen|tc-code"
+    r"|\bunic\b|yi-|stepfun|step-3|seed-|bytedance|hunyuan|granite|amazon\.nova|nova-|devstral|ministral"
+    r"|ernie|codex|arcee|trinity|abab|phi\d|\bk2\.|\bm2\.|jamba|arctic|solar|mercury|zamba|kat-coder|\bds-|dpsk"
+)
+NAME_FILTERED_PROVIDERS = {"gateway", "mantle", "foundry"}
+
 
 def main() -> int:
     args = parse_args()
@@ -58,6 +88,7 @@ def main() -> int:
 
     inference_models = resolve_inference_models(args, spec, base_config)
     config = build_config(args, spec, base_config, inference_models)
+    sanitize_desktop_schema(config)
     validate_config(config)
 
     meta = {
@@ -256,13 +287,11 @@ def build_config(
                 "allowedWorkspaceFolders": [{"path": "/", "isDefaultSelected": True}],
                 "disabledBuiltinTools": [],
                 "disableBundledSkills": False,
-                "builtinToolPolicy": {"*": "allow"},
                 "isDesktopExtensionEnabled": True,
                 "isDesktopExtensionSignatureRequired": False,
                 "managedMcpServers": [],
                 "mcpPersistentAlwaysAllowEnabled": True,
                 "isLocalDevMcpEnabled": True,
-                "orgPluginSettings": {"mcpServers": {"*": {"toolPolicy": {"*": "allow"}}}},
                 "allowedPluginMarketplaces": DEFAULT_PLUGIN_MARKETPLACES,
                 "chatTabEnabled": True,
                 "chatAdvancedFileAnalysisEnabled": True,
@@ -352,6 +381,14 @@ def resolve_inference_models(
     spec: dict[str, Any],
     base_config: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    return finalize_family_tiers(load_inference_models(args, spec, base_config))
+
+
+def load_inference_models(
+    args: argparse.Namespace,
+    spec: dict[str, Any],
+    base_config: dict[str, Any],
+) -> list[dict[str, Any]]:
     explicit_models = spec.get("inferenceModels")
     if isinstance(explicit_models, list):
         return normalize_inference_models(explicit_models)
@@ -367,7 +404,9 @@ def resolve_inference_models(
         return normalize_models_payload(read_json_object(args.models_file))
     if source == "bridge-live":
         url = args.models_url or spec.get("modelsUrl") or f"{DEFAULT_BRIDGE_BASE_URL}/v1/models"
-        return normalize_models_payload(fetch_json(url, args.api_key, args.api_key_header), claude_only=True)
+        models = normalize_models_payload(fetch_json(url, args.api_key, args.api_key_header), claude_only=True)
+        # /v1/models carries no family tiers; take them from the hand-made aliases.
+        return apply_alias_hints(models, read_alias_hints(args.bridge_config))
     if source == "bridge-config":
         bridge_config = read_json_object(args.bridge_config)
         aliases = bridge_config.get("claudeDesktopModels")
@@ -400,18 +439,111 @@ def normalize_inference_models(models: list[Any], claude_only: bool = False) -> 
         label = first_string(model.get("labelOverride"), model.get("label"), model.get("displayName"))
         if label:
             next_model["labelOverride"] = label
-        for key in (
-            "anthropicFamilyTier",
-            "isFamilyDefault",
-            "supports1m",
-            "prefer1m",
-            "displayName",
-            "description",
-        ):
+        for key in INFERENCE_MODEL_KEYS:
             if key in model:
                 next_model[key] = model[key]
         normalized.append(next_model)
     return normalized
+
+
+def read_alias_hints(bridge_config_path: Path | None) -> dict[str, dict[str, Any]]:
+    if not bridge_config_path or not bridge_config_path.exists():
+        return {}
+    aliases = read_json_object(bridge_config_path).get("claudeDesktopModels")
+    if not isinstance(aliases, list):
+        return {}
+    return {
+        alias["name"]: {key: alias[key] for key in ("anthropicFamilyTier", "isFamilyDefault") if key in alias}
+        for alias in aliases
+        if isinstance(alias, dict) and isinstance(alias.get("name"), str)
+    }
+
+
+def apply_alias_hints(models: list[dict[str, Any]], hints: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    for model in models:
+        for key, value in hints.get(model["name"], {}).items():
+            model.setdefault(key, value)
+    return models
+
+
+def finalize_family_tiers(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Infer missing tiers from claude-<tier>-* names and keep one family default per tier."""
+    defaults_seen: set[str] = set()
+    for model in models:
+        tier = model.get("anthropicFamilyTier")
+        if tier not in FAMILY_TIERS:
+            model.pop("anthropicFamilyTier", None)
+            match = re.match(r"^claude-(opus|sonnet|haiku)(?:-|$)", model["name"])
+            tier = match.group(1) if match else None
+            if tier:
+                model["anthropicFamilyTier"] = tier
+        if model.get("isFamilyDefault") is True:
+            if not tier or tier in defaults_seen:
+                model["isFamilyDefault"] = False
+            else:
+                defaults_seen.add(tier)
+    return models
+
+
+def desktop_accepts_gateway_model_name(name: str) -> bool:
+    lowered = name.lower()
+    if DESKTOP_BARE_FAMILY_RE.search(lowered):
+        return True
+    if DESKTOP_NON_ANTHROPIC_RE.search(lowered):
+        return False
+    return any(word in lowered for word in ("claude", *DESKTOP_MODEL_FAMILIES, "anthropic"))
+
+
+def sanitize_desktop_schema(config: dict[str, Any]) -> None:
+    """Drop values Claude Desktop would reject or ignore, with a warning for each."""
+    models = config.get("inferenceModels")
+    if config.get("inferenceProvider") in NAME_FILTERED_PROVIDERS and isinstance(models, list):
+        kept = []
+        for model in models:
+            if desktop_accepts_gateway_model_name(model["name"]):
+                kept.append(model)
+            else:
+                warn(
+                    f"skipped inferenceModels name {model['name']!r}: Claude Desktop drops gateway model "
+                    "names that contain a non-Anthropic model family; rename the bridge alias "
+                    "(the label may name the real model)"
+                )
+        if models and not kept:
+            raise SystemExit("error: Claude Desktop would reject every inferenceModels name")
+        config["inferenceModels"] = kept
+
+    policy = config.get("builtinToolPolicy")
+    if policy is not None:
+        valid = (
+            {
+                key: value
+                for key, value in policy.items()
+                if isinstance(key, str) and key and "*" not in key and value in BUILTIN_TOOL_PERMISSIONS
+            }
+            if isinstance(policy, dict)
+            else {}
+        )
+        if valid != policy:
+            warn(
+                "builtinToolPolicy: kept only built-in tool names mapped to allow|ask "
+                "(Claude Desktop drops '*' and unknown keys; 'allow' does not pre-approve)"
+            )
+        if valid:
+            config["builtinToolPolicy"] = valid
+        else:
+            config.pop("builtinToolPolicy")
+
+    plugin_settings = config.get("orgPluginSettings")
+    if plugin_settings is not None and not isinstance(plugin_settings, list):
+        warn(
+            "orgPluginSettings: dropped; Claude Desktop expects a list of "
+            "{serverName, tools: [{toolName, permission}]}, not an object"
+        )
+        config.pop("orgPluginSettings")
+
+
+def warn(message: str) -> None:
+    print(f"warning: {message}", file=sys.stderr)
 
 
 def is_claude_compatible_model_name(name: str | None) -> bool:

@@ -2328,6 +2328,9 @@ function normalizeModelOption(model, provider = providers[0]) {
   if (!id) {
     return null
   }
+  if (provider?.excludeModels?.includes(id)) {
+    return null
+  }
 
   const baseLabel =
     firstString(model?.displayName, model?.display_name, model?.name) ??
@@ -2656,6 +2659,7 @@ async function reloadProviders({ force = false } = {}) {
       authScheme: provider.authScheme,
       modelsFile: provider.modelsFile,
       enabled: provider.enabled,
+      excludeModels: provider.excludeModels,
       toolCapable: provider.toolCapable,
       toolFormat: provider.toolFormat,
       local: provider.local,
@@ -2814,6 +2818,8 @@ function normalizeProvider(provider, index) {
     modelApiTypes: provider?.modelApiTypes ?? {},
     toolCapableModels: Array.isArray(provider?.toolCapableModels)
       ? provider.toolCapableModels.filter(id => typeof id === 'string') : null,
+    excludeModels: Array.isArray(provider?.excludeModels)
+      ? provider.excludeModels.filter(id => typeof id === 'string') : [],
     enabled: provider?.enabled !== false,
   }
 }

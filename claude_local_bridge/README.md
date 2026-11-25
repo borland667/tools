@@ -76,13 +76,13 @@ entries into the existing `claudeDesktopModels` list:
 ```json
 {
   "autoRouting": {
-    "chat": "claude-omlx-gemma-e4b",
+    "chat": "claude-omlx-e4b",
     "tools": "claude-omlx-sushi-coder",
-    "vision": "claude-omlx-gemma-e4b"
+    "vision": "claude-omlx-e4b"
   },
   "claudeDesktopModels": [
     {
-      "name": "claude-omlx-gemma-e4b",
+      "name": "claude-omlx-e4b",
       "target": "omlx/gemma-4-e4b-it-4bit",
       "labelOverride": "OMLX: Gemma 4 E4B",
       "toolCapable": true,
@@ -369,6 +369,12 @@ Provider fields:
 - `toolCapableModels`: optional list of exact upstream model IDs qualified for
   tools. When present, this overrides provider/model hints and stale manual
   alias flags. It reports capability; it does not hide other discovered models.
+- `excludeModels`: optional list of exact upstream model IDs to drop from
+  discovery. Excluded models get no `provider/model` route and no automatic
+  Claude alias, so they leave `/v1/models` and the Claude picker. Use it for
+  models the upstream still lists but no longer serves (retired deployments,
+  revoked keys), as reported by `qualify_aggregator.py`. A manual alias that targets
+  an excluded model stops resolving, so remove it from `claudeDesktopModels`.
 - `capabilityFallback`: defaults to `true`. Set `false` to preserve an explicitly
   selected provider/model for tools and images. Unsupported requests then return
   that provider's error rather than silently running another model.
@@ -750,23 +756,41 @@ Permissive single-user defaults:
   Leaving this key unset is also unrestricted, but the generator writes it
   explicitly so the local profile is self-documenting.
 - Built-in tools and bundled skills are enabled with
-  `disabledBuiltinTools: []`, `disableBundledSkills: false`, and
-  `builtinToolPolicy: {"*": "allow"}`.
+  `disabledBuiltinTools: []` and `disableBundledSkills: false`.
 - Chat, Code, Cowork, Auto mode, tool search, advanced file analysis, local dev
   MCP, persistent MCP approvals, and unsigned desktop extensions are enabled.
 - `managedMcpServers` defaults to an empty list, ready for explicit local or
   remote MCP server entries in the spec.
-- Plugin-delivered MCP tools are pre-approved through `orgPluginSettings`, and
-  the Anthropic `knowledge-work-plugins` and `claude-plugins-official`
+- The Anthropic `knowledge-work-plugins` and `claude-plugins-official`
   repositories are exposed through `allowedPluginMarketplaces`.
+
+Claude Desktop schema checks (the generator applies these to every source and
+prints a `warning:` line on stderr for each value it drops):
+
+- `inferenceModels[]` entries keep only keys Claude Desktop accepts: `name`,
+  `labelOverride`, `anthropicFamilyTier`, `isFamilyDefault`, `supports1m`,
+  `prefer1m`, `behavesAs`, `maxEffort`, and `minDesktopVersion`. Bridge alias
+  fields such as `description`, `target`, and `toolCapable` stay in
+  `bridge.local.json`.
+- Missing tiers are inferred from `claude-opus-*`, `claude-sonnet-*`, and
+  `claude-haiku-*` names; `bridge-live` also takes tiers and family defaults
+  from `claudeDesktopModels`. Only the first `isFamilyDefault` per tier stays.
+- For gateway profiles, names Claude Desktop would silently remove are skipped:
+  a name must mention Claude or a family and must not contain a non-Anthropic
+  model family such as `gemma`, `qwen`, `gpt`, `kimi`, `llama`, or `deepseek`.
+  Name aliases like `claude-omlx-e4b` and put the real model in `labelOverride`.
+- `builtinToolPolicy` keeps only real built-in tool names mapped to `allow` or
+  `ask`; Claude Desktop drops `*`. `allow` only means "not forced to ask"; it
+  does not pre-approve tools.
+- `orgPluginSettings` must be a list of
+  `{"serverName": ..., "tools": [{"toolName": ..., "permission": ...}]}`;
+  the object form is dropped.
 
 Gateway extras supported by the spec:
 
 - `gateway.customHeaders`: writes `inferenceCustomHeaders`.
 - `gateway.oidc`: writes `inferenceGatewayOidc`.
 - `gateway.sessionLifetimeSec`: writes `inferenceSessionLifetimeSec`.
-- Model entries preserve `supports1m`, `prefer1m`,
-  `anthropicFamilyTier`, and `isFamilyDefault` when present.
 - `workspace`, `connectors`, `plugins`, `usageLimits`, `appearance`,
   `updates`, `telemetry`, `bootstrap`, `source`, and `extra` sections map to
   the same top-level keys used by Claude's 3P configuration reference.

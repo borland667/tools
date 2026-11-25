@@ -1,6 +1,9 @@
 import json
 import subprocess
 import sys
+import threading
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 
@@ -125,12 +128,13 @@ def test_generate_config_from_bridge_aliases(tmp_path):
     assert config["managedMcpServers"] == []
     assert config["coworkEgressAllowedHosts"] == ["*"]
     assert config["allowedWorkspaceFolders"] == [{"path": "/", "isDefaultSelected": True}]
-    assert config["builtinToolPolicy"] == {"*": "allow"}
+    # Claude Desktop rejects both shapes, so the generator drops them with a warning.
+    assert "builtinToolPolicy" not in config
+    assert "orgPluginSettings" not in config
+    assert "builtinToolPolicy: kept only built-in tool names" in result.stderr
+    assert "orgPluginSettings: dropped" in result.stderr
     assert config["disabledBuiltinTools"] == []
     assert config["disableBundledSkills"] is False
-    assert config["orgPluginSettings"] == {
-        "mcpServers": {"*": {"toolPolicy": {"*": "allow"}}}
-    }
     assert config["allowedPluginMarketplaces"] == [
         {
             "source": "github",
@@ -188,6 +192,97 @@ def test_dry_run_does_not_write_target_files(tmp_path):
     )
 
     assert not target_lib.exists()
+
+
+def test_bridge_live_models_are_schema_clean_and_keep_tiers(tmp_path):
+    payload = {
+        "object": "list",
+        "data": [
+            {"id": "claude-auto-routing", "owned_by": "bridge", "label": "Auto Routing",
+             "description": "Routes chat, tool, and image requests."},
+            {"id": "claude-opus-5-404289", "owned_by": "aggregator", "label": "gateway: Claude Opus 5.5",
+             "description": "gateway source model: anthropic/claude-opus-5-5"},
+            {"id": "claude-opus-5-111111", "owned_by": "aggregator", "label": "gateway: GPT 5",
+             "description": "gateway source model: gpt-5"},
+            {"id": "claude-haiku-5-222222", "owned_by": "omlx", "label": "OMLX: Qwen3.8 9B"},
+            {"id": "claude-omlx-gemma-e4b", "owned_by": "omlx", "label": "OMLX: Gemma 4 E4B"},
+            {"id": "claude-omlx-e4b", "owned_by": "omlx", "label": "OMLX: Gemma 4 E4B"},
+            {"id": "omlx/gemma-4-e4b-it-4bit", "owned_by": "omlx"},
+        ],
+    }
+    bridge_config = tmp_path / "bridge.local.json"
+    write_json(bridge_config, {
+        "claudeDesktopModels": [
+            {"name": "claude-opus-5-404289", "target": "aggregator/anthropic/claude-opus-5-5",
+             "anthropicFamilyTier": "opus", "isFamilyDefault": True},
+            {"name": "claude-opus-5-111111", "target": "aggregator/gpt-5",
+             "anthropicFamilyTier": "opus", "isFamilyDefault": True},
+        ],
+    })
+    target_lib = tmp_path / "target" / "configLibrary"
+
+    with serve_json(payload) as url:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--no-base",
+                "--config-lib",
+                str(target_lib),
+                "--config-id",
+                "live",
+                "--bridge-config",
+                str(bridge_config),
+                "--models-source",
+                "bridge-live",
+                "--models-url",
+                url,
+                "--apply",
+            ],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+
+    config = read_json(target_lib / "live.json")
+    assert config["inferenceModels"] == [
+        {"name": "claude-auto-routing", "labelOverride": "Auto Routing"},
+        {"name": "claude-opus-5-404289", "labelOverride": "gateway: Claude Opus 5.5",
+         "anthropicFamilyTier": "opus", "isFamilyDefault": True},
+        {"name": "claude-opus-5-111111", "labelOverride": "gateway: GPT 5",
+         "anthropicFamilyTier": "opus", "isFamilyDefault": False},
+        {"name": "claude-haiku-5-222222", "labelOverride": "OMLX: Qwen3.8 9B",
+         "anthropicFamilyTier": "haiku"},
+        {"name": "claude-omlx-e4b", "labelOverride": "OMLX: Gemma 4 E4B"},
+    ]
+    assert "skipped inferenceModels name 'claude-omlx-gemma-e4b'" in result.stderr
+    assert "builtinToolPolicy" not in config
+    assert "orgPluginSettings" not in config
+
+
+@contextmanager
+def serve_json(payload):
+    body = json.dumps(payload).encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1/models"
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def write_json(path, payload):
