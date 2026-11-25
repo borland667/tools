@@ -22,11 +22,11 @@ Do not use this when:
 - You need plugin marketplace access beyond what the signed-in Claude account
   and organization provide.
 
-## gateway API routing and qualification
+## Gateway routing and qualification
 
-gateway can handle main, small, tool, and image requests through the bridge.
-Set those `models` defaults to provider-qualified gateway IDs in the ignored
-`bridge.local.json`. Use `capabilityFallback: false` on gateway providers to keep
+A gateway provider can handle main, small, tool, and image requests through the
+bridge. Set those `models` defaults to provider-qualified IDs in the ignored
+`bridge.local.json`. Use `capabilityFallback: false` on a provider to keep
 explicit selections on the chosen model. The OpenAI adapter retains tool-call
 history and matching tool results, including parallel and error results.
 
@@ -34,30 +34,30 @@ The optional `autoRouting` object publishes a distinct **Auto Routing** picker
 entry in model discovery and CLI bootstrap. Set its `chat`, `tools`, and
 `vision` keys to exact catalog IDs. Image requests take precedence over tool
 requests. The local profile uses oMLX for all three Auto Routing targets.
-Choose a fixed gateway entry to route a session to gateway. See the
+Choose a fixed provider entry to route a session to that provider. See the
 [bridge configuration example](../../claude_local_bridge/README.md).
 
-The gateway templates use text system prompts and omit unsigned thinking from
-assistant history because the current gateway rejects those returned shapes on
-input. Signed thinking is preserved. Gemini 4 Hydrogen/Neon use a per-model
-OpenAI protocol override to retain their tool signatures; their model IDs and
-provider identity remain unchanged. `toolCapableModels` records qualified IDs
+The aggregator templates use text system prompts and omit unsigned thinking
+from assistant history because some gateways reject those returned shapes on
+input. Signed thinking is preserved. A model that needs the OpenAI protocol to
+retain its tool signature gets a per-model override through `modelApiTypes`;
+its model ID and provider identity remain unchanged. `toolCapableModels` records qualified IDs
 without hiding unqualified discovery entries or trusting stale alias flags.
 
 Run the dependency-free qualification helper from the repository root:
 
 ```bash
-python3 claude_local_bridge/qualify_aggregator.py --model qwen3.8-max \
-  --model anthropic/claude-opus-5-5 --stream-tools \
+python3 claude_local_bridge/qualify_provider.py --model <upstream-model-id> \
+  --model <another-upstream-model-id> --stream-tools \
   --output tmp/aggregator-streamed-tools.json
-python3 claude_local_bridge/qualify_aggregator.py --all-models --timeout 30 \
+python3 claude_local_bridge/qualify_provider.py --all-models --timeout 30 \
   --output tmp/aggregator-all-models.json
 ```
 
 These are paid synthetic API checks: model validation, token counting, real
 structured tool requests, and streamed tool-result continuation with an
 independent confirmation. No tool commands run and no workspace files are sent.
-Both gateway routes are tested by default; `--provider` narrows that scope.
+Every provider in the catalog is tested by default; `--provider` narrows that scope.
 `--all-models` explicitly opts into testing the entire advertised catalog.
 Failed checks return a nonzero exit status and remain visible in the JSON
 report. Vision and full Claude Code execution require separate smoke checks.
@@ -323,17 +323,18 @@ version aliases inside that tier, such as `claude-opus-4-5` and
 `claude-opus-4-1`. The OMLX refresh helper validates this before writing
 config.
 
-## gateway Provider
+## Aggregator provider
 
 `providers.example.json` includes disabled gateway templates:
 
 - `aggregator-anthropic` for Anthropic-compatible `/v1/messages`.
 - `aggregator-openai` for OpenAI-compatible `/v1/chat/completions`.
 
-Both use `https://api.aggregator.ai` as the root provider URL. Do not append `/v1` in
-the config; the bridge appends and probes the standard model-list paths itself.
+Both use `https://api.example-aggregator.com` as the root provider URL. Do not
+append `/v1` in the config; the bridge appends and probes the standard model-list
+paths itself.
 
-To use gateway on this machine, keep the real key in ignored local JSON:
+To use such a provider on this machine, keep the real key in ignored local JSON:
 
 ```json
 {
@@ -343,10 +344,10 @@ To use gateway on this machine, keep the real key in ignored local JSON:
 }
 ```
 
-Then edit `providers.local.json` and set the desired gateway entry to
-`"enabled": true`. Start with `aggregator-anthropic` if gateway's Anthropic-compatible
-surface is available, because that path requires less request translation for
-Claude Desktop/Cowork. Run `/sync-models` or wait for the next sync interval,
+Then edit `providers.local.json` and set the desired aggregator entry to
+`"enabled": true`. Start with `aggregator-anthropic` if the gateway exposes an
+Anthropic-compatible surface, because that path requires less request translation
+for Claude Desktop/Cowork. Run `/sync-models` or wait for the next sync interval,
 then confirm with `/healthz` and `/v1/models`.
 
 Example:

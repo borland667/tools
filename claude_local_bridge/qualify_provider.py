@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise gateway routes through the bridge with synthetic, inert tool results."""
+"""Exercise a configured provider's routes through the bridge with synthetic, inert tool results."""
 
 import argparse
 import concurrent.futures
@@ -124,8 +124,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-url', default='http://127.0.0.1:1245')
     parser.add_argument('--model', action='append', help='Exact upstream model ID; repeat to select several.')
-    parser.add_argument('--all-models', action='store_true', help='Spend API tokens testing every discovered gateway model.')
-    parser.add_argument('--provider', choices=['aggregator-anthropic', 'aggregator-openai'], action='append')
+    parser.add_argument('--all-models', action='store_true', help='Spend API tokens testing every discovered route.')
+    parser.add_argument('--provider', action='append', help='Provider id to test; repeat for several. Defaults to every provider in the catalog.')
     parser.add_argument('--stream-tools', action='store_true', help='Also request the initial tool call as SSE.')
     parser.add_argument('--workers', type=int, choices=range(1, 5), default=3)
     parser.add_argument('--timeout', type=float, default=60)
@@ -133,11 +133,11 @@ def main():
     args = parser.parse_args()
     if not args.model and not args.all_models:
         parser.error('select --model or explicitly opt into --all-models')
-    providers = args.provider or ['aggregator-anthropic', 'aggregator-openai']
+    providers = args.provider or []
     catalog = request(args.base_url, '/v1/models', timeout=args.timeout)
-    routes = sorted({model['id'] for model in catalog['data'] if any(model['id'].startswith(provider + '/') for provider in providers) and (args.all_models or model.get('upstream_model_id') in args.model or model['id'].split('/', 1)[1] in args.model)})
+    routes = sorted({model['id'] for model in catalog['data'] if (not providers or any(model['id'].startswith(provider + '/') for provider in providers)) and (args.all_models or model.get('upstream_model_id') in args.model or model['id'].split('/', 1)[1] in args.model)})
     if not routes:
-        parser.error('no matching gateway routes discovered')
+        parser.error('no matching routes discovered')
     results = []
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:

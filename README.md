@@ -152,8 +152,8 @@ These rules apply to all current and future scripts, regardless of language.
   `refresh_omlx_cowork_models.py` for regenerating bridge aliases from live
   OMLX discovery. See
   [`docs/scripts/claude_local_bridge.md`](./docs/scripts/claude_local_bridge.md).
-  gateway API routes can preserve the selected cloud model for tools and images;
-  `qualify_aggregator.py` checks validation, token counting, structured tools, and
+  Gateway routes can preserve the selected cloud model for tools and images;
+  `qualify_provider.py` checks validation, token counting, structured tools, and
   streamed continuation against the current catalog.
 - [`omlx_auto_router/`](./omlx_auto_router/): local OpenAI-compatible proxy
   that routes `auto`, `auto-chat`, and `auto-agent` aliases to suitable live

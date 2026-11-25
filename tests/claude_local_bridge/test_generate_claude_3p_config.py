@@ -200,10 +200,10 @@ def test_bridge_live_models_are_schema_clean_and_keep_tiers(tmp_path):
         "data": [
             {"id": "claude-auto-routing", "owned_by": "bridge", "label": "Auto Routing",
              "description": "Routes chat, tool, and image requests."},
-            {"id": "claude-opus-5-404289", "owned_by": "aggregator", "label": "gateway: Claude Opus 5.5",
-             "description": "gateway source model: anthropic/claude-opus-5-5"},
-            {"id": "claude-opus-5-111111", "owned_by": "aggregator", "label": "gateway: GPT 5",
-             "description": "gateway source model: gpt-5"},
+            {"id": "claude-opus-5-404289", "owned_by": "aggregator", "label": "Aggregator: Claude Opus 5.5",
+             "description": "Aggregator source model: anthropic/claude-opus-5-5"},
+            {"id": "claude-opus-5-111111", "owned_by": "aggregator", "label": "Aggregator: GPT 5",
+             "description": "Aggregator source model: gpt-5"},
             {"id": "claude-haiku-5-222222", "owned_by": "omlx", "label": "OMLX: Qwen3.8 9B"},
             {"id": "claude-omlx-gemma-e4b", "owned_by": "omlx", "label": "OMLX: Gemma 4 E4B"},
             {"id": "claude-omlx-e4b", "owned_by": "omlx", "label": "OMLX: Gemma 4 E4B"},
@@ -247,9 +247,9 @@ def test_bridge_live_models_are_schema_clean_and_keep_tiers(tmp_path):
     config = read_json(target_lib / "live.json")
     assert config["inferenceModels"] == [
         {"name": "claude-auto-routing", "labelOverride": "Auto Routing"},
-        {"name": "claude-opus-5-404289", "labelOverride": "gateway: Claude Opus 5.5",
+        {"name": "claude-opus-5-404289", "labelOverride": "Aggregator: Claude Opus 5.5",
          "anthropicFamilyTier": "opus", "isFamilyDefault": True},
-        {"name": "claude-opus-5-111111", "labelOverride": "gateway: GPT 5",
+        {"name": "claude-opus-5-111111", "labelOverride": "Aggregator: GPT 5",
          "anthropicFamilyTier": "opus", "isFamilyDefault": False},
         {"name": "claude-haiku-5-222222", "labelOverride": "OMLX: Qwen3.8 9B",
          "anthropicFamilyTier": "haiku"},

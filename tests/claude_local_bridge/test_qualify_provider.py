@@ -8,7 +8,7 @@ import pytest
 
 
 spec = importlib.util.spec_from_file_location(
-    'qualify_aggregator', Path(__file__).resolve().parents[2] / 'claude_local_bridge/qualify_aggregator.py'
+    'qualify_provider', Path(__file__).resolve().parents[2] / 'claude_local_bridge/qualify_provider.py'
 )
 qualifier = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(qualifier)
@@ -53,7 +53,7 @@ def test_qualification_requires_real_tool_arguments_and_independent_result(hones
         return {'content': [{'type': 'text', 'text': confirmation if honest else 'invented success'}], 'stop_reason': 'end_turn'}
 
     with patch.object(qualifier, 'request', side_effect=fake_request):
-        result = qualifier.qualify('http://localhost', 'aggregator/test', 1)
+        result = qualifier.qualify('http://localhost', 'cloud/test', 1)
     assert result['passed'] is honest
 
 
@@ -62,6 +62,6 @@ def test_plain_text_claim_is_not_a_tool_call():
         {'type': 'message'}, {'input_tokens': 42},
         {'content': [{'type': 'text', 'text': 'I called the tool.'}], 'stop_reason': 'end_turn'},
     ]):
-        result = qualifier.qualify('http://localhost', 'aggregator/test', 1)
+        result = qualifier.qualify('http://localhost', 'cloud/test', 1)
     assert result['passed'] is False
     assert result['checks']['tool_call'] is False

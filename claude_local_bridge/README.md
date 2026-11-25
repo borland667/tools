@@ -56,9 +56,8 @@ Validated local setup:
 - OMLX server: `http://127.0.0.1:8005`
 - Bridge server: `http://127.0.0.1:1245`
 - LaunchAgent label: `com.borland.claude-local-bridge`
-- API default/tool/vision route: `aggregator-anthropic/anthropic/claude-opus-5-5`
-  (stable picker alias `claude-opus-5-404289`)
-- API small route: `aggregator-anthropic/claude-haiku-5-5`
+- API default/tool/vision route: `<provider>/<model>` declared in `bridge.local.json`
+- API small route: `<provider>/<small model>`
 - **Auto Routing** uses oMLX for chat, tools, and images.
 - Claude profiles: isolated with Electron `--user-data-dir`, usually under
   `$HOME/.claude-instances/<profile>`
@@ -68,7 +67,7 @@ bridge aggregates every discovered provider model. Capability hints still
 inform request routing and default-model heuristics, but they do not remove
 models from discovery.
 
-Enable `omlx` in `providers.local.json` alongside the gateway providers. Set
+Enable `omlx` in `providers.local.json` alongside the aggregator providers. Set
 `capabilityFallback: false` on the oMLX provider to keep explicit oMLX
 selections local. Add these fields to `bridge.local.json`, merging the alias
 entries into the existing `claudeDesktopModels` list:
@@ -101,8 +100,8 @@ entries into the existing `claudeDesktopModels` list:
 Select **Auto Routing** (`claude-auto-routing`) to use these rules. Requests containing images use
 `vision`, even when they also include tools, so that target should support both.
 Other requests with tools use `tools`, and the rest use `chat`. The entry is
-published only when all three targets are available. Fixed gateway selections
-keep their own model and Auto Routing does not become a family default.
+published only when all three targets are available. A fixed provider selection
+keeps its own model and Auto Routing does not become a family default.
 
 ## Claude Profiles
 
@@ -306,7 +305,7 @@ The bridge re-reads `providersFile` on every model sync. The default sync
 interval is `30000` ms and can be changed with `modelSyncIntervalMs`.
 `modelDiscoveryTimeoutMs` is the per-provider timeout for `/v1/models`
 catalog fetches. Keep it comfortably above the slowest configured provider;
-cloud aggregators such as gateway can take longer than 5 seconds to return a
+cloud aggregators can take longer than 5 seconds to return a
 large catalog.
 
 You can also embed static providers directly in `bridge.local.json`:
@@ -373,7 +372,7 @@ Provider fields:
   discovery. Excluded models get no `provider/model` route and no automatic
   Claude alias, so they leave `/v1/models` and the Claude picker. Use it for
   models the upstream still lists but no longer serves (retired deployments,
-  revoked keys), as reported by `qualify_aggregator.py`. A manual alias that targets
+  revoked keys), as reported by `qualify_provider.py`. A manual alias that targets
   an excluded model stops resolving, so remove it from `claudeDesktopModels`.
 - `capabilityFallback`: defaults to `true`. Set `false` to preserve an explicitly
   selected provider/model for tools and images. Unsupported requests then return
@@ -381,8 +380,8 @@ Provider fields:
 - `systemFormat`: set `text` for gateways that reject Anthropic system content
   arrays. Text blocks are joined in order; system-block cache hints are omitted.
 - `stripUnsignedThinking`: omit unsigned thinking and empty text from assistant
-  history before forwarding it. Signed thinking is retained. This handles gateway
-  responses whose null thinking signatures fail its own request validation.
+  history before forwarding it. Signed thinking is retained. This handles gateways
+  whose null thinking signatures fail their own request validation.
 - `modelApiTypes`: optional map of upstream model ID to `openai`, selecting
   `/v1/chat/completions` for that model on an otherwise Anthropic provider.
   Provider identity, credentials, model ID, and picker alias stay the same.
@@ -423,27 +422,29 @@ provider, the bridge asks the upstream for a non-streaming chat completion and
 then emits Anthropic-shaped SSE events. That preserves Claude client
 compatibility, but it is buffered rather than token-by-token streaming.
 
-### gateway
+### Aggregator providers
 
-`providers.example.json` includes disabled gateway templates for both
-compatibility surfaces:
+`providers.example.json` includes disabled templates for a generic
+Anthropic- or OpenAI-compatible gateway:
 
 - `aggregator-anthropic`: Anthropic-compatible `/v1/messages` routing.
 - `aggregator-openai`: OpenAI-compatible `/v1/chat/completions` routing.
 
-Both use `https://api.aggregator.ai` as the provider root. Do not append `/v1`; the
-bridge probes the standard model-list paths for the selected provider type.
+Both use `https://api.example-aggregator.com` as the provider root. Do not
+append `/v1`; the bridge probes the standard model-list paths for the selected
+provider type.
 
-The templates preserve gateway selections for all requests, including tool use
-and images. They normalize system prompts and unsigned thinking for the current
-gateway. OpenAI adaptation preserves assistant tool calls, matching tool-result
-messages, parallel calls, error results, and tool-choice settings across turns.
+The templates preserve an explicit selection for all requests, including tool
+use and images. They normalize system prompts and unsigned thinking for
+gateways that reject those shapes on input. OpenAI adaptation preserves assistant
+tool calls, matching tool-result messages, parallel calls, error results, and
+tool-choice settings across turns.
 Its client-facing SSE emits empty block starts followed by argument deltas.
 
-Gemini 4 Hydrogen/Neon use gateway's OpenAI endpoint even under the
-`aggregator-anthropic` picker entries: the native Anthropic translation loses Gemini's
-tool signature during continuation. This selects another protocol for the same
-model, without switching providers or models. See the
+Some upstream models need the OpenAI endpoint even when selected through an
+Anthropic-compatible provider, because the native translation loses the tool
+signature during continuation. Declare them with `modelApiTypes`: the provider,
+credentials, model ID and picker alias stay the same. See the
 [upstream LiteLLM signature issue](https://github.com/BerriAI/litellm/issues/46369)
 and [signature transport documentation](https://docs.litellm.ai/docs/providers/gemini).
 
@@ -452,10 +453,10 @@ usable. This makes paid API calls with synthetic prompts and inert receipt
 results; it never executes model-selected shell commands or accesses your files:
 
 ```bash
-python3 qualify_aggregator.py --model qwen3.8-max \
-  --model anthropic/claude-opus-5-5 --stream-tools \
+python3 qualify_provider.py --model <upstream-model-id> \
+  --model <another-upstream-model-id> --stream-tools \
   --output ../tmp/aggregator-streamed-tools.json
-python3 qualify_aggregator.py --all-models --timeout 30 \
+python3 qualify_provider.py --all-models --timeout 30 \
   --output ../tmp/aggregator-all-models.json
 ```
 
@@ -474,7 +475,7 @@ Use automatic tool choice with the current Claude 5.5 deployments: the upstream
 rejects forced `tool`/`any` choices. The bridge preserves that error rather than
 silently weakening the caller's requested tool policy.
 
-To enable gateway locally, edit ignored local files only. Put the real key in
+To enable an aggregator locally, edit ignored local files only. Put the real key in
 `bridge.local.json`:
 
 ```json
@@ -485,10 +486,10 @@ To enable gateway locally, edit ignored local files only. Put the real key in
 }
 ```
 
-Then set one or both gateway provider entries in `providers.local.json` to
-`"enabled": true`. Prefer enabling `aggregator-anthropic` first if gateway's
-Anthropic-compatible surface is available, because that route requires less
-translation for Claude Desktop/Cowork. After changing the file:
+Then set one or both aggregator entries in `providers.local.json` to
+`"enabled": true`. Prefer `aggregator-anthropic` first if the gateway exposes an
+Anthropic-compatible surface, because that route requires less translation for
+Claude Desktop/Cowork. After changing the file:
 
 ```bash
 curl -X POST http://127.0.0.1:1245/sync-models

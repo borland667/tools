@@ -117,7 +117,7 @@
   "env": {
     "ANTHROPIC_API_KEY": "local-bridge",
     "ANTHROPIC_AUTH_TOKEN": "local-bridge",
-    "AGGREGATOR_API_KEY": "replace-with-local-aggregator-key",
+    "AGGREGATOR_API_KEY": "replace-with-your-local-key",
     "OMLX_API_KEY": "local-bridge",
     "LMSTUDIO_API_KEY": "local-bridge"
   }
