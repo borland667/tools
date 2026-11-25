@@ -346,6 +346,31 @@ class ScaffoldScriptTests(unittest.TestCase):
                                  capture_output=True, text=True, check=False)
         self.assertEqual(sourced.stdout, "ok", sourced.stdout + sourced.stderr)
 
+    def test_filled_bootstrap_reports_fields_that_contain_redirects(self):
+        repo = self.new_repo()
+        (repo / "node_modules").mkdir()
+        filled = self.root / "bootstrap.sh"
+        text = (self.ASSETS / "bootstrap.sh.template").read_text()
+        for field, value in {
+            "{{VERSION_MANAGER}}": "true",
+            "{{INSTALL_COMMAND}}": "true",
+            "{{TOOL_PRESENCE_CHECK}}": "test -x /bin/true",
+            "{{INSTALL_DEPENDENCIES}}": "true && true",
+            "{{DEPENDENCY_PRESENCE_CHECK}}": "test -d node_modules >/dev/null",
+            "{{PRIVATE_KEY_PATH}}": "README.md",
+            "{{DECRYPT_ONE_HARMLESS_VALUE}}": "cat README.md | head -1",
+            "{{PASSWORD_MANAGER_ITEM}}": "the key entry",
+            "{{DEV_COMMAND}}": "make dev",
+            "{{FIELD}}": "TOOL",
+        }.items():
+            text = text.replace(field, value)
+        filled.write_text(text)
+        result = subprocess.run(["bash", str(filled), "--check"], cwd=str(repo),
+                                capture_output=True, text=True, check=False)
+        self.assertIn("dependencies present", result.stdout)
+        self.assertIn("secret key decrypts the secrets file", result.stdout)
+        self.assertNotIn("syntax error", result.stderr)
+
     def test_bootstrap_rejects_unknown_flags(self):
         filled = self.root / "bootstrap.sh"
         filled.write_text((self.ASSETS / "bootstrap.sh.template").read_text()

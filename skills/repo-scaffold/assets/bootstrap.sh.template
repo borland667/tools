@@ -15,6 +15,9 @@ esac
 missing=()
 ok()   { printf '  \342\234\223 %s\n' "$1"; }
 miss() { printf '  \342\234\227 %s\n' "$1"; missing+=("$1"); }
+# Run a filled-in command quietly and keep its exit status. Quoting it here means
+# a field that already contains a redirect or a pipe still works.
+run() { sh -c "$1" >/dev/null 2>&1; }
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
@@ -27,7 +30,7 @@ fi
 
 # Pinned tools: with --check they are only tested for presence.
 if [ "$mode" = check ]; then
-  if {{TOOL_PRESENCE_CHECK}} >/dev/null 2>&1; then
+  if run "{{TOOL_PRESENCE_CHECK}}"; then
     ok "pinned tools present"
   else
     miss "pinned tools: run '{{VERSION_MANAGER}} install'"
@@ -42,13 +45,13 @@ fi
 
 # Dependencies.
 if [ "$mode" = check ]; then
-  if {{DEPENDENCY_PRESENCE_CHECK}} >/dev/null 2>&1; then
+  if run "{{DEPENDENCY_PRESENCE_CHECK}}"; then
     ok "dependencies present"
   else
     miss "dependencies: run '{{INSTALL_DEPENDENCIES}}'"
   fi
 else
-  if {{INSTALL_DEPENDENCIES}} >/dev/null 2>&1; then
+  if run "{{INSTALL_DEPENDENCIES}}"; then
     ok "dependencies installed"
   else
     miss "dependencies: run '{{INSTALL_DEPENDENCIES}}' and read its error"
@@ -64,7 +67,7 @@ fi
 
 # Secret key present and able to decrypt, tested without printing a value.
 key_file="{{PRIVATE_KEY_PATH}}"
-if [ -r "$key_file" ] && {{DECRYPT_ONE_HARMLESS_VALUE}} >/dev/null 2>&1; then
+if [ -r "$key_file" ] && run "{{DECRYPT_ONE_HARMLESS_VALUE}}"; then
   ok "secret key decrypts the secrets file"
 else
   miss "secret key: get it from {{PASSWORD_MANAGER_ITEM}} and save it to $key_file (mode 600)"
