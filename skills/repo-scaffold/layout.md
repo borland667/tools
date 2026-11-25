@@ -13,7 +13,7 @@ alternatives; use whatever the target's ecosystem already uses.
   <task runner>                  S  check = typecheck + lint + unit tests  [Makefile, justfile, or the workspace runner]
   .env.example                   S  every variable, one comment each
   .env.worktree.example          M  per-worktree overrides, every port listed
-  <encrypted secrets>            S  [fnox.toml, secrets.sops.yaml]
+  <encrypted secrets>            S  [age, sops, or the team's secret store]
   .gitignore / .gitattributes    S  secret patterns, scratch dir, generated files marked
   <agent tool config>            M  variable references only  [.mcp.json]
   scripts/
