@@ -667,6 +667,49 @@ test('emits streaming message start before a slow upstream sends headers', async
   )
 })
 
+test('cancels the upstream stream when the client disconnects', async t => {
+  const upstreams = []
+  t.after(async () => {
+    // Without the fix the bridge keeps the endless upstream stream open; drop it so cleanup cannot hang.
+    upstreams.forEach(server => server.closeAllConnections())
+    await closeServers(upstreams)
+  })
+
+  const anthropic = await startEndlessAnthropicStreamingProvider({
+    models: [model('endless-chat')],
+  })
+  upstreams.push(anthropic.server)
+
+  await withBridge(
+    t,
+    [provider('omlx', 'anthropic', anthropic.baseUrl)],
+    async bridge => {
+      const client = new AbortController()
+      const response = await fetch(`${bridge.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'omlx/endless-chat',
+          max_tokens: 4096,
+          stream: true,
+          messages: [{ role: 'user', content: 'write forever' }],
+        }),
+        signal: client.signal,
+      })
+      assert.equal(response.ok, true)
+      await anthropic.streaming
+      await readFirstChunk(response)
+      client.abort()
+
+      const closed = await Promise.race([
+        anthropic.upstreamClosed.then(() => true),
+        new Promise(resolve => setTimeout(() => resolve(false), 3000)),
+      ])
+      assert.equal(closed, true, 'upstream request should be cancelled after the client disconnects')
+    },
+  )
+})
+
 test('emits visible progress while upstream only sends thinking deltas', async t => {
   const upstreams = []
   t.after(async () => {
@@ -1362,6 +1405,49 @@ async function startAnthropicProvider({ models }) {
 
   const baseUrl = await listen(server)
   return { server, baseUrl, requests }
+}
+
+async function startEndlessAnthropicStreamingProvider({ models }) {
+  let markStreaming
+  let markClosed
+  const streaming = new Promise(resolve => { markStreaming = resolve })
+  const upstreamClosed = new Promise(resolve => { markClosed = resolve })
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'GET' && ['/api/v1/models', '/v1/models'].includes(req.url)) {
+      return writeJson(res, 200, { object: 'list', data: models })
+    }
+
+    if (req.method === 'POST' && req.url === '/v1/messages') {
+      const body = await readJsonBody(req)
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+      })
+      const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      send('message_start', {
+        type: 'message_start',
+        message: {
+          id: 'msg_endless', type: 'message', role: 'assistant', model: body.model, content: [],
+          stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      })
+      send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })
+      const timer = setInterval(() => {
+        send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'more ' } })
+      }, 50)
+      res.on('close', () => {
+        clearInterval(timer)
+        markClosed()
+      })
+      markStreaming()
+      return
+    }
+
+    writeJson(res, 404, { error: `unexpected ${req.method} ${req.url}` })
+  })
+
+  const baseUrl = await listen(server)
+  return { server, baseUrl, streaming, upstreamClosed }
 }
 
 async function startSlowAnthropicStreamingProvider({ models, headerDelayMs }) {

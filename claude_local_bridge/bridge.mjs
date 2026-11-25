@@ -321,6 +321,15 @@ async function routeRequest(req, res) {
 async function proxyToUpstream(req, res, url) {
   const requestId = nextBridgeRequestId()
   const startedAt = Date.now()
+  // Cancel the upstream request when the client goes away (Stop button, client timeout,
+  // killed CLI). Without this a local backend such as oMLX keeps generating for up to the
+  // streaming timeout (1 h) and blocks the next request.
+  const clientGone = new AbortController()
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientGone.abort(new Error('client disconnected'))
+    }
+  })
   let provider = providers[0]
   let upstreamPath = url.pathname
   const headers = copyIncomingHeaders(req.headers)
@@ -389,9 +398,19 @@ async function proxyToUpstream(req, res, url) {
       method: req.method,
       headers,
       body,
-      signal: getUpstreamRequestSignal(expectsStreamingResponse),
+      signal: combineAbortSignals(
+        clientGone.signal,
+        getUpstreamRequestSignal(expectsStreamingResponse),
+      ),
     })
   } catch (error) {
+    if (clientGone.signal.aborted) {
+      sseKeepalive?.stop()
+      logRequestEvent(diagnostics, 'client_closed', {
+        elapsed: formatDuration((Date.now() - startedAt) / 1000),
+      })
+      return
+    }
     console.error(
       `[bridge:${requestId}] upstream request failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}`,
     )
@@ -511,6 +530,15 @@ async function proxyToUpstream(req, res, url) {
       progressUpdates: diagnostics.progressUpdates,
     })
   } catch (error) {
+    if (clientGone.signal.aborted) {
+      logRequestEvent(diagnostics, 'client_closed', {
+        elapsed: formatDuration((Date.now() - startedAt) / 1000),
+        events: diagnostics.streamEvents,
+        visibleEvents: diagnostics.visibleEvents,
+        progressUpdates: diagnostics.progressUpdates,
+      })
+      return
+    }
     console.error(
       `[bridge:${requestId}] upstream stream failed for ${provider.id} ${req.method ?? 'GET'} ${upstreamUrl.pathname}: ${formatError(error)}; ${formatStreamDiagnostics(diagnostics)}`,
     )
@@ -2937,6 +2965,14 @@ function getStreamRequestTimeoutMs() {
 
 function getUpstreamRequestTimeoutMs(expectsStreamingResponse) {
   return expectsStreamingResponse ? getStreamRequestTimeoutMs() : getRequestTimeoutMs()
+}
+
+function combineAbortSignals(...signals) {
+  const present = signals.filter(Boolean)
+  if (present.length === 0) {
+    return undefined
+  }
+  return present.length === 1 ? present[0] : AbortSignal.any(present)
 }
 
 function getUpstreamRequestSignal(expectsStreamingResponse) {

@@ -1161,6 +1161,11 @@ OMLX prompts can spend more than 10 minutes in prefill before producing visible
 answer text. Set `streamRequestTimeoutMs` to `0` only if you want no bridge-side
 absolute timeout for streaming requests.
 
+When the client disconnects first (Claude's Stop button, a client-side timeout,
+or a killed CLI), the bridge cancels the upstream request immediately and logs
+`client_closed`. oMLX then aborts the generation instead of continuing until
+`streamRequestTimeoutMs` with nobody reading it.
+
 Thinking handling is configured separately:
 
 ```json
